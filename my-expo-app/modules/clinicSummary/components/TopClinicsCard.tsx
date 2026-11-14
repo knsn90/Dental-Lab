@@ -258,6 +258,8 @@ export function TopClinicsCard(props: {
   scoreMode?: boolean;
   summaries?: Map<string, ClinicSummary>;
   onOpen?: (clinicId: string) => void;
+  /** Verilirse yalnız ilk N klinik gösterilir (admin masaüstü Özet: 3) */
+  limit?: number;
 }) {
   const T = useMobileTokens();
   const U = useInkUI();
@@ -270,7 +272,10 @@ export function TopClinicsCard(props: {
   const [period, setPeriod] = useState<Period>('month');
   const [modeRaw, setMode] = useState<RankMode>('uye');
   const mode: RankMode = canProfit ? modeRaw : 'uye';
-  const rows = useMemo(() => rankTop(map, period, mode), [map, period, mode]);
+  const rows = useMemo(() => {
+    const all = rankTop(map, period, mode);
+    return props.limit ? all.slice(0, props.limit) : all;
+  }, [map, period, mode, props.limit]);
   const val = (r: (typeof rows)[number]) => (mode === 'uye' ? r.uye : r.score);
   const max = Math.max(1, ...rows.map(val));
   // Pay: dönemdeki TÜM kliniklerin üyesi içinde (yalnız ilk 5 değil).

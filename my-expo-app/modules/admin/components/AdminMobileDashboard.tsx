@@ -392,7 +392,10 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
 // indi; "74/90" onun yanında anlam kazanır. Eskiden kartın en büyük öğesi o
 // orandı, canlı sayılar 9px etiketli küçük dairelerdeydi (2026-11-14).
 type LiveTone = 'strong' | 'mid' | 'soft' | 'ready';
-function LiveProductionCard({ nn, active, delivered, total, pct, title, activeLabel, rateLabel, stages, onOpenAll }: {
+// Mobil ve masaüstü Özet AYNI kartı çizer (tek tanım). `fill`: ızgara hücresini
+// doldurur, dış boşluk yok, masaüstü köşe yarıçapı.
+export function LiveProductionCard({ nn, active, delivered, total, pct, title, activeLabel, rateLabel, stages, onOpenAll, fill }: {
+  fill?: boolean;
   nn: ReturnType<typeof useNeonNavy>;
   active: number; delivered: number; total: number; pct: number;
   title: string; activeLabel: string; rateLabel: string;
@@ -415,17 +418,52 @@ function LiveProductionCard({ nn, active, delivered, total, pct, title, activeLa
     if (prefersReducedMotion()) { grow.setValue(1); return; }
     Animated.timing(grow, { toValue: 1, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, [grow]);
+  // Canlı nabzı (başlık yanındaki nokta) + çubuğun üstünden geçen yavaş ışık.
+  // Yalnız transform/opacity; hareketi azalt açıksa ikisi de durur.
+  const pulse = React.useRef(new Animated.Value(0)).current;
+  const sweep = React.useRef(new Animated.Value(0)).current;
+  const [barW, setBarW] = React.useState(0);
+  React.useEffect(() => {
+    if (prefersReducedMotion()) return;
+    const p = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.delay(400),
+    ]));
+    p.start();
+    return () => p.stop();
+  }, [pulse]);
+  React.useEffect(() => {
+    sweep.stopAnimation(); sweep.setValue(0);
+    if (prefersReducedMotion() || active <= 0 || barW === 0) return;
+    const l = Animated.loop(Animated.sequence([
+      Animated.delay(1400),
+      Animated.timing(sweep, { toValue: 1, duration: 2600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    ]));
+    l.start();
+    return () => l.stop();
+  }, [sweep, active, barW]);
   const Chevron = rtl ? ChevronLeft : ChevronRight;
   const HeadWrap: any = onOpenAll ? Pressable : View;
+  const radius = fill ? 28 : 24;
   return (
-    <View style={{ marginHorizontal: 16, marginBottom: 16, borderRadius: 24, padding: 18, overflow: 'hidden', ...nn.surface }}>
-      {!nn.flat && <NeonPulse radius={24} color={nn.glow} />}
+    <View style={{
+      ...(fill ? { flex: 1, minHeight: '100%' as any } : { marginHorizontal: 16, marginBottom: 16 }),
+      borderRadius: radius, padding: fill ? 22 : 18, overflow: 'hidden', ...nn.surface,
+    }}>
+      {!nn.flat && <NeonPulse radius={radius} color={nn.glow} />}
       <HeadWrap
         {...(onOpenAll ? { onPress: onOpenAll, accessibilityRole: 'button', accessibilityLabel: `${title}, ${active} ${activeLabel}` } : {})}
         style={Platform.OS === 'web' && onOpenAll ? ({ cursor: 'pointer' } as any) : undefined}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', letterSpacing: -0.1, color: nn.ink }}>{title}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Animated.View style={{
+              width: 7, height: 7, borderRadius: 4, backgroundColor: READY,
+              opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] }),
+            }} />
+            <Text style={{ fontSize: 14, fontWeight: '600', letterSpacing: -0.1, color: nn.ink }}>{title}</Text>
+          </View>
           {onOpenAll ? <Chevron size={18} color={nn.inkFaint} strokeWidth={2} /> : null}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 6 }}>
@@ -442,18 +480,28 @@ function LiveProductionCard({ nn, active, delivered, total, pct, title, activeLa
       </HeadWrap>
 
       {/* Akış çubuğu — genişlik sayıyla orantılı; sıfır aşama ince ve silik ama YERİNDE */}
-      <Animated.View style={{
-        flexDirection: 'row', gap: 3, height: 10, marginTop: 18,
-        transformOrigin: rtl ? 'right center' : 'left center',
-        transform: [{ scaleX: grow }],
-      } as any}>
-        {stages.map((st) => (
-          <View key={st.key} style={{
-            flex: st.n > 0 ? st.n : 0.5, minWidth: 6, borderRadius: 5,
-            backgroundColor: st.n > 0 ? toneColor(st.tone, st.n) : hexA(nn.ink, 0.18),
+      <View onLayout={(e) => setBarW(e.nativeEvent.layout.width)} style={{ marginTop: 18, height: 10, borderRadius: 5, overflow: 'hidden' }}>
+        <Animated.View style={{
+          flexDirection: 'row', gap: 3, height: 10,
+          transformOrigin: rtl ? 'right center' : 'left center',
+          transform: [{ scaleX: grow }],
+        } as any}>
+          {stages.map((st) => (
+            <View key={st.key} style={{
+              flex: st.n > 0 ? st.n : 0.5, minWidth: 6, borderRadius: 5,
+              backgroundColor: st.n > 0 ? toneColor(st.tone, st.n) : hexA(nn.ink, 0.18),
+            }} />
+          ))}
+        </Animated.View>
+        {barW > 0 && active > 0 && !prefersReducedMotion() ? (
+          <Animated.View pointerEvents="none" style={{
+            position: 'absolute', top: 0, bottom: 0, left: 0, width: 56,
+            backgroundColor: hexA(nn.ink, 0.55),
+            opacity: sweep.interpolate({ inputRange: [0, 0.15, 0.85, 1], outputRange: [0, 0.85, 0.85, 0] }),
+            transform: [{ translateX: sweep.interpolate({ inputRange: [0, 1], outputRange: [-56, barW] }) }, { skewX: '-20deg' }],
           }} />
-        ))}
-      </Animated.View>
+        ) : null}
+      </View>
 
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
         {stages.map((st, i) => {

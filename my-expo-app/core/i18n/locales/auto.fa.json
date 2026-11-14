@@ -10389,5 +10389,14 @@
   "İşe başlandı": "کار شروع شد",
   "İş listesine döner": "بازگشت به فهرست کارها",
   "Dosya kontrolü başarısız": "بررسی فایل ناموفق بود",
-  "Önce bitmesi gereken aşama": "مرحله‌ای که باید اول تمام شود"
+  "Önce bitmesi gereken aşama": "مرحله‌ای که باید اول تمام شود",
+  "Teknisyen iş yükü": "بار کاری تکنسین‌ها",
+  "boşta": "آزاد",
+  "elde": "در دست",
+  "Henüz teknisyen yok": "هنوز تکنسینی نیست",
+  "görev daha": "کار دیگر",
+  "teknisyen daha": "تکنسین دیگر",
+  "Canlı üretim": "تولید زنده",
+  "aktif sipariş": "سفارش فعال",
+  "En eski açık sipariş": "قدیمی‌ترین سفارش باز"
 }

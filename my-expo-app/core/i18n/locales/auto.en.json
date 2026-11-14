@@ -10389,5 +10389,14 @@
   "İşe başlandı": "Job started",
   "İş listesine döner": "Returns to the job list",
   "Dosya kontrolü başarısız": "File check failed",
-  "Önce bitmesi gereken aşama": "Stage that must finish first"
+  "Önce bitmesi gereken aşama": "Stage that must finish first",
+  "Teknisyen iş yükü": "Technician workload",
+  "boşta": "idle",
+  "elde": "in hand",
+  "Henüz teknisyen yok": "No technicians yet",
+  "görev daha": "more tasks",
+  "teknisyen daha": "more technicians",
+  "Canlı üretim": "Live production",
+  "aktif sipariş": "active orders",
+  "En eski açık sipariş": "Oldest open order"
 }

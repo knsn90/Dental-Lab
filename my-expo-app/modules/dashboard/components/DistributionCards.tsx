@@ -171,9 +171,11 @@ export function SpineCard({ title, value, unit, segments, zeros, children, onPre
     // flex:1 → ızgara hücresini doldurur; yan yana kartlar eş boy kalır
     <Card style={{ padding: 20, flex: 1 }}>
       {/* Başlık solda · toplam sağda — koyu bant yok, kart bağırmıyor */}
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
-        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={{ flexShrink: 1, fontSize: 14, fontWeight: '600', color: T.ink }} numberOfLines={1}>
+      {/* Dar kartta toplam başlığın ALTINA iner: başlık hiçbir zaman kesilmez
+          (eskiden "İş Tipi Da…" oluyordu). Sığdığında ikisi aynı satırda kalır. */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', columnGap: 12, rowGap: 4 }}>
+        <View style={{ flexGrow: 1, flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink }} numberOfLines={1}>
             {title}
           </Text>
           {onPress ? (isRTL() ? <ArrowUpLeft size={14} color={T.ink3} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={T.ink3} strokeWidth={1.8} />) : null}

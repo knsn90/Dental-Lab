@@ -50,8 +50,31 @@ export function useScanCardVisible(): { visible: boolean; canManage: boolean } {
  * yarım ekran tutuyor ve çoğu gün "Randevu yok" gösteriyordu. Ay görünümü
  * Tarama Randevuları sayfasında; başlığa dokununca oraya gider.
  */
+// Son bilinen görünürlük (hesaba özel, yalnız web'de eşzamanlı okunur): modül bayrakları
+// oturum açılışında birkaç saniye sonra gelir; o ana kadar kart hiç yokmuş gibi davranıp
+// sonradan "geç açılıyordu" ve yanındaki kartları kaydırıyordu.
+const HINT_KEY = (id: string) => `scan_card_visible_v1:${id}`;
+function readVisibleHint(id?: string | null): boolean {
+  try {
+    return !!id && typeof localStorage !== 'undefined' && localStorage.getItem(HINT_KEY(id)) === '1';
+  } catch { return false; }
+}
+
+/** useScanCardVisible + bayraklar yüklenene kadar son bilinen değer (ilk karede yer ayrılır). */
+export function useScanCardVisibleFast(): { visible: boolean; canManage: boolean } {
+  const base = useScanCardVisible();
+  const loaded = useFeatureFlagsStore((s) => s.loaded);
+  const pid = useAuthStore((s) => s.profile?.id);
+  useEffect(() => {
+    if (!loaded || !pid) return;
+    try { if (typeof localStorage !== 'undefined') localStorage.setItem(HINT_KEY(pid), base.visible ? '1' : '0'); } catch { /* yok say */ }
+  }, [loaded, pid, base.visible]);
+  const hinted = !loaded && readVisibleHint(pid);
+  return { visible: base.visible || hinted, canManage: base.canManage };
+}
+
 export function ScanCalendarCard({ style, compact }: { style?: any; compact?: boolean }) {
-  const { visible, canManage } = useScanCardVisible();
+  const { visible, canManage } = useScanCardVisibleFast();
   if (!visible) return null;
   return <Inner style={style} canManage={canManage} compact={compact} />;
 }
@@ -68,9 +91,15 @@ function Inner({ style, canManage, compact }: { style?: any; canManage: boolean;
   const seg = String((useSegments() as string[])?.[0] ?? '(lab)');
   const cat = useScanCatalog();
   const today = labLocalParts(new Date().toISOString(), cat.tz).date;
-  const [sel, setSel] = useState<string | null>(null);       // seçili gün: sol tarih + alttaki liste
-  const [month, setMonth] = useState<string | null>(null);   // görüntülenen ay (içinden herhangi bir gün)
-  useEffect(() => { if (cat.ready && !sel) { setSel(today); setMonth(today); } }, [cat.ready, today, sel]);
+  // Takvim katalog beklemeden ÇİZİLİR (varsayılan saat dilimi + çalışma günleriyle);
+  // randevular ve ayarlar gelince yerine oturur. Eskiden katalog hazır olana kadar
+  // kart gri yer tutucu gösteriyor, Özet'te en geç açılan kart oluyordu.
+  const [sel, setSel] = useState<string | null>(today);       // seçili gün: sol tarih + alttaki liste
+  const [month, setMonth] = useState<string | null>(today);   // görüntülenen ay (içinden herhangi bir gün)
+  const picked = useRef(false);
+  // Katalog gerçek saat dilimini getirince "bugün" değiştiyse (gün sınırı) ve kullanıcı
+  // henüz bir gün seçmediyse düzelt.
+  useEffect(() => { if (cat.ready && !picked.current) { setSel(today); setMonth(today); } }, [cat.ready, today]);
   const [rows, setRows] = useState<ScanAppointmentRow[]>([]);
   const [pending, setPending] = useState(0);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -96,13 +125,13 @@ function Inner({ style, canManage, compact }: { style?: any; canManage: boolean;
   useEffect(() => { if (detailId) setLastDetail(detailId); }, [detailId]);
   useEffect(() => { if (formOpen) setFormEver(true); }, [formOpen]);
 
-  if (!cat.ready || !sel || !month) return <ScanWidgetLoading style={style} />;
+  if (!sel || !month) return <ScanWidgetLoading style={style} />;
   return (
     <ScanWidgetView
       style={style} today={today} sel={sel} month={month} rows={rows} tz={cat.tz} workdays={cat.settings.workdays}
-      pending={pending} canManage={canManage} compact={compact}
-      onPick={(d, inMonth) => { setSel(d); if (!inMonth) setMonth(d); }}
-      onStep={(n) => setMonth(addMonths(month, n))}
+      pending={pending} canManage={canManage && cat.ready} compact={compact}
+      onPick={(d, inMonth) => { picked.current = true; setSel(d); if (!inMonth) setMonth(d); }}
+      onStep={(n) => { picked.current = true; setMonth(addMonths(month, n)); }}
       onToday={() => { setSel(today); setMonth(today); }}
       onNav={(to) => router.push((to === 'pending' ? `/${seg}/scans?tab=pending` : `/${seg}/scans`) as any)}
       onNew={(o) => { setOrigin(o); setEditRow(null); setFormOpen(true); }}

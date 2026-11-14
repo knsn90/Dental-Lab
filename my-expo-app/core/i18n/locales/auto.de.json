@@ -10389,5 +10389,14 @@
   "İşe başlandı": "Auftrag gestartet",
   "İş listesine döner": "Zurück zur Auftragsliste",
   "Dosya kontrolü başarısız": "Dateiprüfung fehlgeschlagen",
-  "Önce bitmesi gereken aşama": "Zuerst abzuschließende Stufe"
+  "Önce bitmesi gereken aşama": "Zuerst abzuschließende Stufe",
+  "Teknisyen iş yükü": "Techniker-Auslastung",
+  "boşta": "frei",
+  "elde": "in Arbeit",
+  "Henüz teknisyen yok": "Noch keine Techniker",
+  "görev daha": "weitere Aufgaben",
+  "teknisyen daha": "weitere Techniker",
+  "Canlı üretim": "Live-Produktion",
+  "aktif sipariş": "aktive Aufträge",
+  "En eski açık sipariş": "Ältester offener Auftrag"
 }

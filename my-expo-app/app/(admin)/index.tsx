@@ -46,7 +46,7 @@ import { supabase } from '../../core/api/supabase';
 import { useRealtimeRefresh } from '../../core/hooks/useRealtimeRefresh';
 import { DS } from '../../core/theme/dsTokens';
 import { HERO_NAVY, prefersReducedMotion, useAccentTones, useNeonNavy, NeonPulse } from '../../core/ui/HeroGlow';
-import { onAccentInk } from '../../core/theme/usePanelTheme';
+import { onAccentInk, usePanelTheme } from '../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
 import { useIsDesktop } from '../../core/layout/PatternsShell';
@@ -54,7 +54,7 @@ import { usePageTitleStore } from '../../core/store/pageTitleStore';
 import { useAuthStore } from '../../core/store/authStore';
 import { HomeB1, type PriorityOrder, type KpiItem, defaultInsight } from '../../core/ui/HomeB1';
 import { AlertPillX } from '../../core/ui/AlertPillX';
-import { AdminMobileDashboard } from '../../modules/admin/components/AdminMobileDashboard';
+import { AdminMobileDashboard, LiveProductionCard } from '../../modules/admin/components/AdminMobileDashboard';
 import { resolveOrderStatus } from '../../modules/dashboard/components/RecentOrdersMobile';
 import { mapRevisionCases, flattenRevisionCases } from '../../modules/orders/revisionGroups';
 import { useRevisionParents } from '../../modules/orders/hooks/useRevisionParents';
@@ -72,8 +72,9 @@ import { useNewOrderModalStore } from '../../core/store/newOrderModalStore';
 import { ActivityIndicator } from '../../core/ui/teethCompat';
 import { FaceScanQuickAction } from '../../modules/orders/components/FaceScanQuickAction';
 import { serviceUnitQty, resolveUnitForWorkType, workTypeGroupLabel, memberBucketOf } from '../../core/util/serviceUnits';
-import { ScanCalendarCard, useScanCardVisible } from '../../modules/scans/components/ScanCalendarCard';
+import { ScanCalendarCard, useScanCardVisibleFast } from '../../modules/scans/components/ScanCalendarCard';
 import { DashRow, DashHalf, DashCell, DashThird, DashHalfSpacer } from '../../modules/dashboard/components/DashGrid';
+import { TechWorkloadCard } from '../../modules/dashboard/components/TechWorkloadCard';
 import { TopClinicsCard } from '../../modules/clinicSummary/components/TopClinicsCard';
 import {
   STATUS_CFG, STATUS_KEYS, STATUS_BUCKET,
@@ -359,19 +360,32 @@ function StatDivider() {
   return <View style={{ width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 2, backgroundColor: T.hairline }} />;
 }
 
-function BigStat({ value, label }: { value: string | number; label: string }) {
+function BigStat({ value, label, tone, onPress }: {
+  value: string | number; label: string;
+  /** Sayı sıfırdan büyükse rakam bu tonla boyanır (müdahale sayıları) */
+  tone?: 'danger' | 'info' | 'warning';
+  onPress?: () => void;
+}) {
   const isNum = typeof value === 'number';
   const T = useMobileTokens();
-  const numStyle = { ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: T.ink };
+  const U = useInkUI();
+  const on = isNum && (value as number) > 0;
+  const numStyle = { ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: on && tone ? U.chipTones[tone].fg : T.ink };
+  // Object style ZORUNLU (fonksiyon-stilli Pressable native'de stili düşürüyor)
+  const Wrap: any = on && onPress ? Pressable : View;
   return (
-    <View style={{ alignItems: 'flex-end' }}>
+    <Wrap
+      {...(on && onPress ? { onPress, accessibilityRole: 'button' } : {})}
+      accessibilityLabel={`${label}, ${value}`}
+      style={{ alignItems: 'flex-end', ...(Platform.OS === 'web' && on && onPress ? ({ cursor: 'pointer' } as any) : {}) }}
+    >
       {isNum
         ? <NumberTickerX value={value as number} duration={900} style={numStyle} />
         : <Text style={numStyle}>{value}</Text>}
       <Text style={{ fontSize: DS.size.micro, color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.06 * DS.size.micro, marginTop: 4 }}>
         {label}
       </Text>
-    </View>
+    </Wrap>
   );
 }
 
@@ -469,6 +483,37 @@ function PercentRingHero({
         </View>
       </View>
     </View>
+  );
+}
+
+// ── Canlı üretim (masaüstü) — mobil Özet'teki LiveProductionCard'ın AYNISI ──
+// Tek tanım: görünüm, sayılar ve hareket iki ekranda birlikte değişir.
+function LiveProductionDesktop({ pipelineCounts, active, delivered, total, pct, router }: {
+  pipelineCounts: Record<string, number>; active: number; delivered: number; total: number; pct: number; router: any;
+}) {
+  const { t } = useTranslation();
+  const panel = usePanelTheme();
+  const nn = useNeonNavy(panel.primary);
+  const go = (status: string) => () => router.push(`/(admin)/orders?status=${status}` as any);
+  return (
+    <LiveProductionCard
+      fill
+      nn={nn}
+      active={active}
+      delivered={delivered}
+      total={total}
+      pct={pct}
+      title={t('admin.dashboard.liveProduction')}
+      activeLabel={t('admin.dashboard.activeOrders')}
+      rateLabel={t('admin.dashboard.deliveryRate')}
+      onOpenAll={() => router.push('/(admin)/orders' as any)}
+      stages={[
+        { key: 'alindi', label: t('admin.status.received'), n: pipelineCounts['alindi'] ?? 0, tone: 'strong', onPress: go('alindi') },
+        { key: 'uretimde', label: t('admin.status.production'), n: pipelineCounts['uretimde'] ?? 0, tone: 'mid', onPress: go('uretimde') },
+        { key: 'kalite_kontrol', label: autoT('Kalite Kontrol'), n: pipelineCounts['kalite_kontrol'] ?? 0, tone: 'soft', onPress: go('kalite_kontrol') },
+        { key: 'teslimata_hazir', label: t('admin.status.ready'), n: pipelineCounts['teslimata_hazir'] ?? 0, tone: 'ready', onPress: go('teslimata_hazir') },
+      ]}
+    />
   );
 }
 
@@ -942,7 +987,6 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
 
 
 // ── Bugünkü Görevler — koyu kart ──
-const TASKS_SURFACE = '#3A4554';
 /** Görev kartı satırı. `action` = satırın sağında küçük eylem kapsülü (Devam ettir,
  *  Hekimi bekliyor) — satıra dokunmak yine `onPress` (detaya git) yapar. */
 type TaskGroup = 'late' | 'hold' | 'delivery' | 'invoice' | 'collect' | 'stock';
@@ -954,9 +998,11 @@ type TaskItem = {
 };
 
 function TasksCard({
-  tasks, inline,
+  tasks, inline, max,
 }: {
   tasks: TaskItem[];
+  /** Masaüstü: ilk N görev görünür, fazlası "N görev daha" satırıyla açılır */
+  max?: number;
   /** Kaydırılan sütunda (mobil Özet) kendi içerik yüksekliğini alır; ızgarada flex:1 ile hücreyi doldurur. */
   inline?: boolean;
 }) {
@@ -969,15 +1015,18 @@ function TasksCard({
   // dokununca açılır. Açık hâli ekranın tamamını tutup Canlı Üretim'i aşağı
   // itiyordu (kullanıcı kararı 2026-11-14). Masaüstünde hep açık.
   const [expanded, setExpanded] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const visibleTasks = max && !showAll ? tasks.slice(0, max) : tasks;
+  const hiddenCount = tasks.length - visibleTasks.length;
   const collapsed = !!inline && !expanded;
   const openCount = tasks.length - doneCount;
   return (
     <View style={{
-      backgroundColor: isDark ? HERO_NAVY.from : TASKS_SURFACE,
+      // Her iki temada lacivert (kullanıcı kararı 2026-11-15): açıkta panel laciverti,
+      // koyuda lacivert ailenin derin tonu. Eski gri-mavi yüzey kaldırıldı.
+      backgroundColor: isDark ? HERO_NAVY.from : HERO_NAVY.to,
       // @ts-ignore web gradient
-      backgroundImage: isDark
-        ? `linear-gradient(135deg, ${HERO_NAVY.from} 0%, ${HERO_NAVY.to} 100%)`
-        : `linear-gradient(135deg, ${TASKS_SURFACE} 0%, ${DS.exec.primaryDeep}33 100%)`,
+      backgroundImage: `linear-gradient(135deg, ${HERO_NAVY.from} 0%, ${HERO_NAVY.to} 100%)`,
       borderRadius: DS.radius.xl, padding: inline ? 18 : 22,
       ...(inline ? null : { flex: 1 }), gap: 0,
     }}>
@@ -1011,7 +1060,7 @@ function TasksCard({
       )}
       {collapsed ? null : (
       <View style={{ gap: 10, ...(inline ? null : { flex: 1 }) }}>
-        {tasks.map((task, i) => {
+        {visibleTasks.map((task, i) => {
           const IconComp = task.icon;
           return (
             <Pressable
@@ -1020,7 +1069,7 @@ function TasksCard({
               className="flex-row items-center"
               style={{
                 gap: 10, paddingBottom: 10,
-                borderBottomWidth: i < tasks.length - 1 ? 1 : 0,
+                borderBottomWidth: i < visibleTasks.length - 1 ? 1 : 0,
                 borderBottomColor: 'rgba(255,255,255,0.08)',
               }}
             >
@@ -1033,28 +1082,29 @@ function TasksCard({
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text
-                  numberOfLines={1}
+                  numberOfLines={2}
                   style={{
-                    fontSize: 12, fontWeight: '500', color: '#FFF',
+                    fontSize: 13, fontWeight: '500', color: '#FFF', lineHeight: 17,
                     textDecorationLine: task.done ? 'line-through' : 'none',
                     opacity: task.done ? 0.4 : 1,
                   }}
                 >
                   {task.label}
                 </Text>
-                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{task.time}</Text>
+                <Text numberOfLines={1} style={{ fontSize: 11.5, lineHeight: 15, color: 'rgba(255,255,255,0.62)', marginTop: 1 }}>{task.time}</Text>
               </View>
               {task.action ? (
-                // Kart her iki temada koyu → kapsül beyaz-alfa zemin + beyaz metin
-                <GlassTooltip title={task.action.label} text={task.action.tip}>
+                // Düğme sağda ama KÜÇÜK; başlık iki satıra açılabildiği için artık kesilmiyor.
+                // Açıklama tek satır: kart yüksekliği sabit kalır (tamamı ipucu balonunda).
+                <GlassTooltip title={task.action.label} text={`${task.time} — ${task.action.tip}`}>
                   <Pressable
                     onPress={(e: any) => { e?.stopPropagation?.(); task.action!.onPress(); }}
                     accessibilityRole="button"
                     accessibilityLabel={task.action.label}
                     style={({ pressed }: any) => ({
-                      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
-                      backgroundColor: pressed ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)',
-                      borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
+                      paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, flexShrink: 0,
+                      backgroundColor: pressed ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.12)',
+                      borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)',
                       ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
                     })}
                   >
@@ -1062,19 +1112,25 @@ function TasksCard({
                   </Pressable>
                 </GlassTooltip>
               ) : (
-                <View style={{
-                  width: 18, height: 18, borderRadius: 9,
-                  backgroundColor: task.done ? PB : 'transparent',
-                  borderWidth: task.done ? 0 : 1.5,
-                  borderColor: task.done ? undefined : 'rgba(255,255,255,0.2)',
-                  alignItems: 'center', justifyContent: 'center',
-                }}>
-                  {task.done && <Check size={10} color="#FFF" strokeWidth={2.5} />}
-                </View>
+                // Düğmesiz satır: siparişi açtığını gösteren ok
+                isRTL()
+                  ? <ChevronLeft size={15} color="rgba(255,255,255,0.45)" strokeWidth={2} />
+                  : <ChevronRight size={15} color="rgba(255,255,255,0.45)" strokeWidth={2} />
               )}
             </Pressable>
           );
         })}
+        {(hiddenCount > 0 || (max && showAll && tasks.length > max)) ? (
+          <Pressable
+            onPress={() => setShowAll(v => !v)}
+            accessibilityRole="button"
+            style={{ paddingTop: 2, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.80)' }}>
+              {hiddenCount > 0 ? `${hiddenCount} ${autoT('görev daha')}` : autoT('Daha az göster')}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
       )}
     </View>
@@ -1282,7 +1338,7 @@ function FinanceCard({ monthly, pending, paid }: { monthly: CurrencyTotal[]; pen
 export default function AdminDashboard() {
   const PB = usePanelBlue();
   // Tarama programı kartı görünürken alt satır bölünür (sol: hafta + görevler, sağ: takvim)
-  const scanCard = useScanCardVisible().visible;
+  const scanCard = useScanCardVisibleFast().visible;
   const { t, i18n } = useTranslation();
   const router    = useRouter();
   const isDesktop = useIsDesktop();
@@ -1310,7 +1366,30 @@ export default function AdminDashboard() {
   const [overdueCount, setOverdue]        = useState(cache?.overdue ?? 0);
   const [totalDoctors, setDoctors]        = useState(cache?.totalDoctors ?? 0);
   const [totalLabUsers, setLabUsers]      = useState(cache?.totalLabUsers ?? 0);
-  const [canSeeStaff, setCanSeeStaff]     = useState(false);
+  // Personel görme yetkisi sunucudan birkaç saniye sonra gelir; o ana kadar "Teknisyen iş
+  // yükü" kartı hiç bağlanmıyor ve en geç açılan kart oluyordu. Son bilinen yanıt hesaba
+  // özel hatırlanır → kart ilk karede yerinde. Yetki kalkmışsa yanıt gelince kart ve
+  // önbelleği birlikte silinir (veri zaten RLS ile korunur).
+  const staffHintKey = profile?.id ? `admin_can_see_staff_v1:${profile.id}` : null;
+  const [canSeeStaff, setCanSeeStaffRaw]  = useState<boolean>(() => {
+    try { return !!staffHintKey && typeof localStorage !== 'undefined' && localStorage.getItem(staffHintKey) === '1'; } catch { return false; }
+  });
+  const [staffKnown, setStaffKnown] = useState(false);
+  const setCanSeeStaff = useCallback((v: boolean) => { setCanSeeStaffRaw(v); setStaffKnown(true); }, []);
+  // Profil sonradan geldiyse (iyimser açılış) ipucunu o an oku
+  useEffect(() => {
+    if (staffKnown || !staffHintKey) return;
+    try { if (typeof localStorage !== 'undefined' && localStorage.getItem(staffHintKey) === '1') setCanSeeStaffRaw(true); } catch { /* yok say */ }
+  }, [staffHintKey, staffKnown]);
+  // Sunucu yanıtı gelince son durumu yaz; yetki kalktıysa iş yükü önbelleğini de sil
+  useEffect(() => {
+    if (!staffKnown || !staffHintKey) return;
+    try {
+      if (typeof localStorage === 'undefined') return;
+      localStorage.setItem(staffHintKey, canSeeStaff ? '1' : '0');
+      if (!canSeeStaff && profile?.id) localStorage.removeItem(`tech_workload_v1:${profile.id}`);
+    } catch { /* yok say */ }
+  }, [staffKnown, canSeeStaff, staffHintKey, profile?.id]);
   const [todayDelivery, setTodayDelivery] = useState(cache?.todayDelivery ?? 0);
   const [byStatus, setByStatus]           = useState<{ label: string; count: number; key: string }[]>(cache?.byStatus ?? []);
   // `unit` = hizmetin sayım birimi (üye/çene/adet…). Kart satır başına bunu
@@ -1694,6 +1773,9 @@ export default function AdminDashboard() {
   const deliveredPipe = pipelineCounts['teslim_edildi'] ?? 0;
   const productionPct = Math.round(((pipelineCounts['uretimde'] ?? 0) / totalPipe) * 100);
   const deliveryPct   = Math.round((deliveredPipe / totalPipe) * 100);
+
+  // Onay bekleyen sipariş sayısı (mobil Özet ile aynı kaynak)
+  const approvalsWaiting = recentOrders.filter((o: any) => o.status === 'onay_bekliyor').length;
 
   // Latest active order for AnimatedAktifVakaCard
   const latestOrder = recentOrders.find(o => o.status !== 'teslim_edildi') ?? recentOrders[0];
@@ -2109,32 +2191,15 @@ export default function AdminDashboard() {
               <GlassTooltip title={t('admin.dashboard.newToday')} text={autoT(METRIC_HINTS.newToday)}>
                 <StatPill label={t('admin.dashboard.newToday')} value={todayOrders} bg={isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)'} color={T.ink} />
               </GlassTooltip>
-              {/* Geciken + planlanacak AYNI satırda: StatPill ile eşit ölçülü
-                  rozetler. İkinci bir şerit yok; renk tek başına yeter. */}
-              {overdueCount > 0 && (
-                <GlassTooltip title={t('admin.dashboard.overdue')} text={autoT(METRIC_HINTS.overdue)}>
-                  <AlertPillX
-                    icon={AlertTriangle}
-                    count={overdueCount}
-                    label={t('admin.dashboard.overdue')}
-                    color={CLR.red}
-                    labelColor="#9C2E2E"
-                    pulse
-                    onPress={() => router.push('/(admin)/orders?filter=overdue' as any)}
-                  />
-                </GlassTooltip>
-              )}
-              {/* Beklemede: gecikme sayılmaz ama unutulmasın — Geciken ile aynı ölçü */}
-              {heldCount > 0 && (
-                <GlassTooltip title={autoT('Beklemede')} text={autoT(METRIC_HINTS.onHold)}>
-                  <AlertPillX
-                    icon={Pause}
-                    count={heldCount}
-                    label={autoT('Beklemede')}
-                    color={DS.exec.warning}
-                    labelColor={isDark ? '#F0C078' : '#9C5E0E'}
-                    onPress={() => router.push('/(admin)/orders?filter=hold' as any)}
-                  />
+              {/* Geciken / Beklemede sağdaki büyük sayılarda (müdahale sayıları); burada
+                  yalnız bilgi hapları kalır. */}
+              <GlassTooltip title={t('admin.dashboard.newThisMonth')} text={autoT(METRIC_HINTS.newThisMonth)}>
+                <StatPill label={t('admin.dashboard.newThisMonth')} value={totalOrders} bg={isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)'} color={T.ink} />
+              </GlassTooltip>
+              <StatPill label={t('admin.dashboard.doctor')} value={totalDoctors} bg={isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)'} color={T.ink} />
+              {canSeeStaff && (
+                <GlassTooltip title={t('admin.dashboard.activeStaff')} text={autoT(METRIC_HINTS.activeStaff)}>
+                  <StatPill label={t('admin.dashboard.activeStaff')} value={totalLabUsers} bg={isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)'} color={T.ink} />
                 </GlassTooltip>
               )}
               {planningPending > 0 && (
@@ -2153,40 +2218,41 @@ export default function AdminDashboard() {
 
           </View>
 
-          {/* Right: big stats — kart yok, aralarında yalnız saç teli ayraç.
-              alignSelf: sol kolon daha uzun olduğunda KPI bloğu tepede kalıp
-              altında boşluk bırakıyordu. */}
+          {/* Right: müdahale sayıları — mobil Özet'teki Bugün şeridiyle aynı dört sayı.
+              Sıfırdan büyükse tonlanır ve ilgili listeyi açar. */}
           <View className="flex-row" style={{ gap: 24, alignItems: 'flex-end', alignSelf: 'flex-end' }}>
-            <GlassTooltip title={t('admin.dashboard.newThisMonth')} text={autoT(METRIC_HINTS.newThisMonth)}>
-              <BigStat value={totalOrders} label={t('admin.dashboard.newThisMonth')} />
+            <GlassTooltip title={t('admin.dashboard.overdue')} text={autoT(METRIC_HINTS.overdue)}>
+              <BigStat value={overdueCount} label={t('admin.dashboard.overdue')} tone="danger"
+                onPress={() => router.push('/(admin)/orders?filter=overdue' as any)} />
             </GlassTooltip>
             <StatDivider />
-            <BigStat value={totalDoctors} label={t('admin.dashboard.doctor')} />
+            <BigStat value={todayDelivery} label={autoT('Bugün çıkacak')} tone="info"
+              onPress={() => router.push('/(admin)/orders?filter=today' as any)} />
             <StatDivider />
-            {canSeeStaff && (
-              <GlassTooltip title={t('admin.dashboard.activeStaff')} text={autoT(METRIC_HINTS.activeStaff)}>
-                <BigStat value={totalLabUsers} label={t('admin.dashboard.activeStaff')} />
-              </GlassTooltip>
-            )}
+            <GlassTooltip title={autoT('Beklemede')} text={autoT(METRIC_HINTS.onHold)}>
+              <BigStat value={heldCount} label={autoT('Beklemede')} tone="warning"
+                onPress={() => router.push('/(admin)/orders?filter=hold' as any)} />
+            </GlassTooltip>
+            <StatDivider />
+            <BigStat value={approvalsWaiting} label={t('admin.dashboard.pendingApprovals')} tone="info"
+              onPress={() => router.push('/(admin)/approvals' as any)} />
           </View>
         </View>
       </View>
 
-      {/* ════════ 4-CARD GRID — eşit sütunlar; alt sıra aynı ızgarada hizalı (DashGrid) ════════ */}
+      {/* ════════ BİRİNCİ SIRA — canlı üretim · bugün yapılacaklar · teknisyen iş yükü.
+          Yöneticinin ilk bakışta sorduğu üç şey: hat ne durumda, neye müdahale
+          etmeliyim, kim dolu / kim boşta. (Eski "Yeni sipariş" kartı ve teslim oranı
+          halkası kaldırıldı: düğme kenar menüde var; halka karar verdirmiyordu.) ════════ */}
+      {/* Sıra: aksiyonlar · aylık trend · canlı hat · iş yükü. İki koyu kart (aksiyonlar,
+          canlı üretim) yan yana gelmesin diye araya açık kart girer: koyu-açık-koyu-açık
+          (kullanıcı kararı 2026-11-15). */}
       <DashRow gap={16} style={{ marginBottom: 16 }}>
         <DashHalf gap={16}>
-        {/* Card 1: Aktif Vaka — dark top + white bottom + animations */}
-        <DashCell>
-        <AnimatedAktifVakaCard
-          isDesktop={isDesktop}
-          pipelineCounts={pipelineCounts}
-          latestOrder={latestOrder}
-          router={router}
-        />
-        </DashCell>
-
-        {/* Card 2: Sipariş Trendi (bar chart) */}
-        <DashCell>
+          {/* Liste kartları ilk 3 kaydı gösterir (kullanıcı kararı); fazlası "N görev daha" ile açılır */}
+          <DashCell motion={0}><TasksCard tasks={taskItems} max={3} /></DashCell>
+          {/* Üye trendi — ilk sırada (kullanıcı kararı) */}
+          <DashCell motion={1}>
         <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 16 }}>
           <View className="flex-row items-start justify-between" style={{ marginBottom: 12 }}>
             <View>
@@ -2214,76 +2280,34 @@ export default function AdminDashboard() {
             </View>
           )}
         </Card>
-        </DashCell>
+          </DashCell>
         </DashHalf>
-
         <DashHalf gap={16}>
-        {/* Card 3: Üretim Ring — PercentRingHero on white bg */}
-        <DashCell>
-        <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, alignItems: 'center', marginBottom: isDesktop ? 0 : 16 }}>
-          <View className="w-full flex-row items-center justify-between" style={{ marginBottom: 8 }}>
-            <Text style={{ fontSize: 14, fontWeight: '500', color: T.ink }}>{t('admin.dashboard.deliveryRate')}</Text>
-            <Pressable onPress={() => router.push('/(admin)/orders' as any)}>
-              {isRTL() ? <ArrowUpLeft size={14} color={T.ink3} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={T.ink3} strokeWidth={1.8} />}
-            </Pressable>
-          </View>
-          {/* Halka → teslim edilen siparişler (tıklanan rakam kendi listesini açar) */}
-          <Pressable
-            onPress={() => router.push('/(admin)/orders?status=teslim_edildi' as any)}
-            accessibilityRole="button"
-            style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : undefined}
-          >
-            <PercentRingHero value={deliveryPct} size={140} darkText />
-          </Pressable>
-          {/* Yüzde tek başına "neyin %11'i?" sorusunu bırakıyordu — payı/paydayı yaz. */}
-          <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink2, marginTop: 10 }}>
-            {t('admin.dashboard.ordersOfTotal', { done: deliveredPipe, total: pipeCount })}
-          </Text>
-          <Text style={{ fontSize: 9, color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.08 * 9, marginTop: 3 }}>
-            {t('admin.dashboard.deliveredAllTime')}
-          </Text>
-          {/* Mini pipeline stats */}
-          <View className="flex-row" style={{ gap: 8, marginTop: 12 }}>
-            <Pressable
-              onPress={() => router.push('/(admin)/orders?status=uretimde' as any)}
-              accessibilityRole="button"
-              style={({ hovered, pressed }: any) => ({ alignItems: 'center', borderRadius: 999, opacity: pressed ? 0.7 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}), paddingHorizontal: 10, paddingVertical: 4, backgroundColor: isDark ? (hovered ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.08)') : (hovered ? DS.ink[200] : DS.ink[100]) })}
-            >
-              <Text style={{ fontSize: 10, fontWeight: '500', color: T.ink3 }}>
-                {pipelineCounts['uretimde'] ?? 0} {t('admin.dashboard.inProduction')}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => router.push('/(admin)/orders?status=teslimata_hazir' as any)}
-              accessibilityRole="button"
-              style={({ hovered, pressed }: any) => ({ alignItems: 'center', borderRadius: 999, opacity: pressed ? 0.7 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}), paddingHorizontal: 10, paddingVertical: 4, backgroundColor: hexA(PB, hovered ? 0.25 : 0.15) })}
-            >
-              <Text style={{ fontSize: 10, fontWeight: '500', color: PB }}>
-                {pipelineCounts['teslimata_hazir'] ?? 0} {t('admin.status.ready')}
-              </Text>
-            </Pressable>
-          </View>
-        </Card>
-        </DashCell>
-
-        {/* Card 4: Yeni Sipariş CTA — Hero */}
-        <DashCell>
-        <View style={{ flex: 1 }}>
-          <AnimatedCTACard onPress={() => router.push('/(admin)/new-order' as any)} isDesktop={isDesktop} />
-        </View>
-        </DashCell>
+          <DashCell motion={2}>
+            <LiveProductionDesktop
+              pipelineCounts={pipelineCounts}
+              active={totalActive}
+              delivered={deliveredPipe}
+              total={pipeCount}
+              pct={deliveryPct}
+              router={router}
+            />
+          </DashCell>
+          {canSeeStaff ? <DashCell motion={3}><TechWorkloadCard /></DashCell> : null}
         </DashHalf>
       </DashRow>
 
-      {/* ════════ İKİNCİ SIRA — Bugünkü Görevler + tarama widget'ı + klinik sıralaması (üçte birler).
-          "Bu hafta" en altta, İş Tipi Dağılımı'nın yanında (kullanıcı isteği). ════════ */}
+      {/* ════════ İKİNCİ SIRA — tarama programı · klinikler · iş tipi dağılımı ════════ */}
       <DashRow gap={16} style={{ marginBottom: 16 }}>
-        <DashThird><TasksCard tasks={taskItems} /></DashThird>
         {scanCard ? (
-          <DashThird><ScanCalendarCard style={{ flex: 1 }} /></DashThird>
+          <DashThird motion={4}><ScanCalendarCard style={{ flex: 1 }} /></DashThird>
         ) : null}
         {/* En çok iş gönderen klinikler — satıra tıklayınca klinik özeti popup'ı */}
-        <DashThird><TopClinicsCard fill /></DashThird>
+        <DashThird motion={5}><TopClinicsCard fill limit={3} /></DashThird>
+        {/* İş tipi dağılımı üst sıralarda; Finansal özet alta indi (kullanıcı kararı 2026-11-15). */}
+        {byWorkType.length > 0 ? (
+          <DashThird motion={6}><WorkTypeCard data={byWorkType} onPress={() => router.push('/(admin)/work-stats' as any)} /></DashThird>
+        ) : null}
       </DashRow>
 
       {/* ════════ EXTRA SECTIONS (below fold) ════════ */}
@@ -2296,11 +2320,11 @@ export default function AdminDashboard() {
         <>
           {/* Son Siparişler — Patterns table */}
           <Card style={{ marginBottom: 16 }}>
-            {/* Kart başlığı — düz panel accent'i (navy). Metin luminance ile seçilir. */}
-            <View className="flex-row items-center justify-between" style={{ padding: 20, backgroundColor: PB }}>
-              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: onAccentInk(PB) }}>{t('admin.dashboard.recentOrders')}</Text>
+            {/* Kart başlığı — sade (lacivert bant kaldırıldı: tablo başlığı veriyle yarışmasın) */}
+            <View className="flex-row items-center justify-between" style={{ paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14 }}>
+              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>{t('admin.dashboard.recentOrders')}</Text>
               <Pressable onPress={() => router.push('/(admin)/orders' as any)}>
-                <Text style={{ fontSize: 13, color: onAccentInk(PB), fontWeight: '700' }}>{t('admin.dashboard.viewAll')}</Text>
+                <Text style={{ fontSize: 13, color: PB, fontWeight: '700' }}>{t('admin.dashboard.viewAll')}</Text>
               </Pressable>
             </View>
 
@@ -2352,9 +2376,9 @@ export default function AdminDashboard() {
                         <View style={{ minWidth: 0 }}>
                           <Text style={{ fontSize: 12, fontWeight: '800', color: PB }} numberOfLines={1}>#{order.order_number}</Text>
                           {(order as any).__revChild ? (
-                            <Text style={{ fontSize: 8.5, fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E', letterSpacing: 0.4 }}>{(order as any).__continuation ? 'DEVAM' : 'REVİZYON'}</Text>
+                            <Text style={{ fontSize: 8.5, fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E', letterSpacing: 0.4 }}>{(order as any).__continuation ? autoT('Devam') : autoT('Revizyon')}</Text>
                           ) : (order as any).__revParent ? (
-                            <Text style={{ fontSize: 8.5, fontWeight: '700', color: T.ink3, letterSpacing: 0.4 }}>ORİJİNAL</Text>
+                            <Text style={{ fontSize: 8.5, fontWeight: '700', color: T.ink3, letterSpacing: 0.4 }}>{autoT('Orijinal')}</Text>
                           ) : null}
                         </View>
                         {order.is_urgent && (
@@ -2386,7 +2410,7 @@ export default function AdminDashboard() {
                       </View>
                       {isDesktop && (
                         <Text style={{ flex: 2, fontSize: 11, color: T.ink3 }} numberOfLines={1}>{(order as any).__revChild && (
-                      <Text style={{ fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E' }}>{(order as any).__continuation ? 'Devam - ' : 'Revizyon - '}</Text>
+                      <Text style={{ fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E' }}>{`${(order as any).__continuation ? autoT('Devam') : autoT('Revizyon')} - `}</Text>
                     )}{order.work_type || '--'}</Text>
                       )}
                       <View style={{ flex: 1.4 }}>
@@ -2409,32 +2433,19 @@ export default function AdminDashboard() {
           {/* Faturalanmamış sipariş hatırlatması (Faz 3) */}
           {unbilledBanner}
 
-          {/* Finans + Statü, altında İş Tipi + Bu hafta — aynı ızgara, sıra içinde eş boy */}
+          {/* Statü · Bu hafta · Finans — üçte birler */}
           <DashRow gap={16} style={{ marginBottom: 16 }}>
-            <DashHalf gap={16}>
-              <DashCell><FinanceCard monthly={finMonthly} pending={finPending} paid={finPaidCount} /></DashCell>
-            </DashHalf>
-            <DashHalf gap={16}>
-              <DashCell><StatusDistCard byStatus={byStatus} /></DashCell>
-            </DashHalf>
-          </DashRow>
-          <DashRow gap={16} style={{ marginBottom: 16 }}>
-            {byWorkType.length > 0 ? (
-              <DashHalf gap={16}>
-                <DashCell><WorkTypeCard data={byWorkType} onPress={() => router.push('/(admin)/work-stats' as any)} /></DashCell>
-              </DashHalf>
-            ) : <DashHalfSpacer gap={16} />}
-            <DashHalf gap={16}>
-              <DashCell>
-                <WeeklyStrip
-                  weekDays={weekDays}
-                  weekCounts={weekCounts}
-                  weekDone={weekDone}
-                  extra={weekExtra}
-                  onPress={() => router.push('/(admin)/work-stats' as any)}
-                />
-              </DashCell>
-            </DashHalf>
+            <DashThird motion={0}><StatusDistCard byStatus={byStatus} /></DashThird>
+            <DashThird motion={1}>
+              <WeeklyStrip
+                weekDays={weekDays}
+                weekCounts={weekCounts}
+                weekDone={weekDone}
+                extra={weekExtra}
+                onPress={() => router.push('/(admin)/work-stats' as any)}
+              />
+            </DashThird>
+            <DashThird motion={2}><FinanceCard monthly={finMonthly} pending={finPending} paid={finPaidCount} /></DashThird>
           </DashRow>
         </>
       )}
