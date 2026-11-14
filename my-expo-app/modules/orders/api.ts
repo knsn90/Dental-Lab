@@ -724,6 +724,37 @@ export async function revertStage(workOrderId: string): Promise<{ ok: boolean; e
   return { ok: true };
 }
 
+/** Teslimi geri al önizlemesi: engel, dönülebilecek aşamalar, silinecek taslak fatura/değerlendirme. */
+export type DeliveryUndoBlock =
+  | 'not_found' | 'not_delivered' | 'invoice_issued' | 'invoice_shared'
+  | 'invoice_paid' | 'courier_delivered' | 'no_stage' | 'bad_stage';
+export interface DeliveryUndoPreview {
+  ok: boolean;
+  block?: DeliveryUndoBlock;
+  block_ref?: string;
+  stages?: { id: string; name: string; seq: number; lane: number }[];
+  default_stage_id?: string;
+  draft_invoices?: { id: string; number: string; total: number | string; currency: string }[];
+  /** queued = silinecek · sent = kliniğe gitmiş, kalır · answered = puanlanmış, kalır */
+  review?: 'queued' | 'sent' | 'answered' | null;
+}
+
+export async function fetchDeliveryUndoPreview(orderId: string): Promise<{ ok: boolean; data?: DeliveryUndoPreview; error?: string }> {
+  const { data, error } = await supabase.rpc('delivery_undo_preview', { p_order: orderId });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: data as DeliveryUndoPreview };
+}
+
+/** Teslimi geri al: sipariş seçilen aşamada "Aşamada"ya döner (lab yöneticisi/admin). */
+export async function undoDelivery(orderId: string, stageId: string, note?: string): Promise<{ ok: boolean; error?: string; block?: DeliveryUndoBlock }> {
+  const { error } = await supabase.rpc('delivery_undo', { p_order: orderId, p_stage: stageId, p_note: note ?? null });
+  if (error) {
+    const m = /UNDO_BLOCKED:([a-z_]+)/.exec(error.message ?? '');
+    return { ok: false, error: error.message, block: (m?.[1] as DeliveryUndoBlock) ?? undefined };
+  }
+  return { ok: true };
+}
+
 /** Müdür/admin bir 'bekliyor' aşamayı manuel olarak 'aktif' yapar. */
 export async function forceActivateStage(stageId: string): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.rpc('force_activate_stage', { p_stage_id: stageId });

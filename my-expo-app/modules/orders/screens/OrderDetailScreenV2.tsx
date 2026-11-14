@@ -98,7 +98,7 @@ import { OrderCourierTrackingModal } from '../components/OrderCourierTrackingMod
 import { CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { CourierLiveMap } from '../../courier/CourierLiveMap';
 import { DoctorChangeModal } from '../components/DoctorChangeModal';
-import { Pencil } from '../../../core/ui/icons';
+import { Pencil, Undo2 } from '../../../core/ui/icons';
 import { Star } from '../../../core/ui/icons';
 import { hexA } from '../../../core/theme/stationPalette';
 import { DS, dsTheme } from '../../../core/theme/dsTokens';
@@ -129,6 +129,7 @@ import { OrderClientActions } from '../components/OrderClientActions';
 import { StageFileUpload } from '../components/StageFileUpload';
 import { FilesList } from '../components/FilesList';
 import { OrderHistoryModal } from '../history/OrderHistoryModal';
+import { DeliveryUndoModal } from '../components/DeliveryUndoModal';
 import { ProvaModal, type OriginRect } from '../prova/ProvaModal';
 import { useProvaSnapshot } from '../prova/useProvaSnapshot';
 import { flagFromSnapshot, heroLabel } from '../prova/provaModel';
@@ -330,6 +331,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const [sideTab, setSideTab] = useState<'doctor_note' | 'lab_note' | 'files'>('files');
   // Sipariş geçmişi popup'ı — başlıktaki "Geçmiş" düğmesi; ?tab=history (Loglar'dan geçiş) doğrudan açar.
   const [historyOpen, setHistoryOpen] = useState(tabParam === 'history');
+  // Teslimi geri al (lab yöneticisi/admin, teslim edilmiş sipariş) — DeliveryUndoModal
+  const [undoDeliveryOpen, setUndoDeliveryOpen] = useState(false);
   // Hero eylem satırı: sığmayan seyrek işler "•••" menüsüne (ölçüme dayalı; geniş ekranda hepsi görünür).
   const [actRowW, setActRowW] = useState(0);
   const [actLeft, setActLeft] = useState<{ w: number; shown: string[] }>({ w: -1, shown: [] });
@@ -1384,6 +1387,16 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         orderId={order.id}
         orderNumber={String((order as any).order_number ?? '')}
       />
+      {/* Teslimi geri al — masaüstü başlık ikonu / ••• menüsü + mobil üst çubuk */}
+      {isManager && (order.status as string) === 'teslim_edildi' && (
+        <DeliveryUndoModal
+          visible={undoDeliveryOpen}
+          onClose={() => setUndoDeliveryOpen(false)}
+          onDone={() => { toast.success(autoT('Teslim geri alındı, sipariş üretime döndü')); refetch(); refetchStages(); }}
+          orderId={order.id}
+          orderNumber={String((order as any).order_number ?? '')}
+        />
+      )}
       {/* Reassign Modal — menüden seçilen aşama (yoksa aktif ?? ilk bekleyen) */}
       {(() => {
         const target = reassignStage ?? reassignTargetStage;
@@ -1648,6 +1661,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         }
         operatorProgress={Math.round(progressPct)}
         onHistory={() => setHistoryOpen(true)}
+        onUndoDelivery={isManager && (order.status as string) === 'teslim_edildi' ? () => setUndoDeliveryOpen(true) : undefined}
         onProva={provaPanel && order.status !== 'iptal' ? () => { setProvaOrigin(null); setProvaOpen(true); } : undefined}
         provaDot={provaHero.dot}
         doctorNote={(order as any).notes ?? null}
@@ -1887,6 +1901,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     revision: !!(isManager && (order.status as string) === 'teslim_edildi'),
     continuation: !!((isManager || _isDoctorOrClinic) && (order.status as string) === 'teslim_edildi'),
     support: true, print: true, history: true,
+    undoDelivery: !!(isManager && (order.status as string) === 'teslim_edildi'),
     prova: provaPanel && order.status !== 'iptal',
     // teslimat işleri — sığmayınca "•••" (ana iş "Teslim Edildi" hep görünür)
     dlvTrack: !!(isManager && activeDelivery && activeDelivery.status !== 'teslim_edildi'
@@ -1899,10 +1914,10 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     dlvCancel: !!(isManager && activeDelivery && activeDelivery.status !== 'teslim_edildi'),
   };
   const PILL_KEYS = ['hold', 'replan', 'approval', 'revision', 'continuation', 'prova', 'dlvTrack', 'dlvEdit', 'dlvLabel'];
-  const ICON_KEYS = ['dlvCancel', 'support', 'print', 'history'];
+  const ICON_KEYS = ['dlvCancel', 'undoDelivery', 'support', 'print', 'history'];
   // prova en son gizlenir: durum noktası (klinikte/gecikti) operasyonel olarak en önemli bilgi
   // Teslimatı iptal (yıkıcı, seyrek) İLK gizlenir; teslimat işleri ikonlardan sonra gizlenir.
-  const HIDE_ORDER = ['dlvCancel', 'continuation', 'revision', 'replan', 'hold', 'approval', 'support', 'print', 'history', 'dlvLabel', 'dlvEdit', 'dlvTrack', 'prova'];
+  const HIDE_ORDER = ['dlvCancel', 'undoDelivery', 'continuation', 'revision', 'replan', 'hold', 'approval', 'support', 'print', 'history', 'dlvLabel', 'dlvEdit', 'dlvTrack', 'prova'];
   const secKeys = PILL_KEYS.filter(k => secAvail[k]);
   const secShownSet = (() => {
     const all = new Set([...secKeys, ...ICON_KEYS.filter(k => secAvail[k])]);
@@ -2052,6 +2067,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     support: { key: 'support', label: autoT('Destek'), icon: SupportIcon as any, onPress: supportCtx },
     print: { key: 'print', label: autoT('İş emrini yazdır'), icon: Printer, onPress: handlePrintFull },
     history: { key: 'history', label: autoT('Sipariş geçmişi'), icon: History, onPress: () => setHistoryOpen(true) },
+    undoDelivery: { key: 'undoDelivery', label: autoT('Teslimi geri al'), icon: Undo2, onPress: () => setUndoDeliveryOpen(true) },
     prova: { key: 'prova', label: provaHero.text, icon: ProvaIcon as any, onPress: () => { setProvaOrigin(null); setProvaOpen(true); } },
     dlvTrack: { key: 'dlvTrack', label: autoT('Durumu Güncelle'), icon: RotateCcw, onPress: () => { void (isBbkLive ? handleBbkTrack() : handleShipinkTrack()); }, disabled: bbkTracking || shpBusy },
     dlvEdit: { key: 'dlvEdit', label: autoT('Teslimatı düzenle'), icon: Pencil, onPress: handleBbkEdit },
@@ -2643,6 +2659,12 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                       label={autoT('Teslimatı iptal et')}
                       hint={autoT('Teslimat iptal edilir; sipariş "Kuryeye Gönder" durumuna döner, kurye yeniden çağrılabilir')}
                       onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} onPress={handleCancelDelivery}
+                    />
+                  )}
+                  {secAvail.undoDelivery && secShown('undoDelivery') && (
+                    <HeroIconBtn
+                      icon={Undo2} label={autoT('Teslimi geri al')} hint={autoT('Yanlışlıkla teslim edildiyse siparişi seçtiğiniz üretim aşamasına döndürür')}
+                      onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} onPress={() => setUndoDeliveryOpen(true)}
                     />
                   )}
                   {secShown('support') && (

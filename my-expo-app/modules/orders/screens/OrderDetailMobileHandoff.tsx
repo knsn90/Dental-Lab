@@ -19,7 +19,7 @@ import { StepsTimelineX } from '../../../core/ui/ProgressX';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ChevronLeft, ChevronRight, Printer, MoreHorizontal, Play, Pause, AlertCircle,
-  Paperclip, Plus, MessageCircle, History, Mic, Truck, Check, ChevronDown, RotateCcw, Star, Layers, CornerUpLeft,
+  Paperclip, Plus, MessageCircle, History, Undo2, Mic, Truck, Check, ChevronDown, RotateCcw, Star, Layers, CornerUpLeft,
 } from '../../../core/ui/icons';
 import Svg, { Circle } from 'react-native-svg';
 import { MOBILE_PANEL_THEMES, useMobileTokens, type MobilePanel } from '../../../core/theme/mobileDesignTokens';
@@ -109,6 +109,8 @@ export interface OrderDetailMobileHandoffProps {
   operatorProgress: number;     // 40
   /** Sipariş geçmişi popup'ını açar — verilirse üst çubukta saat ikonlu düğme çıkar. */
   onHistory?: () => void;
+  /** Teslimi geri al popup'ını açar (lab yöneticisi/admin, teslim edilmiş iş) — verilirse üst çubukta düğme çıkar. */
+  onUndoDelivery?: () => void;
   /** Prova popup'ını açar (2. dalga 4) — verilirse üst çubukta takvim ikonlu düğme çıkar. */
   onProva?: () => void;
   /** Prova durum noktası: klinikte (amber), gecikti/risk (kırmızı), döndü (yeşil). */
@@ -222,6 +224,24 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
             </Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {/* Teslimi geri al — yalnız teslim edilmiş işte yöneticiye */}
+          {props.onUndoDelivery ? (
+            <GlassTooltip title={autoT('Teslimi geri al')} text={autoT('Yanlışlıkla teslim edildiyse siparişi seçtiğiniz üretim aşamasına döndürür')} placement="bottom">
+              <Pressable
+                onPress={props.onUndoDelivery}
+                accessibilityRole="button"
+                accessibilityLabel={autoT('Teslimi geri al')}
+                style={({ pressed }: any) => ({
+                  width: 38, height: 38, borderRadius: 12,
+                  backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
+                  alignItems: 'center', justifyContent: 'center',
+                  transform: [{ scale: pressed ? 0.95 : 1 }],
+                })}
+              >
+                <Undo2 size={18} color={T.ink} strokeWidth={2} />
+              </Pressable>
+            </GlassTooltip>
+          ) : null}
           {/* Sipariş geçmişi — popup (kim, ne zaman, ne yaptı) */}
           {props.onHistory ? (
             <GlassTooltip title={autoT('Sipariş geçmişi')} text={autoT('Kim, ne zaman, ne yaptı: oluşturma, söz verilen teslim, kurye, notlar ve sohbet')} placement="bottom">
