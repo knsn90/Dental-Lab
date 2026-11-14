@@ -10,7 +10,9 @@ import { autoT } from '../../i18n/autoTranslate';
 import { View, Text, Pressable, Platform, StyleSheet, Modal, Alert, ScrollView, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { QrCode, Bell, User as UserIcon, Search, MessageCircle, LogOut, ChevronRight, ChevronLeft, BellOff, Check, Monitor, Sun, Moon } from '../icons';
+import { QrCode, Bell, User as UserIcon, Search, MessageCircle, LogOut, ChevronRight, ChevronLeft, BellOff, Check, Monitor, Sun, Moon, CheckCircle, Wallet, Package, Truck, Calendar } from '../icons';
+import { useInkUI } from '../../theme/inkScale';
+import type { NotificationRow } from '../../store/notificationsStore';
 import { isRTL } from '../../i18n';
 import { LiquidGlassView, isLiquidGlassSupported } from '@callstack/liquid-glass';
 import { PulseRing } from '../PulseRing';
@@ -51,9 +53,21 @@ interface Props {
   showSearch?: boolean;
   /** Mesajlar düğmesi (varsayılan açık). Alt çubuğunda zaten Mesaj olan panel (admin) kapatır. */
   showMessages?: boolean;
+  /** Zil rozeti: 'count' (varsayılan, sayı) · 'dot' (yalnız kırmızı nokta — büyük sayılar
+   *  okunmuyor; sayı bildirim listesinin başlığında zaten yazıyor). */
+  bellBadge?: 'count' | 'dot';
+  /** Profil düğmesi genel ikon yerine kullanıcının baş harflerini (panel renginde) gösterir. */
+  profileInitials?: boolean;
+  /** Bildirim kartı: 'menu' (varsayılan, düz liste) · 'panel' (Okunmamış/Tümü, güne ve siparişe göre gruplu) */
+  notificationsLayout?: 'menu' | 'panel';
 }
 
-export function TopActionBar({ routePrefix, notificationsRoute, accentColor, messagesRef, showSearch, showMessages = true }: Props) {
+export function TopActionBar({ routePrefix, notificationsRoute, accentColor, messagesRef, showSearch, showMessages = true, bellBadge = 'count', profileInitials, notificationsLayout = 'menu' }: Props) {
+  const fullName = useAuthStore((s) => (s.profile as any)?.full_name as string | undefined);
+  const initials = (() => {
+    const w = String(fullName ?? '').trim().split(/\s+/).filter(Boolean);
+    return ((w[0]?.[0] ?? '') + (w.length > 1 ? w[w.length - 1][0] : '')).toLocaleUpperCase('tr');
+  })();
   const { width } = useWindowDimensions();
   const isNarrow = width < 768;
   const insets = useSafeAreaInsets();
@@ -124,8 +138,10 @@ export function TopActionBar({ routePrefix, notificationsRoute, accentColor, mes
         {showSearch ? <TopBtn icon={Search} onPress={onSearch} label={autoT('Ara')} /> : null}
         <TopBtn icon={QrCode} onPress={onScan} />
         {showMessages ? <TopBtn icon={MessageCircle} onPress={onMessages} badgeCount={chatUnread} btnRef={messagesRef} /> : null}
-        <TopBtn icon={Bell} onPress={onNotifications} badgeCount={unreadCount} />
-        <TopBtn icon={UserIcon} onPress={onProfile} />
+        <TopBtn icon={Bell} onPress={onNotifications} badgeCount={unreadCount} dot={bellBadge === 'dot'}
+          label={unreadCount > 0 ? `${autoT('Bildirimler')}, ${unreadCount}` : autoT('Bildirimler')} />
+        <TopBtn icon={UserIcon} onPress={onProfile} label={autoT('Profil')}
+          initials={profileInitials && initials ? initials : undefined} fill={accentColor} />
       </View>
 
       <SharedProfileMenu
@@ -136,12 +152,21 @@ export function TopActionBar({ routePrefix, notificationsRoute, accentColor, mes
         onLogout={onMenuLogout}
       />
 
+      {notificationsLayout === 'panel' ? (
+        <NotificationsPanel
+          visible={notifMenuOpen}
+          anchorTop={Math.max(insets.top, 8) + 6 + 38 + 8}
+          onClose={() => setNotifMenuOpen(false)}
+          accentColor={accentColor}
+        />
+      ) : (
       <NotificationsMenu
         visible={notifMenuOpen}
         anchorTop={Math.max(insets.top, 8) + 6 + 38 + 8}
         onClose={() => setNotifMenuOpen(false)}
         accentColor={accentColor}
       />
+      )}
 
       {/* Mesajlar popup — kendi içinde yönetilir, her panel otomatik alır */}
       {messagesOpen && (
@@ -516,6 +541,173 @@ function NotificationsMenu({
   );
 }
 
+// ─── Notifications panel (gruplu) ──────────────────────────────────────────
+// 'menu' düzeninin sorunları (2026-11-14): 88 satırın hepsi aynı "okunmamış"
+// tonunda; aynı sipariş art arda 4 satır; tür ayrımı yok; arka plan kararmıyor;
+// yalnız ilk 20 kayıt. Bu düzen: Okunmamış/Tümü seçimi · güne göre başlık ·
+// aynı siparişin olayları TEK satır · kategoriye göre ikon · okunmamış = kalın
+// başlık + nokta (satır boyanmaz) · arkada karartma + bulanıklık.
+type NotifGroup = { key: string; main: NotificationRow; rest: NotificationRow[]; unread: boolean };
+
+function notifDayKey(iso: string): 'today' | 'yesterday' | 'older' {
+  const d = new Date(iso); const now = new Date();
+  const start = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((start(now) - start(d)) / 86400000);
+  return diff <= 0 ? 'today' : diff === 1 ? 'yesterday' : 'older';
+}
+
+function groupNotifications(items: NotificationRow[]): { day: 'today' | 'yesterday' | 'older'; groups: NotifGroup[] }[] {
+  const days: Record<string, NotifGroup[]> = { today: [], yesterday: [], older: [] };
+  const index = new Map<string, NotifGroup>();
+  for (const it of items) {               // items yeni → eski sıralı
+    const day = notifDayKey(it.created_at);
+    // Aynı gün + aynı kaynak (sipariş) → tek satır. Kaynağı olmayan kayıt tek başına.
+    const key = it.resource_id ? `${day}:${it.resource_type ?? ''}:${it.resource_id}` : `${day}:${it.id}`;
+    const g = index.get(key);
+    if (g) { g.rest.push(it); if (!it.read_at) g.unread = true; }
+    else { const ng: NotifGroup = { key, main: it, rest: [], unread: !it.read_at }; index.set(key, ng); days[day].push(ng); }
+  }
+  return (['today', 'yesterday', 'older'] as const).filter(d => days[d].length > 0).map(d => ({ day: d, groups: days[d] }));
+}
+
+/** "Kritik aşama tamamlandı: Frezeleme" → "Frezeleme" (ek olay özetinde yer kazanmak için) */
+const notifShort = (title: string) => { const i = title.indexOf(':'); return (i >= 0 ? title.slice(i + 1) : title).trim(); };
+
+function NotificationsPanel({ visible, anchorTop, onClose, accentColor }: {
+  visible: boolean; anchorTop: number; onClose: () => void; accentColor?: string;
+}) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const U = useInkUI();
+  const { items, unreadCount } = useNotifications();
+  const { markRead, markAllRead } = useNotificationsActions();
+  const router = useRouter();
+  const { width: W, height: H } = useWindowDimensions();
+  const [tab, setTab] = useState<'unread' | 'all'>('unread');
+  // Her açılışta: okunmamış varsa o sekme, yoksa Tümü
+  React.useEffect(() => { if (visible) setTab(unreadCount > 0 ? 'unread' : 'all'); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [visible]);
+
+  const surface  = isDark ? '#1B1916' : '#FFFFFF';
+  const ink      = isDark ? '#F7F2E9' : '#0E0E0E';
+  const ink2     = isDark ? 'rgba(247,242,233,0.72)' : 'rgba(20,16,12,0.66)';
+  const ink3     = isDark ? 'rgba(247,242,233,0.48)' : 'rgba(20,16,12,0.48)';
+  const hairline = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(20,16,12,0.06)';
+  const segBg    = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(20,16,12,0.05)';
+  const accent   = accentColor ?? '#0E0E0E';
+  // Koyu temada lacivert accent koyu yüzeyde okunmaz → açık karşılığı
+  const accentText = isDark ? '#9EC0E8' : accent;
+
+  const shown = tab === 'unread' ? items.filter(i => !i.read_at) : items;
+  const days = React.useMemo(() => groupNotifications(shown), [shown]);
+  const dayLabel = (d: 'today' | 'yesterday' | 'older') => d === 'today' ? autoT('Bugün') : d === 'yesterday' ? autoT('Dün') : autoT('Daha önce');
+
+  const toneOf = (cat: string) => {
+    const T = U.chipTones;
+    switch (cat) {
+      case 'stage_critical': case 'order_status': case 'approval': return { icon: CheckCircle, tone: T.success };
+      case 'chat': case 'scan_annotation': return { icon: MessageCircle, tone: T.info };
+      case 'payment': return { icon: Wallet, tone: T.warning };
+      case 'stock': case 'stock_count': case 'material_request': case 'implant_parts': return { icon: Package, tone: T.warning };
+      case 'delivery': return { icon: Truck, tone: T.info };
+      case 'scan_schedule': return { icon: Calendar, tone: T.info };
+      case 'review_problem': case 'review_low': case 'review_low_reminder': return { icon: Bell, tone: T.danger };
+      default: return { icon: Bell, tone: T.neutral };
+    }
+  };
+
+  const onGroupPress = async (g: NotifGroup) => {
+    const unread = [g.main, ...g.rest].filter(i => !i.read_at);
+    try { await Promise.all(unread.map(i => markRead(i.id))); } catch { /* noop */ }
+    onClose();
+    if (g.main.action_url) { try { router.push(g.main.action_url as any); } catch { /* noop */ } }
+  };
+
+  const cardW = Math.min(420, W - 32);
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      {/* Arka plan: karartma + bulanıklık (popup kuralı) */}
+      <Pressable
+        onPress={onClose}
+        accessibilityLabel={autoT('Kapat')}
+        style={[StyleSheet.absoluteFillObject, {
+          backgroundColor: isDark ? 'rgba(0,0,0,0.5)' : 'rgba(15,23,42,0.32)',
+          ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } as any) : {}),
+        }]}
+      />
+      <View
+        style={{
+          position: 'absolute', top: anchorTop, left: Math.round((W - cardW) / 2), width: cardW,
+          maxHeight: Math.max(280, Math.floor(H * 0.72)),
+          borderRadius: 24, backgroundColor: surface, overflow: 'hidden',
+          ...(Platform.OS === 'web'
+            ? ({ boxShadow: isDark ? '0 18px 44px rgba(0,0,0,0.6)' : '0 18px 44px rgba(15,23,42,0.22)' } as any)
+            : { shadowColor: '#000', shadowOpacity: isDark ? 0.45 : 0.2, shadowRadius: 22, shadowOffset: { width: 0, height: 10 }, elevation: 12 }),
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 }}>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: ink, letterSpacing: -0.2 }}>{autoT('Bildirimler')}</Text>
+          <View style={{ flex: 1 }} />
+          {unreadCount > 0 ? (
+            <Pressable onPress={() => { markAllRead(); }} hitSlop={8} accessibilityRole="button">
+              <Text style={{ fontSize: 13, fontWeight: '500', color: accentText }}>{autoT('Tümünü okundu say')}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
+        <View style={{ flexDirection: 'row', backgroundColor: segBg, borderRadius: 999, padding: 2, marginHorizontal: 16, marginBottom: 6 }}>
+          {([['unread', unreadCount > 0 ? `${autoT('Okunmamış')} · ${unreadCount}` : autoT('Okunmamış')], ['all', autoT('Tümü')]] as const).map(([k, label]) => {
+            const on = tab === k;
+            return (
+              <Pressable key={k} onPress={() => setTab(k)} accessibilityRole="button" accessibilityState={{ selected: on }}
+                style={{ flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 999, backgroundColor: on ? (isDark ? 'rgba(255,255,255,0.14)' : '#FFFFFF') : 'transparent' }}>
+                <Text style={{ fontSize: 13, fontWeight: on ? '600' : '500', color: on ? ink : ink2 }} numberOfLines={1}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {days.length === 0 ? (
+          <View style={{ paddingVertical: 44, alignItems: 'center', gap: 8 }}>
+            <BellOff size={28} color={ink3} strokeWidth={1.5} />
+            <Text style={{ fontSize: 13, color: ink3 }}>{tab === 'unread' ? autoT('Okunmamış bildirim yok') : autoT('Henüz bildirim yok')}</Text>
+          </View>
+        ) : (
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
+            {days.map(({ day, groups }) => (
+              <View key={day}>
+                <Text style={{ fontSize: 12, fontWeight: '500', color: ink3, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 }}>{dayLabel(day)}</Text>
+                {groups.map((g) => {
+                  const { icon: Icon, tone } = toneOf(String(g.main.category));
+                  return (
+                    <Pressable key={g.key} onPress={() => onGroupPress(g)} accessibilityRole="button"
+                      style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 10, alignItems: 'flex-start',
+                        ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}>
+                      <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}>
+                        <Icon size={17} color={tone.fg} strokeWidth={1.8} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text numberOfLines={2} style={{ fontSize: 14, lineHeight: 18, fontWeight: g.unread ? '600' : '400', color: ink, letterSpacing: -0.1 }}>{g.main.title}</Text>
+                        {g.main.body ? <Text numberOfLines={1} style={{ fontSize: 12, color: ink2, marginTop: 1 }}>{g.main.body}</Text> : null}
+                        {g.rest.length > 0 ? (
+                          <Text numberOfLines={1} style={{ fontSize: 12, color: accentText, marginTop: 3 }}>
+                            {`+${g.rest.length} ${autoT('daha')}: ${g.rest.map(r => notifShort(r.title)).join(', ')}`}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Text style={{ fontSize: 12, color: ink3, marginTop: 1 }} numberOfLines={1}>{formatNotifTime(g.main.created_at)}</Text>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, marginTop: 6, backgroundColor: g.unread ? accentText : 'transparent' }} />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
+            <View style={{ height: 1, backgroundColor: hairline, marginTop: 6 }} />
+          </ScrollView>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
 // ─── Relative-time helper ──────────────────────────────────────────────────
 function formatNotifTime(iso: string): string {
   try {
@@ -533,7 +725,13 @@ function formatNotifTime(iso: string): string {
   }
 }
 
-function TopBtn({ icon: Icon, onPress, badgeCount, btnRef, label }: { icon: any; onPress?: () => void; badgeCount?: number; btnRef?: (node: any) => void; label?: string }) {
+function TopBtn({ icon: Icon, onPress, badgeCount, btnRef, label, dot, initials, fill }: {
+  icon: any; onPress?: () => void; badgeCount?: number; btnRef?: (node: any) => void; label?: string;
+  /** Rozet sayı yerine küçük kırmızı nokta */
+  dot?: boolean;
+  /** Verilirse ikon yerine baş harfler, `fill` renginde dolu düğme */
+  initials?: string; fill?: string;
+}) {
   const rtl = isRTL();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const surface  = isDark ? '#1B1916'                : '#FFFFFF';
@@ -555,7 +753,13 @@ function TopBtn({ icon: Icon, onPress, badgeCount, btnRef, label }: { icon: any;
         elevation: 2,
       };
 
-  const badge = badgeCount && badgeCount > 0 ? (
+  const badge = badgeCount && badgeCount > 0 ? (dot ? (
+    <View style={{
+      position: 'absolute', top: 6, ...(rtl ? { left: 7 } : { right: 7 }),
+      width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444',
+      borderWidth: 2, borderColor: surface, zIndex: 2,
+    }} />
+  ) : (
     <>
     <PulseRing size={20} color="#EF4444" top={-5} {...(rtl ? { left: -5 } : { right: -5 })} />
     <View style={{
@@ -570,7 +774,24 @@ function TopBtn({ icon: Icon, onPress, badgeCount, btnRef, label }: { icon: any;
       </Text>
     </View>
     </>
-  ) : null;
+  )) : null;
+
+  // Baş harfli profil düğmesi — aynı ölçü/köşe, panel renginde dolu (her iki tema).
+  if (initials) {
+    const bg = fill ?? '#0E0E0E';
+    return (
+      <Pressable ref={btnRef} onPress={onPress} hitSlop={8} accessibilityRole="button" accessibilityLabel={label}>
+        {({ pressed }: any) => (
+          <View style={{
+            width: 38, height: 38, borderRadius: 14, backgroundColor: bg,
+            alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.7 : 1, ...shadow,
+          }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', letterSpacing: 0.2, color: onAccentInk(bg) }}>{initials}</Text>
+          </View>
+        )}
+      </Pressable>
+    );
+  }
 
   // iOS 26+ liquid glass: opaque neutral parent bg + LiquidGlassView with
   // matching tintColor (same pattern as PillTabBar's search button).

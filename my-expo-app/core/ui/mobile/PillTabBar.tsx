@@ -82,6 +82,13 @@ interface Props {
    * Only the doctor layout passes this; other panels leave it undefined → no-op.
    */
   getItemRef?: (routeName: string) => ((node: any) => void) | undefined;
+  /**
+   * Etiketli düzen (admin, 2026-11-14): HER hücrede ikon + altında küçük etiket,
+   * hücreler eşit ve SABİT — seçili sekme genişlemez, komşular kaymaz. Aşağı
+   * kaydırınca etiketler söner, ikonlar yerinde kalır. Verilmezse bar eski
+   * hâlindedir (yalnız seçili sekme etiketli, genişleyen hücre).
+   */
+  labeled?: boolean;
 }
 
 // iOS 26+ native liquid glass available? (via @callstack/liquid-glass)
@@ -171,7 +178,7 @@ function Specular({ g, radius = NAV.radius }: { g: NavGlass; radius?: number }) 
   );
 }
 
-export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems, onSearchNavigate, getItemRef }: Props) {
+export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems, onSearchNavigate, getItemRef, labeled }: Props) {
   const pathname = usePathname();
   const router   = useRouter();
   const insets   = useSafeAreaInsets();
@@ -317,13 +324,6 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
   // Scroll farkındalığı — web'de tek capture dinleyicisi tüm ekranları kapsar;
   // native'de ekranlar `useNavScrollProps()` ile besler (bkz. navScroll.ts).
   useNavScrollBridge();
-  // Gizliyken görünmez bar dokunuşları yutmasın. Değer yalnız eşikte state'e
-  // yansır → kaydırma sırasında re-render yok.
-  const [navHidden, setNavHidden] = useState(false);
-  useEffect(() => {
-    const id = navCollapse.addListener(({ value }) => setNavHidden(value > 0.5));
-    return () => navCollapse.removeListener(id);
-  }, []);
   // Rota değişince bar açık başlar (yeni sayfa tepeden açılıyor).
   useEffect(() => { resetNavScroll(); }, [pathname]);
 
@@ -411,9 +411,13 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
   // güvenlik ağı olarak birkaç kez daha ölç (ResizeObserver kaçırırsa).
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    const ids = [0, 60, 180, 360, 560].map(ms => setTimeout(remeasureCells, ms));
+    // ••• çapası da aynı anda yenilenir: menü açılınca önceki sekmenin etiketi
+    // kapanır, ••• kayar; tıklama anındaki ölçüm bayatlar ve "Tüm Menü"nün
+    // kuyruğu ~20px yanda kalırdı (ölçüldü: kuyruk 251, ••• 230).
+    const tick = () => { remeasureCells(); publishMoreAnchor(); };
+    const ids = [0, 60, 180, 360, 560].map(ms => setTimeout(tick, ms));
     return () => ids.forEach(clearTimeout);
-  }, [activeIdx, items.length, remeasureCells]);
+  }, [activeIdx, items.length, remeasureCells, publishMoreAnchor]);
 
   // Aktif sekme göstergesi — TEK katman: accent tint + ince kenar.
   //
@@ -427,14 +431,15 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
       pointerEvents="none"
       style={{
         position: 'absolute',
-        top: 7, bottom: 7,
+        // Etiketli düzende gösterge ikon + etiketi birlikte sarar (daha yüksek)
+        top: labeled ? 4 : 7, bottom: labeled ? 4 : 7,
         left: indicatorX,
         // Genişlik + konum effect'te birlikte hesaplanıyor (hücre merkezine
         // hizalı, en az 46 → etiketsiz hücrede tam daire). Burada minWidth
         // VERİLMEZ: verilirse konum hesabıyla çelişip ikonu kaydırır.
         width: indicatorW,
         opacity: indicatorOpacity,
-        borderRadius: NAV.radius,
+        borderRadius: labeled ? 22 : NAV.radius,
         backgroundColor: ind.fill,
         borderWidth: 1,
         borderColor: ind.border,
@@ -458,6 +463,8 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
         active={i === activeIdx}
         accentColor={accent}
         dark={dark}
+        tight={!!fabItem && !labeled}
+        labeled={labeled}
         onPress={() => handle(item)}
         onLayout={(e: any) => {
           handleCellLayout(i)(e);
@@ -549,7 +556,11 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
     ? { alignSelf: 'stretch' }
     // FAB'lı panel: sabit gap taşmaya yol açıyor (aktif label + FAB dar alanda).
     // flex:1 + space-evenly → hücreler kalan alana EŞİT dağılır, kenara taşmaz.
-    : (fabItem ? { flex: 1, justifyContent: 'space-evenly', gap: 0 } : null);
+    : (fabItem
+      ? (labeled
+        ? { flex: 1, justifyContent: 'space-between', gap: 0, paddingHorizontal: 4 }
+        : { flex: 1, justifyContent: 'space-evenly', gap: 0 })
+      : (labeled ? { gap: 0 } : null));
   const barContent =
     LIQUID_GLASS ? (
       // iOS 26+ — gerçek liquid glass: arkadaki içerik materyalin içinde
@@ -597,9 +608,9 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
   //   └─────────────────────────────────────┘
   // Arama aktifken FAB gizlenir → bar tüm genişliği arama çubuğuna verir.
   const content = (fabItem && !searchActive) ? (
-    <View style={s.asymRow}>
+    <View style={[s.asymRow, labeled ? { gap: 8 } : null]}>
       {barContent}
-      <FabButton item={fabItem} accentColor={accent} itemRef={getItemRef?.(fabItem.routeName)} />
+      <FabButton item={fabItem} accentColor={accent} itemRef={getItemRef?.(fabItem.routeName)} compact={labeled} />
     </View>
   ) : (
     barContent
@@ -616,13 +627,14 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
   const collapseStyle = searchActive
     ? null
     : {
-        // Ölçek alt kenardan büyür/küçülür → bar "aşağı çekiliyor" gibi
-        // okunur, ortadan büzülmüş gibi değil.
-        // Ekranın altına tamamen kayar; opaklık kaymanın son yarısında söner
-        // (cam ekran kenarında yarım kalıp parlamasın).
-        opacity: navCollapse.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1, NAV.collapse.opacity] }),
+        // Instagram (iOS) gibi: bar KAYBOLMAZ, yatay merkeze doğru küçülür ve
+        // hafifçe alta oturur; yukarı kaydırınca aynı yay ile geri büyür.
+        // Köken alt-orta → alt boşluk sabit kalır, küme ortada toplanır.
+        // Küçükken de dokunulabilir (dokununca rota değişir → bar açılır).
+        transformOrigin: 'center bottom',
         transform: [
-          { translateY: navCollapse.interpolate({ inputRange: [0, 1], outputRange: [0, wrapBottom + NAV.fab + NAV.collapse.extra] }) },
+          { translateY: navCollapse.interpolate({ inputRange: [0, 1], outputRange: [0, NAV.collapse.translateY] }) },
+          { scale: navCollapse.interpolate({ inputRange: [0, 1], outputRange: [1, NAV.collapse.scale] }) },
         ],
       };
 
@@ -634,7 +646,7 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
     {/* Navbar üstünde biten katman (Mesajlar) açıkken barın ARKASINDAKİ şeridi
         aynı tonla karart — katmanın karartması bar üst kenarında kesilmesin. */}
     <NavDimStrip height={bottomOffset + NAV_BAR_H} />
-    <Animated.View pointerEvents={navHidden && !searchActive ? 'none' : 'box-none'} style={[s.wrap, { bottom: wrapBottom }, collapseStyle as any]}>
+    <Animated.View pointerEvents="box-none" style={[s.wrap, { bottom: wrapBottom }, collapseStyle as any]}>
       {resultsOverlay}
       {content}
     </Animated.View>
@@ -783,7 +795,14 @@ function SearchAboveFab({ accentColor }: { accentColor?: string }) {
 }
 
 // ─── Side FAB — separate accent-filled circle next to the pill ──────────────
-function FabButton({ item, accentColor, itemRef }: { item: PillTabItem; accentColor: string; itemRef?: (node: any) => void }) {
+function FabButton({ item, accentColor, itemRef, compact }: {
+  item: PillTabItem; accentColor: string; itemRef?: (node: any) => void;
+  /** Etiketli barda "+" 56pt: beş etiketli hücreye yer açar (bar 60pt, düğme barın içinde kalır) */
+  compact?: boolean;
+}) {
+  const fabSize = compact ? 56 : NAV.fab;
+  const fabDim = compact ? { width: fabSize, height: fabSize, borderRadius: fabSize / 2 } : null;
+  const fabIcon = compact ? 25 : NAV.fabIcon;
   // Tek değer → scale + opacity: fiziksel basma hissi, iki ayrı animasyon yok.
   const pressAnim = useRef(new Animated.Value(0)).current;
   const Icon  = item.icon;
@@ -816,7 +835,7 @@ function FabButton({ item, accentColor, itemRef }: { item: PillTabItem; accentCo
       >
         <Animated.View
           style={[
-            s.fab,
+            s.fab, fabDim,
             {
               transform: [{ scale }],
               opacity,
@@ -836,7 +855,7 @@ function FabButton({ item, accentColor, itemRef }: { item: PillTabItem; accentCo
             interactive
             style={[StyleSheet.absoluteFillObject, { borderRadius: NAV.fab / 2 }]}
           />
-          <Icon size={NAV.fabIcon} color="#FFFFFF" strokeWidth={2.4} />
+          <Icon size={fabIcon} color="#FFFFFF" strokeWidth={2.4} />
           {!!item.badgeCount && item.badgeCount > 0 && (
             <View style={[s.countBadge, badgeSide, { borderColor: accentColor }]}>
               <Text style={s.countBadgeText}>
@@ -858,7 +877,7 @@ function FabButton({ item, accentColor, itemRef }: { item: PillTabItem; accentCo
     >
       <Animated.View
         style={[
-          s.fab,
+          s.fab, fabDim,
           { backgroundColor: accentColor, transform: [{ scale }], opacity, overflow: 'hidden' },
           Platform.OS === 'web'
             ? ({
@@ -878,7 +897,7 @@ function FabButton({ item, accentColor, itemRef }: { item: PillTabItem; accentCo
         {/* Kubbe ışığı — dolu daire "düz mavi disk" değil, ışık alan bir kubbe
             gibi okunur; barın cam diliyle aynı ışık ailesinden. */}
         <TopLight webGradient={FAB_DOME} tint="rgba(255,255,255,0.10)" radius={NAV.fab / 2} />
-        <Icon size={NAV.fabIcon} color="#FFFFFF" strokeWidth={2.4} />
+        <Icon size={fabIcon} color="#FFFFFF" strokeWidth={2.4} />
         {!!item.badgeCount && item.badgeCount > 0 && (
           <View style={[s.countBadge, badgeSide, { borderColor: accentColor }]}>
             <Text style={s.countBadgeText}>
@@ -893,12 +912,16 @@ function FabButton({ item, accentColor, itemRef }: { item: PillTabItem; accentCo
 
 // ─── Single cell — collapses to icon-only or expands to icon+label pill ──────
 function PillCell({
-  item, active, accentColor, dark, onPress, onLayout, itemRef,
+  item, active, accentColor, dark, tight, labeled, onPress, onLayout, itemRef,
 }: {
   item: PillTabItem;
   active: boolean;
   accentColor: string;
   dark: boolean;
+  /** FAB'lı (dar) bar: hücre kutuları komşusuyla biraz örtüşür (bkz. cellTight) */
+  tight?: boolean;
+  /** İkon + altında etiket, eşit sabit hücre (bkz. PillTabBar `labeled`) */
+  labeled?: boolean;
   onPress: () => void;
   onLayout?: (e: any) => void;
   itemRef?: (node: any) => void;
@@ -958,7 +981,7 @@ function PillCell({
       // Hücre görsel olarak 38 geniş (6 sekmeli panelde bar taşmasın); eksik
       // pay hitSlop ile 44pt dokunma hedefine tamamlanır.
       hitSlop={cellHitSlop}
-      style={s.cellPressable}
+      style={labeled ? s.cellLabeled : tight ? s.cellTight : s.cellPressable}
       onLayout={onLayout}
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
@@ -968,6 +991,31 @@ function PillCell({
       {...(Platform.OS === 'web' ? ({ 'aria-selected': active } as any) : null)}
       accessibilityLabel={a11yLabel}
     >
+      {labeled ? (
+        <Animated.View style={[s.cellInnerLabeled, { transform: [{ scale }], opacity: pressOpacity }]}>
+          {/* Kaydırınca etiket söner, ikon boşalan yere iner → küçülmüş barda ortalı durur.
+              Yalnız transform/opacity: navCollapse native driver'da koşar. */}
+          <Animated.View style={[s.iconWrap, { transform: [{ translateY: navCollapse.interpolate({ inputRange: [0, 1], outputRange: [0, 7] }) }] }]}>
+            <Icon size={NAV.icon} color={active ? accentColor : inactiveTint} strokeWidth={active ? 2.1 : 1.8} />
+            {!!item.badgeCount && item.badgeCount > 0 && (
+              <View style={[s.countBadge, badgeSide, { borderColor: dark ? '#0A0A0A' : '#FFFFFF' }]}>
+                <Text style={s.countBadgeText}>{item.badgeCount > 99 ? '99+' : String(item.badgeCount)}</Text>
+              </View>
+            )}
+          </Animated.View>
+          <Animated.Text
+            numberOfLines={1}
+            style={[s.labelSmall, {
+              color: active ? accentColor : inactiveTint,
+              // 700 değil 600: kalın "Siparişler" hücreden (ve seçim kapsülünden) taşıyordu
+              fontWeight: active ? '600' : '500',
+              opacity: navCollapse.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0, 0] }),
+            }]}
+          >
+            {item.label}
+          </Animated.Text>
+        </Animated.View>
+      ) : (
       <Animated.View style={[s.cellInner, { transform: [{ scale }], opacity: pressOpacity }]}>
         {/* NOTE: Pill background artık parent'taki shared sliding indicator
             tarafından çiziliyor (WhatsApp-style smooth motion). */}
@@ -1008,6 +1056,7 @@ function PillCell({
           </Animated.View>
         )}
       </Animated.View>
+      )}
     </Pressable>
   );
 }
@@ -1141,6 +1190,34 @@ const s = StyleSheet.create({
   // Each cell is a touch surface (Pressable) wrapping the layout View
   cellPressable: {
     // no flex — cells take only space their content needs
+  },
+
+  // FAB'lı barda uzun etiket (ör. "Siparişler") açılınca hücreler iç genişliği
+  // aşıp ••• barın kenarından taşıyordu (375pt: içerik 267, iç genişlik 247).
+  // Negatif pay yerleşim genişliğini kısar; kutu (dokunma alanı + mercek
+  // ölçüsü) 40pt kalır, yalnız komşu kutuların ŞEFFAF kenarları örtüşür —
+  // ikonlar 24pt olduğu için birbirine değmez. Yer varken space-evenly boşluğu
+  // geri dağıttığından görünüm değişmez.
+  cellTight: {
+    marginHorizontal: -6,
+  },
+
+  // Etiketli düzen: eşit, sabit hücre; içerik dikey (ikon üstte, etiket altta)
+  cellLabeled: {
+    flex: 1,
+    minWidth: 0,
+  },
+  cellInnerLabeled: {
+    height: NAV.iconBox + NAV.cellPadV * 2,   // 44 — bar yüksekliği değişmez (60)
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 1,
+  },
+  labelSmall: {
+    fontSize: 10,
+    lineHeight: 13,
+    letterSpacing: -0.25,
+    maxWidth: '100%',
   },
 
   cellInner: {

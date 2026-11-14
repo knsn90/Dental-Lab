@@ -45,10 +45,15 @@ export function useScanCardVisible(): { visible: boolean; canManage: boolean } {
   return { visible: on && (isManager || perms.canView), canManage: isManager || perms.canManage };
 }
 
-export function ScanCalendarCard({ style }: { style?: any }) {
+/**
+ * `compact` — tam ay yerine TEK HAFTALIK şerit (telefon Özet'i): ay ızgarası
+ * yarım ekran tutuyor ve çoğu gün "Randevu yok" gösteriyordu. Ay görünümü
+ * Tarama Randevuları sayfasında; başlığa dokununca oraya gider.
+ */
+export function ScanCalendarCard({ style, compact }: { style?: any; compact?: boolean }) {
   const { visible, canManage } = useScanCardVisible();
   if (!visible) return null;
-  return <Inner style={style} canManage={canManage} />;
+  return <Inner style={style} canManage={canManage} compact={compact} />;
 }
 
 function kindsOf(r: ScanAppointmentRow): ScanKind[] {
@@ -59,7 +64,7 @@ function kindsOf(r: ScanAppointmentRow): ScanKind[] {
 const fmtDay = (iso: string, o: Intl.DateTimeFormatOptions) =>
   new Intl.DateTimeFormat(localeTag(), { ...o, timeZone: 'UTC' }).format(new Date(`${iso}T12:00:00Z`));
 
-function Inner({ style, canManage }: { style?: any; canManage: boolean }) {
+function Inner({ style, canManage, compact }: { style?: any; canManage: boolean; compact?: boolean }) {
   const seg = String((useSegments() as string[])?.[0] ?? '(lab)');
   const cat = useScanCatalog();
   const today = labLocalParts(new Date().toISOString(), cat.tz).date;
@@ -95,7 +100,7 @@ function Inner({ style, canManage }: { style?: any; canManage: boolean }) {
   return (
     <ScanWidgetView
       style={style} today={today} sel={sel} month={month} rows={rows} tz={cat.tz} workdays={cat.settings.workdays}
-      pending={pending} canManage={canManage}
+      pending={pending} canManage={canManage} compact={compact}
       onPick={(d, inMonth) => { setSel(d); if (!inMonth) setMonth(d); }}
       onStep={(n) => setMonth(addMonths(month, n))}
       onToday={() => { setSel(today); setMonth(today); }}
@@ -146,7 +151,7 @@ function ScanWidgetLoading({ style }: { style?: any }) {
 
 export interface ScanWidgetViewProps {
   style?: any; today: string; sel: string; month: string; rows: ScanAppointmentRow[]; tz: string; workdays: number[];
-  pending: number; canManage: boolean;
+  pending: number; canManage: boolean; compact?: boolean;
   onPick: (d: string, inMonth: boolean) => void; onStep: (n: number) => void; onToday: () => void;
   onNav: (to: 'scans' | 'pending') => void; onNew: (o: OriginRect | null) => void; onOpenRow: (id: string, o: OriginRect | null) => void;
   children?: React.ReactNode;
@@ -244,6 +249,37 @@ export function ScanWidgetView(p: ScanWidgetViewProps) {
     <MiniMonth key={key} width={width} month={p.month} sel={sel} today={today} byDay={byDay} workdays={p.workdays} onPick={p.onPick} onStep={p.onStep} onToday={p.onToday} />
   );
 
+  if (p.compact) {
+    return (
+      <View ref={cardRef} style={[shell, p.style]} onLayout={onCardLayout}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 28 }}>
+          <Pressable onPress={() => p.onNav('scans')} accessibilityRole="link" accessibilityLabel={autoT('Tarama Randevuları')}
+            style={({ pressed }: any) => ({ flexShrink: 1, ...pressScale(pressed), ...WEB_PTR })}>
+            {/* Başlık ölçüsü mobil Özet'teki diğer kartlarla aynı (14/600, normal yazım) */}
+            <Text style={{ fontSize: 14, fontWeight: '600', letterSpacing: -0.1, color: U.ink[900] }} numberOfLines={1}>
+              {autoT('Tarama programı')}
+            </Text>
+          </Pressable>
+          <View style={{ flex: 1 }} />
+          {pendingChip(cardW >= 300)}
+          {plusBtn}
+        </View>
+        <WeekStrip sel={sel} today={today} byDay={byDay} workdays={p.workdays} onPick={p.onPick} />
+        {dayList.length > 0 || !isToday ? (
+          <View style={{ height: 1, backgroundColor: U.hairlineSoft, marginTop: 10, marginBottom: 6 }} />
+        ) : null}
+        {!isToday ? (
+          <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 1.1, color: U.ink[500] }} numberOfLines={1}>
+            {fmtDay(sel, { weekday: 'short', day: 'numeric', month: 'short' }).toLocaleUpperCase(localeTag())}
+          </Text>
+        ) : null}
+        {/* Bugün boşsa "Randevu yok" satırı yer tutmasın — şerit zaten boş günü gösteriyor */}
+        {dayList.length > 0 || !isToday ? agendaRows : null}
+        {p.children}
+      </View>
+    );
+  }
+
   return (
     <View ref={cardRef} style={[shell, p.style]} onLayout={onCardLayout}>
       {xwide ? (
@@ -294,6 +330,60 @@ function BigDay({ day, size }: { day: string; size: number }) {
       color: U.ink[900], fontVariant: ['tabular-nums'], marginTop: size > 50 ? 2 : 0 }}>
       {Number(day.slice(8))}
     </Text>
+  );
+}
+
+/** Tek haftalık şerit (compact): seçili günün haftası; oklar haftayı kaydırır. Tonlama/bugün/seçili dili MiniMonth ile aynı */
+function WeekStrip({ sel, today, byDay, workdays, onPick }: {
+  sel: string; today: string; byDay: Record<string, unknown[]>; workdays: number[];
+  onPick: (d: string, inMonth: boolean) => void;
+}) {
+  const U = useInkUI();
+  const panel = usePanelTheme();
+  const days = weekDates(sel);
+  const heat = (n: number) => hexA(panel.primary, n >= 3 ? 0.38 : n === 2 ? 0.26 : 0.16);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, marginHorizontal: -6 }}>
+      {/* inMonth=false → üst bileşen görünen ayı da o güne taşır (veri o aydan gelir) */}
+      <WeekChevron dir={-1} onPress={() => onPick(addDays(sel, -7), false)} />
+      {days.map((iso, i) => {
+        const n = byDay[iso]?.length ?? 0;
+        const isToday = iso === today;
+        const selected = iso === sel && !isToday;
+        return (
+          <Pressable key={iso} onPress={() => onPick(iso, false)} accessibilityRole="button"
+            accessibilityLabel={`${fmtDay(iso, { weekday: 'long', day: 'numeric', month: 'long' })} · ${n} ${autoT('randevu')}`}
+            style={{ flex: 1, alignItems: 'center', gap: 4, paddingVertical: 2, ...WEB_PTR }}>
+            <Text style={{ fontSize: 10.5, fontWeight: '600', color: workdays.includes(i + 1) ? U.ink[400] : U.ink[300] }}>
+              {fmtDay(iso, { weekday: 'short' })}
+            </Text>
+            <View style={{
+              width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center',
+              backgroundColor: isToday ? panel.primary : n ? heat(n) : 'transparent',
+              borderWidth: selected ? 1.5 : 0, borderColor: U.ink[900],
+            }}>
+              <Text style={{ fontSize: 14, fontWeight: isToday ? '700' : '500', fontVariant: ['tabular-nums'],
+                color: isToday ? onAccentInk(panel.primary) : U.ink[900] }}>
+                {Number(iso.slice(8))}
+              </Text>
+            </View>
+          </Pressable>
+        );
+      })}
+      <WeekChevron dir={1} onPress={() => onPick(addDays(sel, 7), false)} />
+    </View>
+  );
+}
+
+function WeekChevron({ dir, onPress }: { dir: -1 | 1; onPress: () => void }) {
+  const U = useInkUI();
+  const left = (dir === -1) !== isRTL();
+  const label = dir === -1 ? autoT('Önceki hafta') : autoT('Sonraki hafta');
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} hitSlop={8}
+      style={({ pressed }: any) => ({ width: 26, height: 44, alignItems: 'center', justifyContent: 'center', ...pressScale(pressed), ...WEB_PTR })}>
+      {left ? <ChevronLeft size={16} color={U.ink[500]} /> : <ChevronRight size={16} color={U.ink[500]} />}
+    </Pressable>
   );
 }
 

@@ -43,12 +43,12 @@ export const NAV = {
   fabIcon: 28,
 
   /**
-   * Scroll-aware gizlenme — aşağı okurken bar ekranın altına kayıp kaybolur,
-   * yukarı kaydırınca / sayfa başında / sayfa sonunda geri gelir (Safari araç
-   * çubuğu gibi; kullanıcı kararı 2026-11-13). Kayma mesafesi barın kendi alt
-   * ofseti + FAB yüksekliği + pay olarak PillTabBar'da hesaplanır.
+   * Scroll-aware küçülme — aşağı okurken bar KAYBOLMAZ; iOS Instagram'daki
+   * gibi merkeze doğru küçülür, yukarı kaydırınca / sayfa başında / sayfa
+   * sonunda geri büyür (kullanıcı kararı 2026-11-14; önceki tam gizlenme
+   * geri alındı). Köken alt-orta; translateY küçülen barı kenara oturtur.
    */
-  collapse: { extra: 16, opacity: 0 },
+  collapse: { scale: 0.74, translateY: 4 },
 
   /** Basma fiziği */
   press: { cell: 0.95, fab: 0.94 },

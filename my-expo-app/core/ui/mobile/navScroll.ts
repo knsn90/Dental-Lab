@@ -1,10 +1,10 @@
 // core/ui/mobile/navScroll.ts
 // Floating navbar'ın scroll farkındalığı — TEK paylaşılan Animated.Value.
 //
-// Davranış: kullanıcı aşağı okurken bar ekranın altına kayıp gizlenir,
-// yukarı kaydırınca, sayfa başına dönünce ya da sayfanın sonuna gelince geri
-// açılır (Safari araç çubuğu gibi). Eskiden yalnız hafifçe küçülüyordu;
-// kullanıcı "sürekli yukarıda kalıyor" dedi → tam gizlenme (2026-11-13).
+// Davranış: kullanıcı aşağı okurken bar merkeze doğru KÜÇÜLÜR (kaybolmaz —
+// iOS Instagram gibi), yukarı kaydırınca, sayfa başına dönünce ya da sayfanın
+// sonuna gelince geri büyür. Geçmiş: hafif daralma → tam gizlenme
+// (2026-11-13) → Instagram tarzı küçülme (2026-11-14, kullanıcı kararı).
 //
 // Neden burada ve neden bu şekilde:
 //  • Değer modül kapsamındadır ve React state'i DEĞİLDİR → scroll sırasında
@@ -25,7 +25,7 @@
 import { useEffect, useMemo } from 'react';
 import { AccessibilityInfo, Animated, Platform } from 'react-native';
 
-/** 0 = tamamen açık · 1 = geri çekilmiş. Yalnız transform/opacity'de kullan. */
+/** 0 = tam boy · 1 = küçülmüş. Yalnız transform/opacity'de kullan. */
 export const navCollapse = new Animated.Value(0);
 
 /**

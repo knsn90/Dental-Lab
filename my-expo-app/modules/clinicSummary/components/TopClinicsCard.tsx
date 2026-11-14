@@ -304,7 +304,10 @@ export function TopClinicsCard(props: {
         </View>
       ) : (
         <View style={{ flex: props.fill ? 1 : undefined, gap: 4 }}>
-          {/* Lider — lacivert kutu (her iki temada), içerik beyaz; değer öne çıkar */}
+          {/* Lider — lacivert kutu (her iki temada), içerik beyaz; değer öne çıkar.
+              compact (telefon): lider de diğerleriyle AYNI satır düzeninde (aşağıda) —
+              koyu ayrı kutu, 25'le berabere olan 2. sırayı önemsiz gösteriyordu. */}
+          {props.compact ? null : (
           <Pressable
             onPress={() => open(lead.clinicId)}
             accessibilityRole="button"
@@ -336,32 +339,41 @@ export function TopClinicsCard(props: {
             </View>
             <View style={{ marginTop: 9 }}><Bar ratio={share(lead.uye) / 100} height={5} skin={skin} /></View>
           </Pressable>
+          )}
 
-          {rest.map((r, i) => (
+          {(props.compact ? rows : rest).map((r, i) => {
+            const rank = props.compact ? i + 1 : i + 2;
+            const c = !!props.compact;
+            return (
             <Pressable
               key={r.clinicId}
               onPress={() => open(r.clinicId)}
               accessibilityRole="button"
-              accessibilityLabel={`${i + 2}. ${titleCaseTR(r.name)}`}
-              style={pressStyle({ flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 10, paddingVertical: 5, paddingHorizontal: 6, marginHorizontal: -6 })}
+              accessibilityLabel={`${rank}. ${titleCaseTR(r.name)}`}
+              style={pressStyle({ flexDirection: 'row', alignItems: 'center', gap: c ? 12 : 10, borderRadius: 10, paddingVertical: c ? 8 : 5, paddingHorizontal: 6, marginHorizontal: -6 })}
             >
               <View>
-                <ClinicAvatar name={r.name} logoUrl={map.get(r.clinicId)?.logoUrl} size={28} />
-                {i < 2 ? <RankBadge rank={(i + 2) as 2 | 3} size={16} /> : <PlainRankBadge rank={i + 2} size={16} />}
+                <ClinicAvatar name={r.name} logoUrl={map.get(r.clinicId)?.logoUrl} size={c ? 36 : 28} />
+                {rank <= 3 ? <RankBadge rank={rank as 1 | 2 | 3} size={c ? 18 : 16} /> : <PlainRankBadge rank={rank} size={c ? 18 : 16} />}
               </View>
-              <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+              <View style={{ flex: 1, minWidth: 0, gap: c ? 5 : 4 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Text style={{ flexShrink: 1, fontSize: 12.5, fontWeight: '600', color: T.ink }} numberOfLines={1}>{titleCaseTR(r.name)}</Text>
+                  {/* compact: uzun klinik adı kesilmez, iki satıra sarar */}
+                  <Text style={{ flexShrink: 1, fontSize: c ? 13.5 : 12.5, fontWeight: c && rank === 1 ? '700' : '600', color: T.ink, lineHeight: c ? 18 : undefined }} numberOfLines={c ? 2 : 1}>{titleCaseTR(r.name)}</Text>
                   {r.overdue ? <OverdueMark /> : null}
                 </View>
-                <Bar ratio={(share(lead.uye) / 100) * (val(r) / max)} height={3} dim />
+                {c && r.overdue ? (
+                  <Text style={{ fontSize: 11.5, color: U.chipTones.warning.fg, marginTop: -3 }} numberOfLines={1}>{autoT('Vadesi geçmiş borç')}</Text>
+                ) : null}
+                <Bar ratio={c ? val(r) / max : (share(lead.uye) / 100) * (val(r) / max)} height={c ? 4 : 3} dim={!(c && rank === 1)} />
               </View>
               <View style={{ alignItems: 'flex-end', minWidth: 38 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: T.ink, fontVariant: ['tabular-nums'] }}>{String(val(r))}</Text>
-                <Text style={{ fontSize: 11, color: T.ink2 }} numberOfLines={1}>{`%${share(r.uye)}`}</Text>
+                <Text style={{ fontSize: c ? 16 : 13, fontWeight: '700', color: T.ink, fontVariant: ['tabular-nums'] }}>{String(val(r))}</Text>
+                <Text style={{ fontSize: c ? 12 : 11, color: T.ink2 }} numberOfLines={1}>{`%${share(r.uye)}`}</Text>
               </View>
             </Pressable>
-          ))}
+            );
+          })}
         </View>
       )}
 

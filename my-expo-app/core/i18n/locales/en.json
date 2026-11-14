@@ -587,7 +587,7 @@
       "monthlyRevenue": "Monthly revenue",
       "pendingApprovals": "Pending approvals",
       "approvalsActionNeeded": "Action needed",
-      "approvalsClear": "All clear",
+      "approvalsClear": "None pending",
       "revenueTarget": "Target ₺60K",
       "activeOrders": "Active orders",
       "overdueCount": "{{count}} overdue",

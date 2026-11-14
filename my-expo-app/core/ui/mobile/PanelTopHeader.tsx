@@ -119,7 +119,7 @@ export function PanelTopHeader() {
           // kademeli iner. Eski 3 kademeli iniş renkli kartların üstünde sert bant
           // gibi görünüyordu (2026-10-20).
           backgroundImage: `linear-gradient(to bottom, ${[
-            [0.97, 0], [0.95, 52], [0.9, 60], [0.8, 67], [0.66, 74],
+            [1, 0], [1, 52], [0.9, 60], [0.8, 67], [0.66, 74],
             [0.5, 80], [0.34, 86], [0.2, 91], [0.09, 95], [0.025, 98], [0, 100],
           ].map(([a, p]) => `${fadeRgba(MT.bg, a)} ${p}%`).join(', ')})`,
         } as any} />

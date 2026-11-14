@@ -587,7 +587,7 @@
       "monthlyRevenue": "Monatsumsatz",
       "pendingApprovals": "Ausstehende Freigaben",
       "approvalsActionNeeded": "Aktion erforderlich",
-      "approvalsClear": "Alles erledigt",
+      "approvalsClear": "Keine offen",
       "revenueTarget": "Ziel ₺60K",
       "activeOrders": "Aktive Aufträge",
       "overdueCount": "{{count}} überfällig",

@@ -25,6 +25,7 @@ import { PhoneCall as PhoneCall2, CalendarClock as CalendarClock2 } from '../../
 import { useFeature, useFeatureFlagsStore } from '../../core/store/featureFlagsStore';
 
 import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
+import { autoT } from '../../core/i18n/autoTranslate';
 import { bootMark } from '../../core/debug/bootTrace';
 import { PanelTopHeader } from '../../core/ui/mobile/PanelTopHeader';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
@@ -245,15 +246,16 @@ export default function AdminLayout() {
 
   // "Daha" bottom-sheet — Onaylar pill'de
   const MORE_ITEMS: import('../../core/ui/mobile/MoreMenuSheet').MoreItem[] = [
-    ...(faceScanOk ? [{ key: 'approvals', label: t('nav.items.approvals'), icon: CheckCircle22 as any, badge: pendingCount > 0 ? pendingCount : undefined, onPress: () => router.push('/(admin)/approvals' as any) }] : []),
-    { key: 'clinics',  label: t('nav.items.clinics'), sub: t('admin.more.clinics.sub'),               icon: Building22,onPress: () => router.push('/(admin)/clinics' as any) },
-    { key: 'courier',  label: t('nav.items.courier'),      sub: t('admin.more.courier.sub'),                 icon: Truck2,    onPress: () => router.push('/(admin)/courier-tracking' as any) },
-    { key: 'finance',  label: t('nav.items.finance'),           sub: t('admin.more.finance.sub'),    icon: Landmark2, onPress: () => router.push('/(admin)/finance' as any) },
-    { key: 'team',     label: t('nav.items.team'),             sub: t('admin.more.team.sub'),   icon: Users2,    onPress: () => router.push('/(admin)/ik-depo' as any) },
-    { key: 'stock',    label: t('nav.items.stock'),      sub: t('admin.more.stock.sub'),               icon: Package2,  onPress: () => router.push('/(admin)/stock' as any) },
-    ...(scansOn ? [{ key: 'scans', label: t('nav.items.scans'), sub: t('nav.items.scansSub'), icon: CalendarClock2 as any, onPress: () => router.push('/(admin)/scans' as any) }] : []),
-    ...(phoneAssistantOn ? [{ key: 'phone-leads', label: t('nav.items.phoneLeads'), sub: t('nav.items.phoneLeadsSub'), icon: PhoneCall2 as any, onPress: () => router.push('/(admin)/phone-leads' as any) }] : []),
-    { key: 'settings', label: t('nav.items.settings'),          sub: t('admin.more.settings.sub'), icon: Settings2, onPress: () => router.push('/(admin)/settings' as any) },
+    // Sıra = ızgaradaki grup sırası: önce Operasyon, sonra Yönetim
+    ...(faceScanOk ? [{ key: 'approvals', group: autoT('Operasyon'), label: t('nav.items.approvals'), icon: CheckCircle22 as any, badge: pendingCount > 0 ? pendingCount : undefined, onPress: () => router.push('/(admin)/approvals' as any) }] : []),
+    { key: 'courier', group: autoT('Operasyon'),  label: t('nav.items.courier'),      sub: t('admin.more.courier.sub'),                 icon: Truck2,    onPress: () => router.push('/(admin)/courier-tracking' as any) },
+    ...(scansOn ? [{ key: 'scans', group: autoT('Operasyon'), label: t('nav.items.scans'), sub: t('nav.items.scansSub'), icon: CalendarClock2 as any, onPress: () => router.push('/(admin)/scans' as any) }] : []),
+    ...(phoneAssistantOn ? [{ key: 'phone-leads', group: autoT('Operasyon'), label: t('nav.items.phoneLeads'), sub: t('nav.items.phoneLeadsSub'), icon: PhoneCall2 as any, onPress: () => router.push('/(admin)/phone-leads' as any) }] : []),
+    { key: 'clinics', group: autoT('Yönetim'),  label: t('nav.items.clinics'), sub: t('admin.more.clinics.sub'),               icon: Building22,onPress: () => router.push('/(admin)/clinics' as any) },
+    { key: 'finance', group: autoT('Yönetim'),  label: t('nav.items.finance'),           sub: t('admin.more.finance.sub'),    icon: Landmark2, onPress: () => router.push('/(admin)/finance' as any) },
+    { key: 'team', group: autoT('Yönetim'),     label: t('nav.items.team'),             sub: t('admin.more.team.sub'),   icon: Users2,    onPress: () => router.push('/(admin)/ik-depo' as any) },
+    { key: 'stock', group: autoT('Yönetim'),    label: t('nav.items.stock'),      sub: t('admin.more.stock.sub'),               icon: Package2,  onPress: () => router.push('/(admin)/stock' as any) },
+    { key: 'settings', group: autoT('Yönetim'), label: t('nav.items.settings'),          sub: t('admin.more.settings.sub'), icon: Settings2, onPress: () => router.push('/(admin)/settings' as any) },
   ];
 
   return (
@@ -324,6 +326,7 @@ export default function AdminLayout() {
             fabItem={FAB_ITEM}
             baseRoute="/(admin)"
             accentColor={accentColor}
+            labeled
           />
         )}
       </View>
@@ -372,6 +375,7 @@ export default function AdminLayout() {
           title={t('admin.moreSheet.title')}
           subtitle={t('admin.moreSheet.subtitle')}
           items={MORE_ITEMS}
+          layout="grid"
           accentColor={accentColor}
         />
       </React.Suspense>
@@ -388,7 +392,7 @@ export default function AdminLayout() {
       )}
 
       {/* Sağ üst kalıcı aksiyon butonları (mobile only) — QR · Bell · Profile */}
-      {!hideTopActionBar && <TopActionBar routePrefix="/(admin)" showSearch showMessages={false} accentColor={accentColor} />}
+      {!hideTopActionBar && <TopActionBar routePrefix="/(admin)" showSearch showMessages={false} accentColor={accentColor} bellBadge="dot" profileInitials notificationsLayout="panel" />}
       {!hideTopActionBar && <PanelTopHeader />}
 
       {/* Command Palette — mobile search FAB üzerinden de erişilebilir */}

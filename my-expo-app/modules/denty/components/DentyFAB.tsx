@@ -29,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DentyPanel } from './DentyPanel';
 import { ColorOrb } from './ColorOrb';
 import { useAnimatedKeyboardHeight } from '../../../core/ui/useAnimatedKeyboardHeight';
+import { navCollapse } from '../../../core/ui/mobile/navScroll';
 
 /** Masaüstü orb çapı. Tooltip'in sağ konumu buna bağlı — tek yerden yönetilir. */
 const ORB_SIZE = 60;
@@ -110,6 +111,21 @@ export function DentyFAB() {
     }).start();
   }, [hovered, hoverAnim]);
 
+  // ── Mobil: kaydırırken orb çekilir ─────────────────────────────────────────
+  // Orb içeriğin ÜSTÜNDE yüzer; okurken takvim gününü, yüzdeyi, teslim tarihini
+  // örtüyordu. Navbar'ın kaydırma değerine (navCollapse) bağlanır: aşağı
+  // okurken söner + küçülür, yukarı kaydırınca / sayfa başında / sonunda geri
+  // gelir. Gizliyken dokunuşu yutmaz. Masaüstünde (isWide) davranış değişmez.
+  const [orbAway, setOrbAway] = useState(false);
+  useEffect(() => {
+    const id = navCollapse.addListener(({ value }) => setOrbAway(value > 0.5));
+    return () => navCollapse.removeListener(id);
+  }, []);
+  const orbScrollStyle = isWide ? null : {
+    opacity: navCollapse.interpolate({ inputRange: [0, 0.6, 1], outputRange: [1, 0, 0] }),
+    transform: [{ scale: navCollapse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.6] }) }],
+  };
+
   const tooltipStyle = {
     opacity: hoverAnim,
     transform: [
@@ -144,11 +160,11 @@ export function DentyFAB() {
     <>
       {/* ── Kapalı: morph-pill ── */}
       {!isOpen && (
-        <View
-          pointerEvents="box-none"
+        <Animated.View
+          pointerEvents={orbAway && !isWide ? 'none' : 'box-none'}
           // Mobil web: fixed — tarayıcı modunda alt araç çubuğunun arkasına düşmesin (navbar ile aynı).
-          style={{ position: (Platform.OS === 'web' && !isWide ? 'fixed' : 'absolute') as any, ...(isRTL() ? { left: isWide ? 24 : 16 } : { right: isWide ? 24 : 16 }),
-            bottom: (isWide ? 24 : (insets.bottom + 74)) + bottomBar, zIndex: 9999 }}
+          style={[{ position: (Platform.OS === 'web' && !isWide ? 'fixed' : 'absolute') as any, ...(isRTL() ? { left: isWide ? 24 : 16 } : { right: isWide ? 24 : 16 }),
+            bottom: (isWide ? 24 : (insets.bottom + 74)) + bottomBar, zIndex: 9999 }, orbScrollStyle as any]}
         >
           {isWide ? (
           // Kabuk YOK — yalnız 60px orb. Camlı hap (blur + kenar + gölge +
@@ -261,7 +277,7 @@ export function DentyFAB() {
               />
             </View>
           )}
-        </View>
+        </Animated.View>
       )}
 
       {/* ── Açık: panel (morph) ── */}

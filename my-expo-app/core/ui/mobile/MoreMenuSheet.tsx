@@ -45,6 +45,8 @@ export interface MoreItem {
   icon: LucideIcon;
   accent?: string;
   badge?: number;
+  /** `layout="grid"` için grup başlığı (aynı başlığı taşıyanlar birlikte dizilir) */
+  group?: string;
   onPress: () => void;
 }
 
@@ -55,6 +57,13 @@ interface Props {
   subtitle?: string;
   items: MoreItem[];
   accentColor?: string;
+  /**
+   * 'grid' (admin, 2026-11-14): üç sütunlu, gruplu kutucuklar — sekiz öğe kaydırmadan
+   * görünür. Yüzey KALIN cam (arkası bulanık görünür); okunabilirliği kutucukların
+   * kendi yarı-opak zemini taşır. Başlık ve "Powered by" satırı çizilmez.
+   * Varsayılan 'list' eski hâlidir (diğer paneller etkilenmez).
+   */
+  layout?: 'list' | 'grid';
 }
 
 // Bar yüksekliği/ofseti navGlass'tan (navBarMetrics) — tek kaynak.
@@ -65,7 +74,8 @@ const TAIL_SQ = 14;
 /** Kuyruğun kart kenarından en az uzaklığı (köşe yuvarlaklığına girmesin). */
 const TAIL_INSET = 26;
 
-export function MoreMenuSheet({ visible, onClose, items, accentColor = '#0F172A', title, subtitle }: Props) {
+export function MoreMenuSheet({ visible, onClose, items, accentColor = '#0F172A', title, subtitle, layout = 'list' }: Props) {
+  const grid = layout === 'grid';
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
   const T = useMobileTokens();
@@ -77,7 +87,7 @@ export function MoreMenuSheet({ visible, onClose, items, accentColor = '#0F172A'
   // 'menu' ağırlığı: neredeyse opak beyaz (koyuda #1B1916) + ink hairline kenar.
   // 'thick' cam, beyaz kart listesinin üstünde kenarsız kalıyordu → menü arka
   // plana karışıyordu (kullanıcı cihazda gördü, 2026-09-12).
-  const glass = navGlass(isDark, 'menu', solidGlass);
+  const glass = navGlass(isDark, grid ? 'thick' : 'menu', solidGlass);
   const anchorX = useUiOverlayStore(s => s.moreAnchorX);
   const setMoreMenuOpen = useUiOverlayStore(s => s.setMoreMenuOpen);
 
@@ -288,7 +298,7 @@ export function MoreMenuSheet({ visible, onClose, items, accentColor = '#0F172A'
 
         {/* Başlık — popover'da kompakt (eski sheet'te 24px başlık + drag handle
             vardı; burada gereksiz yer kaplıyor). */}
-        {(title || subtitle) ? (
+        {grid ? <View style={{ height: 6 }} /> : (title || subtitle) ? (
           <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 }}>
             {title ? (
               <Text style={{ fontSize: 15.5, fontWeight: '700', color: T.ink, letterSpacing: -0.3 }} numberOfLines={1}>
@@ -306,9 +316,36 @@ export function MoreMenuSheet({ visible, onClose, items, accentColor = '#0F172A'
         <ScrollView
           showsVerticalScrollIndicator={false}
           bounces={false}
-          contentContainerStyle={{ paddingHorizontal: 6, paddingBottom: 4 }}
+          contentContainerStyle={{ paddingHorizontal: grid ? 12 : 6, paddingBottom: grid ? 12 : 4 }}
         >
-          {items.map((item, idx) => (
+          {grid ? (() => {
+            // Gruplar ilk göründükleri sırayla; grupsuz öğeler başlıksız ilk blokta.
+            const order: string[] = [];
+            for (const it of items) { const g = it.group ?? ''; if (!order.includes(g)) order.push(g); }
+            const GAP = 8;
+            // -4: kartın 1px kenarlıkları + yuvarlama payı (tam sığdırınca üçüncü kutu alt satıra düşüyordu)
+            const tileW = Math.floor((cardW - 12 * 2 - GAP * 2 - 4) / 3);
+            return order.map((g) => (
+              <View key={g || '_'}>
+                {g ? (
+                  <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink2, marginTop: 8, marginBottom: 6, marginHorizontal: 4 }} numberOfLines={1}>{g}</Text>
+                ) : <View style={{ height: 6 }} />}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
+                  {items.filter((it) => (it.group ?? '') === g).map((item) => (
+                    <GridTile
+                      key={item.key}
+                      item={item}
+                      width={tileW}
+                      accentColor={accentColor}
+                      isDark={isDark}
+                      inkColor={T.ink as string}
+                      onPress={() => { onClose(); setTimeout(item.onPress, 80); }}
+                    />
+                  ))}
+                </View>
+              </View>
+            ));
+          })() : items.map((item, idx) => (
             <React.Fragment key={item.key}>
               <ListRow
                 item={item}
@@ -326,7 +363,8 @@ export function MoreMenuSheet({ visible, onClose, items, accentColor = '#0F172A'
           ))}
         </ScrollView>
 
-        {/* Powered by Siman — platform kimliği (white-label) */}
+        {/* Powered by Siman — platform kimliği (white-label). Izgara düzeninde çizilmez. */}
+        {grid ? null : (
         <View style={{
           // Marka kilidi — RTL'de sıra ters dönmesin (bkz. PatternsShell)
           flexDirection: isRTL() ? 'row-reverse' : 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -336,8 +374,49 @@ export function MoreMenuSheet({ visible, onClose, items, accentColor = '#0F172A'
           <Text style={{ fontSize: 9.5, color: T.ink3 }} numberOfLines={1}>Powered by</Text>
           <SimanWordmark height={8} color="#9A9A9A" />
         </View>
+        )}
       </Animated.View>
     </View>
+  );
+}
+
+// ─── Grid Tile ─────────────────────────────────────────────────────────
+// Kalın camın üstünde yarı-opak kutucuk: cam arkayı bulandırır, kutucuk metni taşır.
+function GridTile({ item, width, accentColor, isDark, inkColor, onPress }: {
+  item: MoreItem; width: number; accentColor: string; isDark: boolean; inkColor: string; onPress: () => void;
+}) {
+  const Icon = item.icon;
+  const rtl = isRTL();
+  const itemAccent = item.accent ?? accentColor;
+  // Koyu temada lacivert ikon koyu kutuda okunmaz → açık karşılığı
+  const iconColor = isDark ? '#9EC0E8' : itemAccent;
+  return (
+    <Pressable
+      onPress={onPress}
+      android_ripple={{ color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)' }}
+      accessibilityRole="menuitem"
+      accessibilityLabel={item.badge ? `${item.label}, ${item.badge}` : item.label}
+      style={{
+        width, minHeight: 78, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 6,
+        alignItems: 'center', justifyContent: 'center', gap: 6,
+        backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.62)',
+        ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+      }}
+    >
+      <Icon size={22} color={iconColor} strokeWidth={1.8} />
+      <Text numberOfLines={2} style={{ fontSize: 12, fontWeight: '500', lineHeight: 15, color: inkColor, textAlign: 'center' }}>
+        {item.label}
+      </Text>
+      {item.badge ? (
+        <View style={{
+          position: 'absolute', top: 7, ...(rtl ? { left: 8 } : { right: 8 }),
+          minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5,
+          alignItems: 'center', justifyContent: 'center', backgroundColor: itemAccent,
+        }}>
+          <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#FFFFFF' }}>{item.badge > 99 ? '99+' : item.badge}</Text>
+        </View>
+      ) : null}
+    </Pressable>
   );
 }
 

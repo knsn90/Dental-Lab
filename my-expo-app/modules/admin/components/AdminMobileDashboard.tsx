@@ -14,19 +14,20 @@ import { HatchFill } from '../../../core/ui/HatchFill';
 import { firstName as displayFirstName } from '../../../core/util/personName';
 import { fmtWeekdayDayMonth, isRTL } from '../../../core/i18n';
 import { useTranslation } from 'react-i18next';
-import { View, Text, Pressable, ScrollView, Platform, RefreshControl, Image } from 'react-native';
+import { View, Text, Pressable, ScrollView, Platform, RefreshControl, Image, Animated, Easing } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Bell, QrCode, FileCheck, ClipboardList, User as UserIcon,
+  AlertTriangle, CalendarClock, Clock, ChevronRight, ChevronLeft, TrendingUp, TrendingDown,
 } from '../../../core/ui/icons';
 import { useMobileTokens, MOBILE_PANEL_THEMES } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
-import { HERO_NAVY, useNeonNavy, NeonPulse } from '../../../core/ui/HeroGlow';
+import { useNeonNavy, NeonPulse } from '../../../core/ui/HeroGlow';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
-import { Ring } from '../../../core/ui/mobile/Ring';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { prefersReducedMotion } from '../../../core/ui/mobile/navScroll';
 import { AnimatedNumber } from '../../../core/ui/mobile/AnimatedNumber';
-import { NewOrderCTACard } from '../../../core/ui/mobile/NewOrderCTACard';
 import { useAuthStore } from '../../../core/store/authStore';
 
 import { RecentOrdersMobile, type RecentOrderItem } from '../../dashboard/components/RecentOrdersMobile';
@@ -103,6 +104,10 @@ export interface AdminMobileDashboardProps {
   onOpenOrder?:    (id: string) => void;
   onOpenOrderById?: (dbId: string) => void;
   onAllOrders?:    () => void;
+  /** Bugünkü Görevler kartı (masaüstüyle aynı bileşen) — Bugün şeridinin altına oturur */
+  tasksSlot?: React.ReactNode;
+  /** Faturalanmamış teslim hatırlatması — Son Siparişler'in üstüne oturur */
+  unbilledSlot?: React.ReactNode;
   // Refresh
   refreshing?: boolean;
   onRefresh?: () => void;
@@ -126,6 +131,7 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
   // temada lacivert yüzey + nabız atan neon kenar.
   const panel = usePanelTheme();
   const nn = useNeonNavy(panel.primary);
+  const U = useInkUI();
 
   const firstName = displayFirstName(profile?.full_name);
   const greeting  = props.greeting ?? (firstName ? t('dashboard.greetingName', { name: firstName }) : t('dashboard.greeting'));
@@ -160,175 +166,85 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
         gap: 12,
       }}>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{
-            fontSize: 10.5, fontWeight: '400', letterSpacing: 1.2, textTransform: 'uppercase',
-            color: T.ink3,
-          }}>
-            {adminTodayLabel(t)}
+          {/* Büyük başlık = sayfanın ADI (Özet). Tarih ve karşılama tek küçük satırda;
+              eskiden en büyük yazı "Hoş geldin, Kaan." idi ve sayfanın adı hiçbir
+              yerde yazmıyordu (2026-11-14). */}
+          <Text
+            accessibilityRole="header"
+            style={{
+              fontSize: 30, fontWeight: '500', color: T.ink, letterSpacing: -0.6, lineHeight: 34,
+              ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
+            }}
+          >
+            {t('nav.items.summary')}
           </Text>
-          <Text style={{
-            fontSize: 28, fontWeight: '300', color: T.ink, letterSpacing: -0.5, lineHeight: 32,
-            marginTop: 4,
-            ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
-          }}>
-            {greeting}
+          <Text style={{ fontSize: 14, color: T.ink2, marginTop: 4, lineHeight: 19 }} numberOfLines={1}>
+            {`${adminTodayLabel(t)} · ${String(greeting).replace(/[.!]+$/, '')}`}
           </Text>
-          <Text style={{ fontSize: 13.5, color: T.ink3, marginTop: 8, lineHeight: 19 }}>
-            {live.active > 0
-              ? t('admin.dashboard.ordersSummary', {
-                  active: live.active,
-                  overdue: overdue > 0 ? `, ${t('admin.dashboard.overdueCount', { count: overdue })}` : '',
-                })
-              : t('admin.dashboard.noOrdersToday')}
-          </Text>
+          {/* Alt satır yalnız iş yokken çıkar; bugün çıkacak / geciken sayıları
+              hemen alttaki Bugün şeridinde. */}
+          {live.active <= 0 ? (
+            <Text style={{ fontSize: 13.5, color: T.ink3, marginTop: 8, lineHeight: 19 }}>{t('admin.dashboard.noOrdersToday')}</Text>
+          ) : null}
         </View>
 
         {/* Top action icons — global TopActionBar (layout level) sağ üstte sabit */}
       </View>
 
-      {/* ═══ Primary CTA — animated "Yeni Sipariş" card ═══ */}
-      {!!props.onNewOrder && (
-        <NewOrderCTACard
-          accentColor={EXEC.primary}
-          onPress={props.onNewOrder}
-          // Eskiden "BUGÜN {toplam} SİPARİŞ" yazıyordu ama sayı TÜM siparişlerdi (denetim);
-          // artık bugün teslim edilecek açık iş sayısı.
-          kicker={(props.liveDueToday ?? 0) > 0 ? t('admin.cta.dueToday', { count: props.liveDueToday }) : t('admin.cta.newOrder')}
-          title={t('admin.cta.createNewOrder')}
-          art={KPI_ART.newOrder}
-          // 3D görsel lacivert/mavi → kart da lacivert gradyan (HERO_NAVY)
-          gradient={{ from: HERO_NAVY.light, to: HERO_NAVY.from, angle: 135 }}
-        />
-      )}
+      {/* "Yeni iş emri oluştur" kartı KALDIRILDI (2026-11-14): sağ alttaki "+"
+          düğmesi aynı işi yapıyor; kart ekranın en değerli yerinde onu tekrar
+          ediyordu. "Bugün N teslim" bilgisi karşılama satırına taşındı. */}
+
+      {/* ═══ Bugün şeridi — yöneticinin ilk bakacağı üç sayı ═══
+           Her kutu Siparişler'i o filtreyle açar (liste zaten ?filter= okuyor).
+           Sıfırsa kutu sönük ve dokunulmaz; sayı varsa tonlanır. */}
+      <TodayStrip
+        items={[
+          { key: 'overdue', label: autoT('Geciken'), n: overdue, tone: 'danger', icon: AlertTriangle,
+            onPress: () => router.push('/(admin)/orders?filter=overdue' as any) },
+          { key: 'today', label: autoT('Bugün çıkacak'), n: props.liveDueToday ?? 0, tone: 'info', icon: CalendarClock,
+            onPress: () => router.push('/(admin)/orders?filter=today' as any) },
+          { key: 'hold', label: autoT('Beklemede'), n: held, tone: 'warning', icon: Clock,
+            onPress: () => router.push('/(admin)/orders?filter=hold' as any) },
+          // Eskiden ayrı bir karttı ("0 · Bekleyen yok" için 64px); aynı türden sayı → şeritte.
+          { key: 'approvals', label: t('admin.dashboard.pendingApprovals'), n: pendingApprovals, tone: 'info', icon: FileCheck,
+            onPress: () => props.onApprovals?.() },
+        ]}
+      />
+
+      {props.tasksSlot ? (
+        <View style={{ marginHorizontal: 16, marginBottom: 16 }}>{props.tasksSlot}</View>
+      ) : null}
 
       {/* ═══ Canlı üretim ═══
            Hızlı İşlem kartıyla AYNI dil (useNeonNavy): açık temada DÜZ panel
            accent'i — gradyan yok, her panel kendi rengi; koyu temada lacivert
            yüzey + neon nabız. Metin/halka mürekkebi accent kontrastından gelir
            (safran gibi AÇIK accent'lerde otomatik koyu ink). */}
-      <View style={{
-        marginHorizontal: 16, marginBottom: 16,
-        borderRadius: 24, padding: 18, overflow: 'hidden',
-        ...nn.surface,
-      }}>
-        {!nn.flat && <NeonPulse radius={24} color={nn.glow} />}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <View style={{
-              width: 7, height: 7, borderRadius: 4,
-              backgroundColor: nn.ink,
-              ...(Platform.OS === 'web' ? { boxShadow: `0 0 0 4px ${hexA(nn.ink, 0.30)}` } as any : {}),
-            }} />
-            <Text style={{ fontSize: 10.5, fontWeight: '600', color: nn.inkSoft, letterSpacing: 1.2, textTransform: 'uppercase' }}>
-              {t('admin.dashboard.liveProduction')}
-            </Text>
-          </View>
-          <Text style={{ fontSize: 10, color: nn.inkFaint, fontFamily: T.mono }}>
-            {live.delivered}/{live.total}
-          </Text>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: 14 }}>
-          <View style={{ alignItems: 'center', gap: 6 }}>
-          <Ring value={live.pct} size={108} stroke={9} color={nn.ink} track={hexA(nn.ink, 0.22)} animatedEndDot sweep>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
-              <AnimatedNumber
-                value={live.pct}
-                duration={900}
-                style={{
-                  fontSize: 32, fontWeight: '400', color: nn.ink, letterSpacing: -0.8, lineHeight: 34,
-                  ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
-                }}
-              />
-              <Text style={{
-                fontSize: 14, color: nn.ink, fontWeight: '400',
-                ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
-              }}>%</Text>
-            </View>
-          </Ring>
-          {/* yüzdenin ne olduğu: kart "canlı üretim" başlığını taşıyor */}
-          <Text style={{ fontSize: 9.5, fontWeight: '600', color: nn.inkSoft, letterSpacing: 0.8, textTransform: 'uppercase' }} numberOfLines={1}>
-            {t('admin.dashboard.deliveryRate')}
-          </Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              {[
-                { l: t('admin.status.received'), n: live.stages.alindi },
-                { l: t('admin.status.production'), n: live.stages.uretim },
-                { l: t('admin.status.qcShort'),     n: live.stages.kk },
-                { l: t('admin.status.ready'),  n: live.stages.hazir },
-              ].map((s, i) => (
-                <View key={i} style={{ alignItems: 'center', gap: 6 }}>
-                  <View style={{
-                    width: 44, height: 44, borderRadius: 22,
-                    borderWidth: 1.5,
-                    borderColor: s.n > 0 ? nn.ink : hexA(nn.ink, 0.18),
-                    backgroundColor: s.n > 0 ? hexA(nn.ink, 0.14) : 'transparent',
-                    alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <AnimatedNumber
-                      value={s.n}
-                      duration={700}
-                      delay={i * 80}
-                      style={{
-                        fontSize: 17, fontWeight: '500', color: s.n > 0 ? nn.ink : nn.inkFaint,
-                        ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
-                      }}
-                    />
-                  </View>
-                  <Text style={{ fontSize: 9, color: nn.inkFaint, letterSpacing: 0.6, textTransform: 'uppercase' }}>
-                    {s.l}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </View>
-      </View>
+      <LiveProductionCard
+        nn={nn}
+        active={live.active}
+        delivered={live.delivered}
+        total={live.total}
+        pct={live.pct}
+        activeLabel={t('admin.dashboard.activeOrders')}
+        title={t('admin.dashboard.liveProduction')}
+        rateLabel={t('admin.dashboard.deliveryRate')}
+        onOpenAll={props.onAllOrders}
+        stages={[
+          { key: 'alindi', label: t('admin.status.received'), n: live.stages.alindi, tone: 'strong',
+            onPress: () => router.push('/(admin)/orders?status=alindi' as any) },
+          { key: 'uretimde', label: t('admin.status.production'), n: live.stages.uretim, tone: 'mid',
+            onPress: () => router.push('/(admin)/orders?status=uretimde' as any) },
+          { key: 'kalite_kontrol', label: autoT('Kalite Kontrol'), n: live.stages.kk, tone: 'soft',
+            onPress: () => router.push('/(admin)/orders?status=kalite_kontrol' as any) },
+          { key: 'teslimata_hazir', label: t('admin.status.ready'), n: live.stages.hazir, tone: 'ready',
+            onPress: () => router.push('/(admin)/orders?status=teslimata_hazir' as any) },
+        ]}
+      />
 
-      {/* ═══ KPI 2-grid ═══ */}
-      <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 16, ...ART_Z }}>
-        {/* Onay bekleyen — "Aylık gelir" placeholder'ının yerine geldi (o kart hiç
-            bağlanmamıştı, hep '—' gösteriyordu). Veri zaten yükleniyor; kart
-            dokunulabilir ve onaylar ekranına gider. Kasıtlı olarak BEYAZ kalır:
-            yanındaki "Aktif sipariş" kartı dolu/koyu olduğu için ikisi birden
-            dolu olursa grid ağırlaşıyor. */}
-        <Kpi
-          label={t('admin.dashboard.pendingApprovals')}
-          numericValue={pendingApprovals}
-          sub={pendingApprovals > 0
-            ? t('admin.dashboard.approvalsActionNeeded')
-            : t('admin.dashboard.approvalsClear')}
-          accent={EXEC.primary}
-          icon={FileCheck}
-          art={KPI_ART.approvals}
-          artSize={{ w: 64, h: 58 }}
-          onPress={props.onApprovals}
-        />
-
-        <Kpi
-          label={t('admin.dashboard.activeOrders')}
-          numericValue={props.activeOrders ?? 0}
-          delta={`${props.productionCount ?? 0} ${t('admin.dashboard.inProduction')}`}
-          // Dar kartta ikisi sığmıyor: geciken yoksa yalnız bekleme yazılır
-          sub={held > 0
-            ? (overdue > 0
-              ? `${t('admin.dashboard.overdueCount', { count: overdue })} · ${t('dashboard.heldCount', { count: held })}`
-              : t('dashboard.heldCount', { count: held }))
-            : t('admin.dashboard.overdueCount', { count: overdue })}
-          // Aktif > 0 ise highlight et
-          dark={(props.activeOrders ?? 0) > 0}
-          accent={EXEC.primary}
-          icon={ClipboardList}
-          art={KPI_ART.production}
-          artSize={{ w: 65, h: 68 }}
-          // Madde 13: geciken + uzun bekleyen listesi (NotificationsSheet) telefonda yalnız buradan açılır
-          onPress={overdue + held > 0 ? props.onNotifications : undefined}
-        />
-      </View>
-
-      {/* ═══ Tarama programı (modül açıksa; ay görünümü, dokunulan günün ajandası altta) ═══ */}
-      <ScanCalendarCard style={{ marginHorizontal: 16, marginBottom: 16 }} />
+      {/* ═══ Tarama programı (modül açıksa; TEK HAFTALIK şerit, dokunulan günün ajandası altta) ═══ */}
+      <ScanCalendarCard compact style={{ marginHorizontal: 16, marginBottom: 16 }} />
 
       {/* ═══ Üye trendi — masaüstü "Üye Trendi" kartının mobil karşılığı (hatched pill kolonları) ═══ */}
       {trend.length > 0 && (
@@ -340,29 +256,43 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
         padding: 14, borderRadius: 20,
         backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
       }}>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
-          <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase' }}>
-            {t('admin.dashboard.memberTrend')}
-          </Text>
-          <Text style={{ fontSize: 11, color: T.ink3 }}>
-            <Text style={{ color: T.ink, fontWeight: '600' }}>{trend[trend.length - 1]?.count ?? 0}</Text> {t('admin.dashboard.membersThisMonth')}
-          </Text>
+        {/* Başlık: büyük sayı + geçen aya göre fark. Açıklama satırları grafiğin ALTINA
+            indi (eskiden başlıkla grafik arasında iki satır duruyordu). Silindirler aynı. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', letterSpacing: -0.1, color: T.ink }}>{t('admin.dashboard.memberTrend')}</Text>
+          {isRTL() ? <ChevronLeft size={18} color={T.ink3} strokeWidth={2} /> : <ChevronRight size={18} color={T.ink3} strokeWidth={2} />}
         </View>
-        <Text style={{ fontSize: 10.5, color: T.ink3, marginBottom: (trend[trend.length - 1]?.cene || trend[trend.length - 1]?.adet) ? 2 : 12 }}>{t('admin.dashboard.toothMemberNote')}</Text>
         {(() => {
-          // Çene/adet işleri üyeye katılmaz; bu ayınkiler ayrı satırda.
-          const last = trend[trend.length - 1];
-          const parts: string[] = [];
-          if (last?.cene) parts.push(`${last.cene} ${autoT('çene')}`);
-          if (last?.adet) parts.push(`${last.adet} ${autoT('adet')}`);
-          return parts.length
-            ? <Text style={{ fontSize: 10.5, color: T.ink2, fontWeight: '600', marginBottom: 12 }}>{`${autoT('Bu ay ayrıca')} ${parts.join(' · ')}`}</Text>
-            : null;
+          const cur = trend[trend.length - 1]?.count ?? 0;
+          const prev = trend.length > 1 ? trend[trend.length - 2].count : null;
+          const diff = prev == null ? null : cur - prev;
+          const tone = diff == null || diff === 0 ? U.chipTones.neutral : diff > 0 ? U.chipTones.success : U.chipTones.warning;
+          const DiffIcon = diff != null && diff < 0 ? TrendingDown : TrendingUp;
+          return (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 12 }}>
+              <Text style={{
+                fontSize: 34, fontWeight: '400', color: T.ink, letterSpacing: -0.7, lineHeight: 38,
+                ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
+              }}>{cur}</Text>
+              <Text style={{ fontSize: 14, color: T.ink2, flexShrink: 1 }} numberOfLines={1}>{t('admin.dashboard.membersThisMonth')}</Text>
+              <View style={{ flex: 1 }} />
+              {diff != null ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, backgroundColor: tone.bg }}>
+                  {diff !== 0 ? <DiffIcon size={13} color={tone.fg} strokeWidth={2} /> : null}
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: tone.fg }} numberOfLines={1}>
+                    {`${diff > 0 ? '+' : ''}${diff} · ${autoT('Geçen aya göre')}`}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          );
         })()}
         {(() => {
-          // Ölçek: dönemin kendi tepesi; en yüksek ay dolu accent + kapsül etiket, diğerleri soluk
+          // Ölçek: dönemin kendi tepesi. Dolu accent + kapsül etiket BU AYDA (son
+          // sütun): başlık "N üye bu ay" diyor, vurgu da aynı ayı göstermeli.
+          // Eskiden en yüksek ay vurgulanıyordu → başlık Kasım, koyu sütun Ekim.
           const max = Math.max(1, ...trend.map((m) => m.count));
-          const peak = trend.reduce((best, m, i) => (m.count > trend[best].count ? i : best), 0);
+          const peak = trend.length - 1;
           const FILL_LIGHT = `${EXEC.primary}55`;
           const FILL_DARK  = EXEC.primary;
           const RAIL_BG    = `${EXEC.primary}08`;
@@ -414,6 +344,19 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
             </View>
           );
         })()}
+        <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: T.hairline }}>
+          <Text style={{ fontSize: 12, color: T.ink3, lineHeight: 17 }}>
+            {t('admin.dashboard.toothMemberNote')}
+            {(() => {
+              // Çene/adet işleri üyeye katılmaz; bu ayınkiler ayrıca yazılır.
+              const last = trend[trend.length - 1];
+              const parts: string[] = [];
+              if (last?.cene) parts.push(`${last.cene} ${autoT('çene')}`);
+              if (last?.adet) parts.push(`${last.adet} ${autoT('adet')}`);
+              return parts.length ? `\n${autoT('Bu ay ayrıca')} ${parts.join(' · ')}` : '';
+            })()}
+          </Text>
+        </View>
       </Pressable>
       )}
 
@@ -422,9 +365,14 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
         <TopClinicsCard compact />
       </View>
 
+      {props.unbilledSlot ? (
+        <View style={{ marginHorizontal: 16 }}>{props.unbilledSlot}</View>
+      ) : null}
+
       {/* ═══ Son Siparişler — desktop tablonun mobil karşılığı ═══ */}
       <RecentOrdersMobile
-        art={KPI_ART.recent}
+        rich
+        heading={autoT('Son siparişler')}
         items={props.recentOrders ?? []}
         accent={EXEC.primary}
         accentDark={EXEC.accentDark}
@@ -436,6 +384,168 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
 }
 
 // ─── Subcomponents ─────────────────────────────────────────────────────────
+
+// ─── Canlı üretim — akış kartı ──────────────────────────────────────────────
+// Kartın merkezi ÜRETİM AKIŞI: tek büyük sayı (aktif sipariş) + süreç sırasını
+// izleyen orantılı çubuk (Alındı → Üretimde → KK → Hazır) + dokunulabilir dört
+// sütun. Teslim oranı (tüm zamanlar; "canlı" değil) alta, ince çubuklu tek satıra
+// indi; "74/90" onun yanında anlam kazanır. Eskiden kartın en büyük öğesi o
+// orandı, canlı sayılar 9px etiketli küçük dairelerdeydi (2026-11-14).
+type LiveTone = 'strong' | 'mid' | 'soft' | 'ready';
+function LiveProductionCard({ nn, active, delivered, total, pct, title, activeLabel, rateLabel, stages, onOpenAll }: {
+  nn: ReturnType<typeof useNeonNavy>;
+  active: number; delivered: number; total: number; pct: number;
+  title: string; activeLabel: string; rateLabel: string;
+  stages: { key: string; label: string; n: number; tone: LiveTone; onPress: () => void }[];
+  onOpenAll?: () => void;
+}) {
+  const T = useMobileTokens();
+  const rtl = isRTL();
+  // "Hazır" tek iyi haber → yeşil. Açık (safran gibi) accent'te ink koyudur; yeşilin koyu tonu kullanılır.
+  const inkIsLight = nn.ink.toUpperCase().startsWith('#F') || nn.ink.toLowerCase().includes('255');
+  const READY = inkIsLight ? '#7BD8AC' : '#1F6B47';
+  const toneColor = (tone: LiveTone, n: number): string => {
+    if (n <= 0) return hexA(nn.ink, 0.38);
+    if (tone === 'ready') return READY;
+    return tone === 'strong' ? nn.ink : tone === 'mid' ? hexA(nn.ink, 0.62) : hexA(nn.ink, 0.42);
+  };
+  // Çubuk açılışta soldan dolar (yalnız transform; hareketi azalt açıksa anında).
+  const grow = React.useRef(new Animated.Value(prefersReducedMotion() ? 1 : 0)).current;
+  React.useEffect(() => {
+    if (prefersReducedMotion()) { grow.setValue(1); return; }
+    Animated.timing(grow, { toValue: 1, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [grow]);
+  const Chevron = rtl ? ChevronLeft : ChevronRight;
+  const HeadWrap: any = onOpenAll ? Pressable : View;
+  return (
+    <View style={{ marginHorizontal: 16, marginBottom: 16, borderRadius: 24, padding: 18, overflow: 'hidden', ...nn.surface }}>
+      {!nn.flat && <NeonPulse radius={24} color={nn.glow} />}
+      <HeadWrap
+        {...(onOpenAll ? { onPress: onOpenAll, accessibilityRole: 'button', accessibilityLabel: `${title}, ${active} ${activeLabel}` } : {})}
+        style={Platform.OS === 'web' && onOpenAll ? ({ cursor: 'pointer' } as any) : undefined}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', letterSpacing: -0.1, color: nn.ink }}>{title}</Text>
+          {onOpenAll ? <Chevron size={18} color={nn.inkFaint} strokeWidth={2} /> : null}
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 6 }}>
+          <AnimatedNumber
+            value={active}
+            duration={800}
+            style={{
+              fontSize: 44, fontWeight: '400', color: nn.ink, letterSpacing: -0.9, lineHeight: 46,
+              ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
+            }}
+          />
+          <Text style={{ fontSize: 15, color: nn.inkSoft }}>{activeLabel}</Text>
+        </View>
+      </HeadWrap>
+
+      {/* Akış çubuğu — genişlik sayıyla orantılı; sıfır aşama ince ve silik ama YERİNDE */}
+      <Animated.View style={{
+        flexDirection: 'row', gap: 3, height: 10, marginTop: 18,
+        transformOrigin: rtl ? 'right center' : 'left center',
+        transform: [{ scaleX: grow }],
+      } as any}>
+        {stages.map((st) => (
+          <View key={st.key} style={{
+            flex: st.n > 0 ? st.n : 0.5, minWidth: 6, borderRadius: 5,
+            backgroundColor: st.n > 0 ? toneColor(st.tone, st.n) : hexA(nn.ink, 0.18),
+          }} />
+        ))}
+      </Animated.View>
+
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+        {stages.map((st, i) => {
+          const c = toneColor(st.tone, st.n);
+          return (
+            <Pressable
+              key={st.key}
+              onPress={st.onPress}
+              accessibilityRole="button"
+              accessibilityLabel={`${st.label}, ${st.n}`}
+              style={{ flex: 1, minWidth: 0, paddingVertical: 2, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}
+            >
+              <AnimatedNumber
+                value={st.n}
+                duration={700}
+                delay={i * 80}
+                style={{
+                  fontSize: 22, fontWeight: '500', color: c, lineHeight: 27,
+                  ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
+                }}
+              />
+              <Text style={{ fontSize: 12, color: st.n > 0 && st.tone !== 'ready' ? nn.inkSoft : c, lineHeight: 15 }} numberOfLines={2}>
+                {st.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', gap: 10,
+        marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: hexA(nn.ink, 0.16),
+      }}>
+        <Text style={{ fontSize: 12, color: nn.inkSoft }} numberOfLines={1}>{rateLabel}</Text>
+        <View style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: hexA(nn.ink, 0.18), overflow: 'hidden' }}>
+          <View style={{ width: `${Math.max(0, Math.min(100, pct))}%`, height: 4, borderRadius: 2, backgroundColor: hexA(nn.ink, 0.78) }} />
+        </View>
+        <Text style={{ fontSize: 12, color: nn.ink, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
+          {`%${pct} · ${delivered}/${total}`}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+type TodayTone = 'danger' | 'info' | 'warning';
+// Durum şeridi — masaüstü Özet'in büyük sayılarıyla (BigStat) AYNI dil: kart yok,
+// ince büyük rakam, altında büyük harfli küçük etiket, bölmeler arasında saç teli
+// ayraç (kullanıcı kararı 2026-11-14). Sayı varsa rakam tonlanır ve bölme
+// Siparişler'i o filtreyle açar; sıfır bölme nötr ve dokunulmaz.
+function TodayStrip({ items }: {
+  items: { key: string; label: string; n: number; tone: TodayTone; icon: any; onPress: () => void }[];
+}) {
+  const T = useMobileTokens();
+  const U = useInkUI();
+  const SIZE = 34;   // masaüstü BigStat 40; telefonda dört bölme için bir kademe küçük (kullanıcı kararı)
+  return (
+    // Dört bölme: etiketler iki satıra sarabilir ("BUGÜN ÇIKACAK", "ONAY BEKLEYEN");
+    // rakamlar üstte hizalı kalsın diye bölmeler üstten hizalanır.
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, marginBottom: 18 }}>
+      {items.map((it, i) => {
+        const on = it.n > 0;
+        // Object style ZORUNLU (fonksiyon-stilli Pressable native'de stili düşürüyor).
+        const Wrap: any = on ? Pressable : View;
+        return (
+          <React.Fragment key={it.key}>
+            {i > 0 ? <View style={{ width: 1, height: 46, backgroundColor: T.hairline, marginHorizontal: 8 }} /> : null}
+            <Wrap
+              {...(on ? { onPress: it.onPress, accessibilityRole: 'button' } : {})}
+              accessibilityLabel={`${it.label}, ${it.n}`}
+              style={{ flex: 1, minWidth: 0, ...(Platform.OS === 'web' && on ? ({ cursor: 'pointer' } as any) : {}) }}
+            >
+              <AnimatedNumber
+                value={it.n}
+                duration={800}
+                delay={i * 80}
+                style={{
+                  fontSize: SIZE, fontWeight: '300', letterSpacing: -0.025 * SIZE, lineHeight: SIZE,
+                  color: on ? U.chipTones[it.tone].fg : T.ink,
+                  ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
+                }}
+              />
+              <Text style={{ fontSize: 10, color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.4, lineHeight: 13, marginTop: 4 }} numberOfLines={2}>
+                {it.label}
+              </Text>
+            </Wrap>
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
+}
 
 function TopIconButton({ icon: Icon, onPress, badgeDot }:
   { icon: any; onPress?: () => void; badgeDot?: boolean }) {

@@ -36,7 +36,9 @@ import {
   AlertTriangle, ArrowUpRight, ArrowUpLeft, ArrowRight, ArrowLeft, Check, Trophy, Inbox, Receipt, CornerDownRight,
   Wallet,
   PlusCircle, Pause,
+  ChevronDown, ChevronUp, ChevronRight, ChevronLeft,
 } from '../../core/ui/icons';
+import { useInkUI } from '../../core/theme/inkScale';
 import { useStockAlert } from '../../core/hooks/useStockAlert';
 import { useTranslation } from 'react-i18next';
 import { localeTag, isRTL, weekdayOffset, fmtWeekdayDayMonth } from '../../core/i18n';
@@ -943,20 +945,32 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
 const TASKS_SURFACE = '#3A4554';
 /** Görev kartı satırı. `action` = satırın sağında küçük eylem kapsülü (Devam ettir,
  *  Hekimi bekliyor) — satıra dokunmak yine `onPress` (detaya git) yapar. */
+type TaskGroup = 'late' | 'hold' | 'delivery' | 'invoice' | 'collect' | 'stock';
 type TaskItem = {
   icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void;
+  /** Mobil kartta başlık altında gruplamak için (masaüstü kullanmaz) */
+  group?: TaskGroup;
   action?: { label: string; tip: string; onPress: () => void };
 };
 
 function TasksCard({
-  tasks,
+  tasks, inline,
 }: {
   tasks: TaskItem[];
+  /** Kaydırılan sütunda (mobil Özet) kendi içerik yüksekliğini alır; ızgarada flex:1 ile hücreyi doldurur. */
+  inline?: boolean;
 }) {
   const PB = usePanelBlue();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const { t } = useTranslation();
   const doneCount = tasks.filter(task => task.done).length;
+  if (inline) return <TasksCardMobile tasks={tasks} />;
+  // Telefonda kart KAPALI başlar (tek satır: başlık + görev sayısı); başlığa
+  // dokununca açılır. Açık hâli ekranın tamamını tutup Canlı Üretim'i aşağı
+  // itiyordu (kullanıcı kararı 2026-11-14). Masaüstünde hep açık.
+  const [expanded, setExpanded] = useState(false);
+  const collapsed = !!inline && !expanded;
+  const openCount = tasks.length - doneCount;
   return (
     <View style={{
       backgroundColor: isDark ? HERO_NAVY.from : TASKS_SURFACE,
@@ -964,14 +978,39 @@ function TasksCard({
       backgroundImage: isDark
         ? `linear-gradient(135deg, ${HERO_NAVY.from} 0%, ${HERO_NAVY.to} 100%)`
         : `linear-gradient(135deg, ${TASKS_SURFACE} 0%, ${DS.exec.primaryDeep}33 100%)`,
-      borderRadius: DS.radius.xl, padding: 22,
-      flex: 1, gap: 0,
+      borderRadius: DS.radius.xl, padding: inline ? 18 : 22,
+      ...(inline ? null : { flex: 1 }), gap: 0,
     }}>
+      {inline ? (
+        <Pressable
+          onPress={() => setExpanded(v => !v)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: !collapsed }}
+          {...(Platform.OS === 'web' ? ({ 'aria-expanded': !collapsed } as any) : null)}
+          accessibilityLabel={`${t('admin.dashboard.todaysTasks')}, ${openCount}`}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 28,
+            marginBottom: collapsed ? 0 : 14,
+            ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+          }}
+        >
+          <Text style={{ fontSize: 14, fontWeight: '500', color: '#FFF', flexShrink: 1 }} numberOfLines={1}>{t('admin.dashboard.todaysTasks')}</Text>
+          <View style={{ minWidth: 24, height: 22, paddingHorizontal: 7, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFF' }}>{openCount}</Text>
+          </View>
+          <View style={{ flex: 1 }} />
+          {collapsed
+            ? <ChevronDown size={18} color="rgba(255,255,255,0.75)" strokeWidth={2} />
+            : <ChevronUp size={18} color="rgba(255,255,255,0.75)" strokeWidth={2} />}
+        </Pressable>
+      ) : (
       <View className="flex-row items-center justify-between" style={{ marginBottom: 14 }}>
         <Text style={{ fontSize: 14, fontWeight: '500', color: '#FFF' }}>{t('admin.dashboard.todaysTasks')}</Text>
         <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{doneCount}/{tasks.length}</Text>
       </View>
-      <View style={{ gap: 10, flex: 1 }}>
+      )}
+      {collapsed ? null : (
+      <View style={{ gap: 10, ...(inline ? null : { flex: 1 }) }}>
         {tasks.map((task, i) => {
           const IconComp = task.icon;
           return (
@@ -1037,6 +1076,122 @@ function TasksCard({
           );
         })}
       </View>
+      )}
+    </View>
+  );
+}
+
+
+// ── Bekleyen aksiyonlar — telefon ──
+// Masaüstündeki koyu kartın telefon karşılığı (aynı görev listesi). Farkları:
+//  • AÇIK, panel accent'iyle hafif tonlu yüzey — hemen altındaki lacivert Canlı
+//    Üretim kartıyla üst üste iki koyu blok olmasın.
+//  • Kapalı başlar; kapalıyken en öncelikli görevi tek satırda özetler.
+//  • Açıkken görevler türüne göre başlık altında gruplanır.
+//  • Satır sonunda boş daire yok (onay kutusu sanılıyordu) → ok ya da eylem kapsülü.
+const TASK_GROUP_ORDER: TaskGroup[] = ['late', 'hold', 'delivery', 'invoice', 'collect', 'stock'];
+const TASK_GROUP_LABEL: Record<TaskGroup, string> = {
+  late: 'Geciken', hold: 'Beklemede', delivery: 'Teslimat', invoice: 'Fatura', collect: 'Tahsilat', stock: 'Stok',
+};
+function TasksCardMobile({ tasks }: { tasks: TaskItem[] }) {
+  const PB = usePanelBlue();
+  const T = useMobileTokens();
+  const U = useInkUI();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const open = tasks.filter(x => !x.done);
+  const first = open[0];
+  const rtl = isRTL();
+  const RowChevron = rtl ? ChevronLeft : ChevronRight;
+  const groups = TASK_GROUP_ORDER
+    .map(g => ({ g, rows: open.filter(x => (x.group ?? 'delivery') === g) }))
+    .filter(x => x.rows.length > 0);
+  const surface = isDark ? (T.card as string) : hexA(PB, 0.08);
+  return (
+    // Çizgi YOK (kullanıcı kararı 2026-11-14): kenarlık, grup ayracı ve düğme çerçevesi
+    // kaldırıldı; yüzey tonu ve boşluk ayırır.
+    <View style={{ borderRadius: 20, backgroundColor: surface, overflow: 'hidden', paddingBottom: expanded ? 6 : 0 }}>
+      <Pressable
+        onPress={() => setExpanded(v => !v)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        {...(Platform.OS === 'web' ? ({ 'aria-expanded': expanded } as any) : null)}
+        accessibilityLabel={`${t('admin.dashboard.todaysTasks')}, ${open.length}`}
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 13,
+          ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+        }}
+      >
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', letterSpacing: -0.1, color: T.ink, flexShrink: 1 }} numberOfLines={1}>{t('admin.dashboard.todaysTasks')}</Text>
+            {/* Sayaç: amber yerine panel rengi dolgu + beyaz rakam (kullanıcı kararı 2026-11-14) */}
+            <View style={{ minWidth: 22, height: 20, paddingHorizontal: 7, borderRadius: 10, backgroundColor: PB, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>{open.length}</Text>
+            </View>
+          </View>
+          {!expanded && first ? (
+            <Text style={{ fontSize: 12, color: T.ink2, marginTop: 2 }} numberOfLines={1}>
+              {[first.label, first.time].filter(Boolean).join(' · ')}
+            </Text>
+          ) : null}
+        </View>
+        {expanded
+          ? <ChevronUp size={18} color={T.ink3 as string} strokeWidth={2} />
+          : <ChevronDown size={18} color={T.ink3 as string} strokeWidth={2} />}
+      </Pressable>
+
+      {expanded ? groups.map(({ g, rows }) => (
+        <View key={g}>
+          <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink3, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 2 }}>
+            {autoT(TASK_GROUP_LABEL[g])}
+          </Text>
+          {rows.map((task, i) => {
+            const IconComp = task.icon;
+            return (
+              <Pressable
+                key={`${g}-${i}`}
+                onPress={task.onPress}
+                // Eylem kapsülü olan satırda dış düğme rolü verilmez: web'de
+                // <button> içinde <button> geçersiz (konsol uyarısı + erişilebilirlik).
+                accessibilityRole={task.action ? undefined : 'button'}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 9,
+                  ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+                }}
+              >
+                <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+                  <IconComp size={15} color={(isDark ? T.ink2 : PB) as string} strokeWidth={1.8} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text numberOfLines={1} style={{ fontSize: 13.5, fontWeight: '600', color: T.ink }}>{task.label}</Text>
+                  {task.time ? <Text numberOfLines={2} style={{ fontSize: 12, color: T.ink2, marginTop: 1, lineHeight: 16 }}>{task.time}</Text> : null}
+                </View>
+                {task.action ? (
+                  <Pressable
+                    onPress={(e: any) => { e?.stopPropagation?.(); task.action!.onPress(); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={task.action.label}
+                    style={{
+                      paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999,
+                      // Eylem düğmesi lacivert dolgu: satırdaki tek gerçek eylem öne çıkar
+                      // (ok yalnız "detaya git" der). Kullanıcı kararı 2026-11-14.
+                      backgroundColor: PB,
+                      ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+                    }}
+                  >
+                    <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF' }}>{task.action.label}</Text>
+                  </Pressable>
+                ) : (
+                  <RowChevron size={17} color={T.ink3 as string} strokeWidth={2} />
+                )}
+              </Pressable>
+            );
+          })}
+          <View style={{ height: 4 }} />
+        </View>
+      )) : null}
     </View>
   );
 }
@@ -1560,7 +1715,7 @@ export default function AdminDashboard() {
   overdueOrdersFromRecent.slice(0, 2).forEach(o => {
     const late = daysLate(o.delivery_date);
     taskItems.push({
-      icon: Clock as React.FC<any>,
+      icon: Clock as React.FC<any>, group: 'late',
       label: `${autoT('Gecikmiş teslimat')} · ${taskNo(o.order_number)}`,
       time: late ? `${late} ${autoT('gün gecikti')} · ${fmtDate(o.delivery_date)}` : fmtDate(o.delivery_date),
       done: false,
@@ -1581,7 +1736,7 @@ export default function AdminDashboard() {
   const longHolds = heldRows.filter(r => r.hold_started_at && isLongHold(holdAgeOf(r)));
   longHolds.slice(0, 2).forEach(r => {
     taskItems.push({
-      icon: Pause as React.FC<any>,
+      icon: Pause as React.FC<any>, group: 'hold',
       label: `${autoT(holdCategoryLabel(r.hold_category))} · ${taskNo(r.order_number)}`,
       time: [`${holdAgeOf(r)} ${autoT('gündür')}`, r.hold_reason?.trim() || null].filter(Boolean).join(' · '),
       done: false,
@@ -1595,7 +1750,7 @@ export default function AdminDashboard() {
   });
   if (longHolds.length > 2) {
     taskItems.push({
-      icon: Pause as React.FC<any>,
+      icon: Pause as React.FC<any>, group: 'hold',
       label: `+${longHolds.length - 2} ${autoT('bekleyen iş daha')}`,
       time: autoT('Beklemede'),
       done: false,
@@ -1607,7 +1762,7 @@ export default function AdminDashboard() {
   // Upcoming deliveries as tasks
   upcoming.slice(0, 2).forEach(o => {
     taskItems.push({
-      icon: Package as React.FC<any>,
+      icon: Package as React.FC<any>, group: 'delivery',
       label: `${autoT('Teslime hazırla')} · ${taskNo(o.order_number)}`,
       time: `${fmtDate(o.delivery_date)} ${autoT('teslim')}`,
       done: false,
@@ -1619,7 +1774,7 @@ export default function AdminDashboard() {
   const todayOrdersFromRecent = recentOrders.filter(o => o.delivery_date === today && o.status !== 'teslim_edildi');
   todayOrdersFromRecent.slice(0, 1).forEach(o => {
     taskItems.push({
-      icon: Calendar as React.FC<any>,
+      icon: Calendar as React.FC<any>, group: 'delivery',
       label: `${autoT('Bugün teslim et')} · ${taskNo(o.order_number)}`,
       time: o.patient_name ?? t('admin.dashboard.today'),
       done: false,
@@ -1630,7 +1785,7 @@ export default function AdminDashboard() {
   // Teslim edildi ama faturası kesilmedi → sipariş detayında fatura kesilir
   unbilledRows.forEach((u: any) => {
     taskItems.push({
-      icon: Receipt as React.FC<any>,
+      icon: Receipt as React.FC<any>, group: 'invoice',
       label: `${autoT('Fatura kes')} · ${taskNo(u.order_number)}`,
       time: u.delivered_at
         ? `${fmtDate(String(u.delivered_at).slice(0, 10))} ${autoT('tarihinde teslim edildi')}`
@@ -1644,7 +1799,7 @@ export default function AdminDashboard() {
   // hatırlatmanın göndereceği tutarla aynı). En çok geciken 3 klinik.
   overdueClinics.slice(0, 3).forEach((c) => {
     taskItems.push({
-      icon: Wallet as React.FC<any>,
+      icon: Wallet as React.FC<any>, group: 'collect',
       label: `${autoT('Ödeme hatırlat')} · ${c.clinic_name}`,
       time: overdueClinicLine(c),
       done: false,
@@ -1654,7 +1809,7 @@ export default function AdminDashboard() {
   // 3'ten fazlası gizlenmesin: kalanlar Cari listesinde (aynı tutar, aynı sıra).
   if (overdueClinics.length > 3) {
     taskItems.push({
-      icon: Wallet as React.FC<any>,
+      icon: Wallet as React.FC<any>, group: 'collect',
       label: `+${overdueClinics.length - 3} ${autoT('klinik daha')}`,
       time: autoT('Cari Hesap'),
       done: false,
@@ -1664,7 +1819,7 @@ export default function AdminDashboard() {
 
   if (lowStockCount > 0) {
     taskItems.push({
-      icon: AlertTriangle as React.FC<any>,
+      icon: AlertTriangle as React.FC<any>, group: 'stock',
       label: `${autoT('Stok siparişi ver')} · ${lowStockCount} ${autoT('kalem')}`,
       time: 'Kritik seviyenin altında',
       done: false,
@@ -1689,6 +1844,92 @@ export default function AdminDashboard() {
   const recentWithParents = revParents.length ? [...recentOrders, ...revParents] : recentOrders;
   // Masaüstü tablo için vaka sırası (anchor + altında eski revizyonlar)
   const recentRows = flattenRevisionCases(recentWithParents);
+
+  // Masaüstü ve mobil Özet AYNI parçaları çizer (tek tanım): faturalanmamış
+  // teslim hatırlatması + görev kartındaki "Devam ettir / Hekimi bekliyor" pencereleri.
+  const unbilledBanner = unbilledCount > 0 ? (
+            <Pressable
+              onPress={() => router.push('/(admin)/finance' as any)}
+              style={{
+                marginBottom: 16,
+                padding: 18,
+                borderRadius: 18,
+                backgroundColor: 'rgba(217,119,6,0.08)',
+                borderWidth: 1,
+                borderColor: 'rgba(217,119,6,0.22)',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 14,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <View style={{
+                width: 44, height: 44, borderRadius: 12,
+                backgroundColor: 'rgba(217,119,6,0.18)',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Receipt size={20} color="#9C5E0E" strokeWidth={1.8} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#9C5E0E', letterSpacing: 0.2 }}>
+                  {t('admin.dashboard.unbilledDeliveries')}
+                </Text>
+                <Text style={{ fontSize: 12, color: T.ink2, marginTop: 2 }}>
+                  <NumberTickerX value={unbilledCount} duration={600} style={{ fontWeight: '700', color: T.ink } as any} />
+                  {` ${t('admin.dashboard.orders')}`}
+                  <NumberTickerX value={unbilledClinics} duration={600} style={{ fontWeight: '700', color: T.ink } as any} />
+                  {` ${t('admin.dashboard.clinicEstimated')}`}
+                  <Text style={{ fontWeight: '700', color: T.ink }}>
+                    {Object.entries(unbilledTotals).length === 0
+                      ? '—'
+                      : Object.entries(unbilledTotals)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([ccy, amt]) => formatMoney(amt, ccy as Currency, { fractionDigits: 2 }))
+                          .join(' · ')}
+                  </Text>
+                </Text>
+              </View>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#9C5E0E', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                {t('admin.dashboard.invoice')}
+              </Text>
+            </Pressable>
+  ) : null;
+  const holdModals = (
+    <>
+      {resumeTarget && (
+        <ResumeOrderModal
+          visible
+          order={{
+            id: resumeTarget.id,
+            order_number: resumeTarget.order_number,
+            created_at: resumeTarget.created_at,
+            delivery_date: resumeTarget.delivery_date ?? '',
+            hold_started_at: resumeTarget.hold_started_at ?? resumeTarget.created_at,
+            hold_responsible: resumeTarget.hold_responsible,
+            hold_category: resumeTarget.hold_category,
+            hold_reason: resumeTarget.hold_reason,
+          }}
+          onClose={() => setResumeTarget(null)}
+          onDone={() => { setResumeTarget(null); afterHoldChange(); }}
+        />
+      )}
+      {awaitTarget && (
+        <HoldOrderModal
+          visible
+          mode="awaitDoctor"
+          order={{
+            id: awaitTarget.id,
+            order_number: awaitTarget.order_number ?? null,
+            created_at: awaitTarget.created_at,
+            doctor_id: awaitTarget.doctor_id ?? null,
+            clinicId: awaitTarget.clinic_id ?? null,
+          }}
+          onClose={() => setAwaitTarget(null)}
+          onDone={() => { setAwaitTarget(null); afterHoldChange(); }}
+        />
+      )}
+    </>
+  );
 
   if (!isDesktop) {
     // Notification buckets — admin-specific
@@ -1753,6 +1994,19 @@ export default function AdminDashboard() {
         statusBg: st.bg,
         delivery: o.delivery_date ? fmtDate(o.delivery_date) : '',
         overdue: isOverdue,
+        // Dolu satır düzeni (RecentOrdersMobile rich): klinik logosu, akıştaki konum, kısa tarih + kalan gün
+        clinicLogoUrl: (o as any).clinic_logo_url ?? null,
+        progress: ({ alindi: 1, asamada: 2, uretimde: 2, kalite_kontrol: 3, teslimata_hazir: 4, kurye_bekleniyor: 4, kuryede: 4, teslim_edildi: 4 } as Record<string, number>)[String(o.status)] ?? 0,
+        deliveryShort: o.delivery_date
+          ? new Intl.DateTimeFormat(localeTag(i18n.language), { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${o.delivery_date}T12:00:00Z`))
+          : '',
+        deliveryNote: (() => {
+          if (!o.delivery_date || o.status === 'teslim_edildi' || o.status === 'iptal') return '';
+          const left = daysBetween(today, o.delivery_date);
+          if (isOverdue && left < 0) return `${-left} ${autoT('gün gecikti')}`;
+          if (left === 0) return autoT('Bugün teslim');
+          return left > 0 ? `${left} ${autoT('gün kaldı')}` : '';
+        })(),
       };
     };
     // Gruplama slice'tan ÖNCE: 6 satır = 6 VAKA (aynı vakanın üyeleri yer yemesin)
@@ -1781,7 +2035,9 @@ export default function AdminDashboard() {
           monthlyRevenue={'—'}
           monthlyDelta={undefined}
           activeOrders={totalActive}
-          productionCount={totalActive}
+          // Canlı Üretim kartındaki "Üretimde" dairesiyle AYNI sayı (eskiden tüm aktifler
+          // gidiyordu: kart "7 üretimde", KPI "16 üretimde" diyordu).
+          productionCount={pipelineCounts['uretimde'] ?? 0}
           overdueCount={overdueCount}
           heldCount={heldCount}
           pendingApprovalsCount={notifApprovals.length}
@@ -1792,9 +2048,14 @@ export default function AdminDashboard() {
           onNotifications={() => setNotificationsOpen(true)}
           onProfile={() => router.push('/(admin)/profile' as any)}
           onOpenOrder={(id) => router.push(`/(admin)/order/${id}` as any)}
+          // Masaüstündeki "Bugünkü Görevler" + faturalanmamış hatırlatması. Yapılacak iş
+          // yoksa (yalnız "görev yok" satırı) kart telefonda yer tutmaz.
+          tasksSlot={taskItems.some(x => !x.done) ? <TasksCard tasks={taskItems} inline /> : null}
+          unbilledSlot={unbilledBanner}
           refreshing={refreshing || loading}
           onRefresh={handleRefresh}
         />
+        {holdModals}
         <NotificationsSheet
           visible={notificationsOpen}
           onClose={() => setNotificationsOpen(false)}
@@ -2146,53 +2407,7 @@ export default function AdminDashboard() {
           </Card>
 
           {/* Faturalanmamış sipariş hatırlatması (Faz 3) */}
-          {unbilledCount > 0 && (
-            <Pressable
-              onPress={() => router.push('/(admin)/finance' as any)}
-              style={{
-                marginBottom: 16,
-                padding: 18,
-                borderRadius: 18,
-                backgroundColor: 'rgba(217,119,6,0.08)',
-                borderWidth: 1,
-                borderColor: 'rgba(217,119,6,0.22)',
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 14,
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              }}
-            >
-              <View style={{
-                width: 44, height: 44, borderRadius: 12,
-                backgroundColor: 'rgba(217,119,6,0.18)',
-                alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Receipt size={20} color="#9C5E0E" strokeWidth={1.8} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#9C5E0E', letterSpacing: 0.2 }}>
-                  {t('admin.dashboard.unbilledDeliveries')}
-                </Text>
-                <Text style={{ fontSize: 12, color: T.ink2, marginTop: 2 }}>
-                  <NumberTickerX value={unbilledCount} duration={600} style={{ fontWeight: '700', color: T.ink } as any} />
-                  {` ${t('admin.dashboard.orders')}`}
-                  <NumberTickerX value={unbilledClinics} duration={600} style={{ fontWeight: '700', color: T.ink } as any} />
-                  {` ${t('admin.dashboard.clinicEstimated')}`}
-                  <Text style={{ fontWeight: '700', color: T.ink }}>
-                    {Object.entries(unbilledTotals).length === 0
-                      ? '—'
-                      : Object.entries(unbilledTotals)
-                          .sort((a, b) => b[1] - a[1])
-                          .map(([ccy, amt]) => formatMoney(amt, ccy as Currency, { fractionDigits: 2 }))
-                          .join(' · ')}
-                  </Text>
-                </Text>
-              </View>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#9C5E0E', letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                {t('admin.dashboard.invoice')}
-              </Text>
-            </Pressable>
-          )}
+          {unbilledBanner}
 
           {/* Finans + Statü, altında İş Tipi + Bu hafta — aynı ızgara, sıra içinde eş boy */}
           <DashRow gap={16} style={{ marginBottom: 16 }}>
@@ -2226,38 +2441,7 @@ export default function AdminDashboard() {
 
       <View style={{ height: 40 }} />
 
-      {resumeTarget && (
-        <ResumeOrderModal
-          visible
-          order={{
-            id: resumeTarget.id,
-            order_number: resumeTarget.order_number,
-            created_at: resumeTarget.created_at,
-            delivery_date: resumeTarget.delivery_date ?? '',
-            hold_started_at: resumeTarget.hold_started_at ?? resumeTarget.created_at,
-            hold_responsible: resumeTarget.hold_responsible,
-            hold_category: resumeTarget.hold_category,
-            hold_reason: resumeTarget.hold_reason,
-          }}
-          onClose={() => setResumeTarget(null)}
-          onDone={() => { setResumeTarget(null); afterHoldChange(); }}
-        />
-      )}
-      {awaitTarget && (
-        <HoldOrderModal
-          visible
-          mode="awaitDoctor"
-          order={{
-            id: awaitTarget.id,
-            order_number: awaitTarget.order_number ?? null,
-            created_at: awaitTarget.created_at,
-            doctor_id: awaitTarget.doctor_id ?? null,
-            clinicId: awaitTarget.clinic_id ?? null,
-          }}
-          onClose={() => setAwaitTarget(null)}
-          onDone={() => { setAwaitTarget(null); afterHoldChange(); }}
-        />
-      )}
+      {holdModals}
     </ScrollView>
   );
 }

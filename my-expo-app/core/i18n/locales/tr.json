@@ -587,7 +587,7 @@
       "monthlyRevenue": "Aylık gelir",
       "pendingApprovals": "Onay bekleyen",
       "approvalsActionNeeded": "İşlem gerekli",
-      "approvalsClear": "Her şey güncel",
+      "approvalsClear": "Bekleyen yok",
       "revenueTarget": "Hedef ₺60K",
       "activeOrders": "Aktif sipariş",
       "overdueCount": "{{count}} geciken",

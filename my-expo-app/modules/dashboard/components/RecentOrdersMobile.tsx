@@ -58,6 +58,12 @@ export interface RecentOrderItem {
   isRevision?: boolean;
   /** Bu kayıt bir devam siparişi mi (planlı sonraki aşama) → DEVAM rozeti */
   isContinuation?: boolean;
+  /** `rich` düzen: üretim akışındaki konum, 0–4 (Alındı 1 · Üretimde 2 · KK 3 · Hazır/yolda/teslim 4) */
+  progress?: number;
+  /** `rich` düzen: tarihin yanındaki not — "6 gün kaldı", "Bugün teslim", "2 gün gecikti" */
+  deliveryNote?: string;
+  /** `rich` düzen: kısa tarih ("20 Kas"); yoksa `delivery` kullanılır */
+  deliveryShort?: string;
   /** Aynı vakanın daha eski üyeleri — bu satırın altında girintili gösterilir.
    *  Yerleşim kuralı: grup en güncel revizyonun yerinde durur, geçmiş altında. */
   history?: RecentOrderItem[];
@@ -82,7 +88,7 @@ function ContinuationTag() {
 }
 
 export function RecentOrdersMobile({
-  items, accent, accentDark, heading, onOpenOrder, onAllOrders, art,
+  items, accent, accentDark, heading, onOpenOrder, onAllOrders, art, rich,
 }: {
   items: RecentOrderItem[];
   accent: string;
@@ -94,6 +100,13 @@ export function RecentOrdersMobile({
    * Verilmezse kart bugünkü hâlini korur (lab/klinik/hekim etkilenmez).
    */
   art?: any;
+  /**
+   * Dolu satır düzeni (admin mobil Özet, 2026-11-14): sade başlık + "Tümünü gör",
+   * iş tipi · hekim tek satır, dört parçalı aşama çubuğu, "20 Kas · 6 gün kaldı",
+   * geciken işte kırmızı "N gün gecikti" rozeti. Verilmezse kart eski hâlindedir
+   * (lab/klinik/hekim etkilenmez).
+   */
+  rich?: boolean;
   onOpenOrder: (id: string) => void;
   onAllOrders?: () => void;
 }) {
@@ -116,36 +129,110 @@ export function RecentOrdersMobile({
   return (
     <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
       <View style={{ borderRadius: 22, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, overflow: 'hidden' }}>
-        {/* Başlık şeridi */}
-        <Pressable
-          onPress={onAllOrders}
-          style={{
-            flexDirection: 'row', alignItems: 'center', gap: 10,
-            paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12,
-            backgroundColor: headerBg,
-          }}
-        >
-          {art ? (
-            <Image source={art} resizeMode="contain" style={{ width: 32, height: 30 }} />
-          ) : (
-            <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: T.card, alignItems: 'center', justifyContent: 'center' }}>
-              <ClipboardList size={16} color={accent} strokeWidth={2.2} />
-            </View>
-          )}
-          <Text style={{ fontSize: 13, fontWeight: '700', color: accentReadable, letterSpacing: 0.2 }}>{headingText}</Text>
-          {/* Geciken varsa kırmızı rozet — mesajlardaki okunmamış rozetinin karşılığı */}
-          {overdueCount > 0 && (
-            <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: T.ruby, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>{overdueCount}</Text>
-            </View>
-          )}
-          <View style={{ flex: 1 }} />
-          {!!onAllOrders && <Chevron size={18} color={accentReadable} strokeWidth={2} />}
-        </Pressable>
+        {rich ? (
+          <Pressable
+            onPress={onAllOrders}
+            accessibilityRole={onAllOrders ? 'button' : undefined}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 }}
+          >
+            <Text style={{ fontSize: 14, fontWeight: '600', letterSpacing: -0.1, color: T.ink }}>{headingText}</Text>
+            {overdueCount > 0 && (
+              <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: T.ruby, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>{overdueCount}</Text>
+              </View>
+            )}
+            <View style={{ flex: 1 }} />
+            {!!onAllOrders && <Text style={{ fontSize: 13, fontWeight: '500', color: accentReadable }}>{autoT('Tümünü gör')}</Text>}
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={onAllOrders}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 10,
+              paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12,
+              backgroundColor: headerBg,
+            }}
+          >
+            {art ? (
+              <Image source={art} resizeMode="contain" style={{ width: 32, height: 30 }} />
+            ) : (
+              <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: T.card, alignItems: 'center', justifyContent: 'center' }}>
+                <ClipboardList size={16} color={accent} strokeWidth={2.2} />
+              </View>
+            )}
+            <Text style={{ fontSize: 13, fontWeight: '700', color: accentReadable, letterSpacing: 0.2 }}>{headingText}</Text>
+            {/* Geciken varsa kırmızı rozet — mesajlardaki okunmamış rozetinin karşılığı */}
+            {overdueCount > 0 && (
+              <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: T.ruby, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>{overdueCount}</Text>
+              </View>
+            )}
+            <View style={{ flex: 1 }} />
+            {!!onAllOrders && <Chevron size={18} color={accentReadable} strokeWidth={2} />}
+          </Pressable>
+        )}
 
         {/* Satırlar — her satır bir VAKA; revizyon geçmişi altında girintili */}
         {items.map(o => (
           <View key={o.id}>
+            {rich ? (
+            <Pressable
+              onPress={() => onOpenOrder(o.id)}
+              style={{
+                flexDirection: 'row', gap: 12,
+                paddingHorizontal: 16, paddingVertical: 12,
+                borderTopWidth: 1, borderTopColor: T.hairline,
+              }}
+            >
+              {/* Klinik logosu (yoksa baş harfler) */}
+              <View style={{
+                width: 38, height: 38, borderRadius: 19,
+                backgroundColor: o.clinicLogoUrl ? '#FFFFFF' : `${accent}1F`,
+                ...(o.clinicLogoUrl ? { borderWidth: 1, borderColor: T.hairline } : {}),
+                alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+              }}>
+                {o.clinicLogoUrl
+                  ? <Image source={{ uri: o.clinicLogoUrl }} style={{ width: 38, height: 38 }} resizeMode="cover" />
+                  : <Text style={{ fontSize: 13, fontWeight: '700', color: accentReadable }}>{o.initials}</Text>}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: T.ink, flex: 1, minWidth: 0, letterSpacing: -0.1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
+                    {o.title}
+                  </Text>
+                  {/* Geciken işte durum yerine gecikme yazar — karar verdiren bilgi o */}
+                  <View style={{ maxWidth: '50%', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: o.overdue ? 'rgba(217,75,75,0.12)' : o.statusBg, flexShrink: 0 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: o.overdue ? T.ruby : o.statusColor }} numberOfLines={1}>
+                      {o.overdue && o.deliveryNote ? o.deliveryNote : o.statusLabel}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 13, color: T.ink2, marginTop: 2, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
+                  {[o.workType, o.subtitle].filter(Boolean).join(' · ')}
+                </Text>
+                {typeof o.progress === 'number' ? (
+                  <View style={{ flexDirection: 'row', gap: 3, marginTop: 8 }}>
+                    {[1, 2, 3, 4].map(n => (
+                      <View key={n} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: n <= (o.progress ?? 0) ? (o.overdue ? T.ruby : accentReadable) : T.hairline }} />
+                    ))}
+                  </View>
+                ) : null}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0, marginTop: 7 }}>
+                  <Text style={{ fontSize: 12, color: T.ink3, fontFamily: T.mono, flexShrink: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
+                    #{o.no}
+                  </Text>
+                  {o.isRevision && <RevisionTag />}
+                  {o.isContinuation && <ContinuationTag />}
+                  <View style={{ flex: 1 }} />
+                  {!!(o.deliveryShort || o.delivery) && (
+                    <Text style={{ fontSize: 12, fontWeight: o.overdue ? '600' : '400', color: o.overdue ? T.ruby : T.ink3, flexShrink: 0 }} numberOfLines={1}>
+                      {[o.deliveryShort || o.delivery, o.overdue ? null : o.deliveryNote].filter(Boolean).join(' · ')}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </Pressable>
+            ) : (
             <Pressable
               onPress={() => onOpenOrder(o.id)}
               style={{
@@ -205,6 +292,7 @@ export function RecentOrdersMobile({
                 </View>
               </View>
             </Pressable>
+            )}
 
             {/* Geçmiş üyeler — girintili alt liste. Avatar tekrarlanmaz;
                 aynı hastanın aynı vakası olduğu zaten üstteki satırda belli. */}
