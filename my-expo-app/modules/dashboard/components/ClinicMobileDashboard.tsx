@@ -541,6 +541,7 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
         accentDark={CLINIC.accentDark}
         onOpenOrder={(id) => props.onOpenOrderById?.(id)}
         onAllOrders={props.onAllOrders}
+        rich
       />
     </ScrollView>
   );

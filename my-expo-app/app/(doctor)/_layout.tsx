@@ -283,6 +283,7 @@ export default function DoctorLayout() {
             searchItems={SEARCH_ITEMS}
             onSearchNavigate={(href) => router.push(href as any)}
             getItemRef={getItemRef}
+            labeled
           />
         )}
       </View>
@@ -333,12 +334,13 @@ export default function DoctorLayout() {
           onClose={() => setMoreOpen(false)}
           title={t('doctor.nav.allMenu')}
           items={MORE_ITEMS}
+          layout="grid"
           accentColor={accentColor}
         />
       </React.Suspense>
 
       {/* Sağ üst kalıcı aksiyon butonları (mobile only) — QR · Bell · Profile */}
-      {!hideTopActionBar && <TopActionBar routePrefix="/(doctor)" showSearch accentColor={accentColor} messagesRef={messagesTargetRef} />}
+      {!hideTopActionBar && <TopActionBar routePrefix="/(doctor)" showSearch accentColor={accentColor} messagesRef={messagesTargetRef} bellBadge="dot" profileInitials notificationsLayout="panel" />}
       {!hideTopActionBar && <PanelTopHeader />}
 
       {/* Command Palette — mobile search FAB üzerinden de erişilebilir */}

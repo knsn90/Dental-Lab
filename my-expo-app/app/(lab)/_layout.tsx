@@ -1,6 +1,7 @@
 import { lazyRoute } from '../../core/_lazyRoute';
 import { useAutoDocumentScroll } from '../../core/ui/mobile/documentScroll';
 import React, { useState, useEffect } from 'react';
+import { autoT } from '../../core/i18n/autoTranslate';
 import { useTranslation } from 'react-i18next';
 import { FaceScanQuickAction, useFaceScanAvailable } from '../../modules/orders/components/FaceScanQuickAction';
 // lazyRoute (React.lazy DEĞİL): Suspense'li yükleme modal içinde askıda kalıp formu
@@ -284,16 +285,16 @@ export default function LabLayout() {
   // "Daha" bottom-sheet'inde gösterilecek ekstra menüler — Onaylar pill'de
   // RBAC: yetkisi kapalı olan menü öğesi HİÇ gösterilmez (clinics/courier perm'siz → hep görünür).
   const MORE_ITEMS: import('../../core/ui/mobile/MoreMenuSheet').MoreItem[] = ([
-    ...(faceScanOk ? [{ key: 'approvals', requires: 'view_approvals', label: t('nav.items.approvals'), icon: CheckCircle22, badge: pendingCount > 0 ? pendingCount : undefined, onPress: () => router.push('/(lab)/approvals' as any) }] : []),
-    { key: 'paper',    requires: 'view_orders',     label: t('nav.items.paperInbox'),     sub: 'OCR · WhatsApp',                 icon: Camera2,   badge: pendingPaperCount > 0 ? pendingPaperCount : undefined, onPress: () => router.push('/(lab)/pending-paper' as any) },
-    { key: 'clinics',                               label: t('nav.items.clinics'),sub: 'Klinik & hekimler',              icon: Building22,onPress: () => router.push('/(lab)/clinics' as any) },
-    { key: 'courier',                               label: t('nav.items.courier'),     sub: 'Teslimat akışı',                 icon: Truck2,    onPress: () => router.push('/(lab)/courier-tracking' as any) },
-    { key: 'finance',  requires: 'view_financials', label: t('nav.items.finance'),          sub: 'Kasa · Fatura · Gider · Çek',    icon: Landmark2, onPress: () => router.push('/(lab)/finance' as any) },
-    { key: 'team',     requires: 'view_team',       label: t('nav.items.team'),            sub: 'Personel · maaş · izin',         icon: Users2,    onPress: () => router.push('/(lab)/ik-depo' as any) },
-    { key: 'stock',    requires: 'view_stock',      label: t('nav.items.stock'),     sub: 'Envanter · alarm',               icon: Package2,  onPress: () => router.push('/(lab)/stock' as any) },
-    ...(isManager && scansOn ? [{ key: 'scans', label: t('nav.items.scans'), sub: t('nav.items.scansSub'), icon: CalendarClock2, onPress: () => router.push('/(lab)/scans' as any) }] : []),
-    ...(isManager && phoneAssistantOn ? [{ key: 'phone-leads', label: t('nav.items.phoneLeads'), sub: t('nav.items.phoneLeadsSub'), icon: PhoneCall2, onPress: () => router.push('/(lab)/phone-leads' as any) }] : []),
-    { key: 'settings', requires: 'view_settings',   label: t('nav.items.settings'),         sub: 'Genel · Bildirim · Entegrasyon', icon: Settings2, onPress: () => router.push('/(lab)/settings' as any) },
+    ...(faceScanOk ? [{ key: 'approvals', group: autoT('Operasyon'), requires: 'view_approvals', label: t('nav.items.approvals'), icon: CheckCircle22, badge: pendingCount > 0 ? pendingCount : undefined, onPress: () => router.push('/(lab)/approvals' as any) }] : []),
+    { key: 'paper', group: autoT('Operasyon'),    requires: 'view_orders',     label: t('nav.items.paperInbox'),     sub: 'OCR · WhatsApp',                 icon: Camera2,   badge: pendingPaperCount > 0 ? pendingPaperCount : undefined, onPress: () => router.push('/(lab)/pending-paper' as any) },
+    { key: 'clinics', group: autoT('Yönetim'),                               label: t('nav.items.clinics'),sub: 'Klinik & hekimler',              icon: Building22,onPress: () => router.push('/(lab)/clinics' as any) },
+    { key: 'courier', group: autoT('Operasyon'),                               label: t('nav.items.courier'),     sub: 'Teslimat akışı',                 icon: Truck2,    onPress: () => router.push('/(lab)/courier-tracking' as any) },
+    { key: 'finance', group: autoT('Yönetim'),  requires: 'view_financials', label: t('nav.items.finance'),          sub: 'Kasa · Fatura · Gider · Çek',    icon: Landmark2, onPress: () => router.push('/(lab)/finance' as any) },
+    { key: 'team', group: autoT('Yönetim'),     requires: 'view_team',       label: t('nav.items.team'),            sub: 'Personel · maaş · izin',         icon: Users2,    onPress: () => router.push('/(lab)/ik-depo' as any) },
+    { key: 'stock', group: autoT('Yönetim'),    requires: 'view_stock',      label: t('nav.items.stock'),     sub: 'Envanter · alarm',               icon: Package2,  onPress: () => router.push('/(lab)/stock' as any) },
+    ...(isManager && scansOn ? [{ key: 'scans', group: autoT('Operasyon'), label: t('nav.items.scans'), sub: t('nav.items.scansSub'), icon: CalendarClock2, onPress: () => router.push('/(lab)/scans' as any) }] : []),
+    ...(isManager && phoneAssistantOn ? [{ key: 'phone-leads', group: autoT('Operasyon'), label: t('nav.items.phoneLeads'), sub: t('nav.items.phoneLeadsSub'), icon: PhoneCall2, onPress: () => router.push('/(lab)/phone-leads' as any) }] : []),
+    { key: 'settings', group: autoT('Yönetim'), requires: 'view_settings',   label: t('nav.items.settings'),         sub: 'Genel · Bildirim · Entegrasyon', icon: Settings2, onPress: () => router.push('/(lab)/settings' as any) },
   ] as any[]).filter((it: any) => !permLoaded || !it.requires || canPerm(it.requires));
 
   return (
@@ -371,6 +372,7 @@ export default function LabLayout() {
             accentColor={accentColor}
             searchItems={SEARCH_ITEMS}
             onSearchNavigate={(href) => router.push(href as any)}
+            labeled
           />
         )}
       </View>
@@ -428,6 +430,7 @@ export default function LabLayout() {
           title="Tüm Menü"
           subtitle="Sık kullanılmayan ekranlar"
           items={MORE_ITEMS}
+          layout="grid"
           accentColor={accentColor}
         />
       </React.Suspense>
@@ -447,7 +450,7 @@ export default function LabLayout() {
 
       {/* Sağ üst kalıcı aksiyon butonları (mobile only) — Search · QR · Bell · Profile
           Detay sayfaları kendi header'ını taşıyor (back + chat), TopActionBar çakışmasın */}
-      {!hideTopActionBar && <TopActionBar routePrefix="/(lab)" showSearch accentColor={accentColor} />}
+      {!hideTopActionBar && <TopActionBar routePrefix="/(lab)" showSearch accentColor={accentColor} bellBadge="dot" profileInitials notificationsLayout="panel" />}
       {/* Global sabit lab başlığı — logo + üst blur şeridi (her sayfada) */}
       {!hideTopActionBar && <LabTopHeader />}
     </>

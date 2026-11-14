@@ -54,7 +54,7 @@ import type { ClinicBalance } from '../../invoices/types';
 import { baseSymbol, getBaseCurrency } from '../../../core/money/baseCurrency';
 import { rateToBase } from '../../../core/money/rateCache';
 import { CURRENCY_META, type Currency } from '../../../core/money/currency';
-import { resolveOrderStatus } from '../components/RecentOrdersMobile';
+import { resolveOrderStatus, richOrderFields } from '../components/RecentOrdersMobile';
 import { mapRevisionCases, flattenRevisionCases } from '../../orders/revisionGroups';
 import { useRevisionParents } from '../../orders/hooks/useRevisionParents';
 import { useLabToday } from '../../../core/metrics/useLabToday';
@@ -1247,6 +1247,7 @@ export function ClinicDashboardScreen() {
         statusBg: st.bg,
         delivery: o.delivery_date ? fmtDate(o.delivery_date) : '',
         overdue: isOverdue,
+        ...richOrderFields(o, today, isOverdue),
       };
     };
     // Gruplama slice'tan ÖNCE: 6 satır = 6 VAKA (aynı vakanın üyeleri yer yemesin)

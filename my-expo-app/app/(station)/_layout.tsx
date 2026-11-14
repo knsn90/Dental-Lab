@@ -126,6 +126,27 @@ export default function StationLayout() {
           onNavigate={(href) => router.push(href as any)}
           accentColor={accentColor}
         />
+        {/* QR tarama — masaüstünde ortada popup (Özet'teki mesai "Okut" düğmesi bunu açar;
+            eskiden yalnız mobil kabukta vardı, masaüstünde düğme hiçbir şey yapmıyordu). */}
+        <Modal visible={scanOpen} transparent animationType="fade" onRequestClose={() => setScanOpen(false)}>
+          <View style={{
+            flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24,
+            backgroundColor: 'rgba(10,14,26,0.48)',
+            ...({ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } as any),
+          }}>
+            <View style={{ width: 420, maxWidth: '100%', height: 720, maxHeight: '92%', borderRadius: 28, overflow: 'hidden', backgroundColor: '#000000' }}>
+              <React.Suspense fallback={null}>
+                <ScanB6Mobile
+                  onClose={() => setScanOpen(false)}
+                  onOpenOrder={(id: string) => {
+                    setScanOpen(false);
+                    router.push(`/(station)/job-detail?id=${id}` as any);
+                  }}
+                />
+              </React.Suspense>
+            </View>
+          </View>
+        </Modal>
       </>
     );
   }
@@ -198,13 +219,14 @@ export default function StationLayout() {
           accentColor={TEKNISYEN.primary}
           searchItems={STATION_NAV_FLAT.map((n: any) => ({ label: n.label, href: n.href, sublabel: n.sectionLabel }))}
           onSearchNavigate={(href) => router.push(href as any)}
+          labeled
         />
       )}
 
       {/* Sağ üst sabit aksiyon butonları — QR · Mesaj · Bildirim · Profil
          (tüm station sayfalarında görünür; scan modal açıkken gizli) */}
       {!scanOpen && (
-        <TopActionBar routePrefix="/(station)" accentColor={TEKNISYEN.primary} />
+        <TopActionBar routePrefix="/(station)" accentColor={TEKNISYEN.primary} bellBadge="dot" profileInitials notificationsLayout="panel" />
       )}
       {!scanOpen && <PanelTopHeader />}
 

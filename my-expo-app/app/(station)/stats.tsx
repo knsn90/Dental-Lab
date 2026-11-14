@@ -14,6 +14,7 @@ import {
 } from '../../core/ui/icons';
 import { autoT } from '../../core/i18n/autoTranslate';
 import { resolveDoctorClinicNames } from '../../modules/orders/api';
+import { TechnicianDesktopDashboard } from '../../modules/station/components/TechnicianDesktopDashboard';
 import { useAuthStore } from '../../core/store/authStore';
 import { usePermissionStore } from '../../core/store/permissionStore';
 import { usePageTitleStore } from '../../core/store/pageTitleStore';
@@ -22,7 +23,7 @@ import { LinearProgressX, PercentRingX } from '../../core/ui/ProgressX';
 import { DS } from '../../core/theme/dsTokens';
 import { useStationTheme, hexA } from '../../core/theme/stationPalette';
 import { useNeonNavy, NeonPulse } from '../../core/ui/HeroGlow';
-import { localeTag, isRTL, fmtDayMonthShort, fmtDayMonthYear } from '../../core/i18n';
+import { localeTag, isRTL, fmtDayMonthShort, fmtDayMonthYear, fmtWeekdayDayMonth } from '../../core/i18n';
 import { mobileTopPad } from '../../core/ui/pageMetrics';
 
 const SERIF = {
@@ -263,6 +264,13 @@ interface ActiveJob {
   clinic_name: string | null;
   started_at: string | null;
   status: string | null;
+  delivery_date?: string | null;
+  is_urgent?: boolean;
+}
+// Yerel takvim günü (YYYY-MM-DD) — toISOString UTC'ye çevirdiği için gece
+// yarısına yakın biten işler yanlış güne düşüyordu.
+function localDayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 interface DayBar {
   date: string;
@@ -366,6 +374,8 @@ export default function StationDashboard() {
     activeJob: null,
   });
   const [loading, setLoading] = useState(true);
+  // Sorgu başarısız olursa sayfa sessizce sıfır göstermesin
+  const [loadError, setLoadError] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   // Realtime tick — order_stages değişince effect tetiklenip yeniden yüklesin
@@ -385,18 +395,19 @@ export default function StationDashboard() {
   useEffect(() => {
     if (!profile?.id) return;
     (async () => {
+     try {
       const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
       const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 6); weekAgo.setHours(0, 0, 0, 0);
 
       const [
-        { count: completed },
+        { count: completed, error: errCompleted },
         { count: todayCount },
         { count: activeNow },
         { data: wasteRows },
         { data: durations },
         { data: weekStages },
         { data: recentRows },
-        { data: activeRows },
+        { data: activeRows, error: errActive },
       ] = await Promise.all([
         supabase.from('order_stages').select('id', { count: 'exact', head: true })
           .eq('technician_id', profile.id).in('status', ['tamamlandi','onaylandi']),
@@ -425,7 +436,7 @@ export default function StationDashboard() {
         supabase.from('order_stages').select(`
             id, started_at, is_critical, status,
             station:lab_stations(name, color, is_critical),
-            work_order:work_orders!work_order_id(order_number, patient_name, work_type, doctor_id)
+            work_order:work_orders!work_order_id(order_number, patient_name, work_type, doctor_id, delivery_date, is_urgent)
           `)
           .eq('technician_id', profile.id).in('status', ['aktif', 'durakladi'])
           .order('status', { ascending: true })
@@ -447,8 +458,8 @@ export default function StationDashboard() {
       const weekBars: DayBar[] = [];
       for (let i = 6; i >= 0; i--) {
         const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0,0,0,0);
-        const iso = d.toISOString().slice(0, 10);
-        const dayCount = (weekStages ?? []).filter((s: any) => (s.completed_at ?? '').startsWith(iso)).length;
+        const iso = localDayKey(d);
+        const dayCount = (weekStages ?? []).filter((s: any) => s.completed_at && localDayKey(new Date(s.completed_at)) === iso).length;
         weekBars.push({ date: iso, label: days[d.getDay()], count: dayCount });
       }
 
@@ -480,6 +491,8 @@ export default function StationDashboard() {
         clinic_name:   null,
         started_at:    a.started_at ?? null,
         status:        a.status ?? null,
+        delivery_date: a.work_order?.delivery_date ?? null,
+        is_urgent:     !!a.work_order?.is_urgent,
       } : null;
 
       // Hekim + klinik adını çöz (doctor_id polimorfik). Teknisyen is_lab_user()
@@ -506,8 +519,67 @@ export default function StationDashboard() {
         recent,
         activeJob,
       });
+      setLoadError(!!(errCompleted || errActive));
       setLoading(false);
+     } catch (e) {
+      console.warn('[station-stats] load failed:', (e as any)?.message);
+      setLoadError(true);
+      setLoading(false);
+     }
     })();
+  }, [profile?.id, reloadTick]);
+
+  // Sıradaki işler — mobil Özet'teki "Sıradakiler" listesi (İşlerim ile aynı durumlar,
+  // elde olan aktif/duraklamış işler hariç).
+  const [queueRows, setQueueRows] = useState<any[]>([]);
+  useEffect(() => {
+    if (!profile?.id) return;
+    let alive = true;
+    (async () => {
+      const { data, error } = await supabase.from('order_stages').select(`
+          id, status, sequence_order, is_critical, started_at,
+          station:lab_stations(name, is_critical),
+          work_order:work_orders!work_order_id(order_number, patient_name, work_type, delivery_date, is_urgent, doctor_id)
+        `)
+        .eq('technician_id', profile.id)
+        .in('status', ['aktif', 'durakladi', 'bekliyor', 'makine_bekliyor', 'onay_bekliyor', 'bloklu', 'yeniden'])
+        .order('sequence_order', { ascending: true })
+        .limit(40);
+      if (error) console.warn('[station-stats] queue load failed:', error.message);
+      const rows = (data ?? []) as any[];
+      // Hekim/klinik adı — elde olan kartlar ve Sıradakiler satırları buradan beslenir
+      const docIds = Array.from(new Set(rows.map(r => r.work_order?.doctor_id).filter(Boolean))) as string[];
+      if (docIds.length) {
+        try {
+          const nameMap = await resolveDoctorClinicNames(docIds);
+          for (const r of rows) {
+            const info = nameMap.get(r.work_order?.doctor_id);
+            if (info) { r._doctorName = info.doctorName; r._clinicName = info.clinicName; }
+          }
+        } catch (e) {
+          console.warn('[station-stats] queue doctor resolve failed:', (e as any)?.message);
+        }
+        // Klinik logosu — sıra satırındaki yuvarlak görsel (bulunamazsa baş harfler)
+        const { data: logoRows } = await supabase.from('doctors').select('id, clinic:clinics(logo_url)').in('id', docIds);
+        const logos = new Map<string, string | null>();
+        for (const d of (logoRows ?? []) as any[]) logos.set(d.id, d.clinic?.logo_url ?? null);
+        // Hekim bir uygulama kullanıcısıysa (profiles) logo kliniğinden gelir
+        const profIds = docIds.filter(id => !logos.has(id));
+        if (profIds.length) {
+          const { data: profs } = await supabase.from('profiles').select('id, clinic_id').in('id', profIds);
+          const clinicIds = Array.from(new Set(((profs ?? []) as any[]).map(p => p.clinic_id).filter(Boolean)));
+          if (clinicIds.length) {
+            const { data: cls } = await supabase.from('clinics').select('id, logo_url').in('id', clinicIds);
+            const byClinic = new Map<string, string | null>();
+            for (const c of (cls ?? []) as any[]) byClinic.set(c.id, c.logo_url ?? null);
+            for (const p of (profs ?? []) as any[]) logos.set(p.id, p.clinic_id ? (byClinic.get(p.clinic_id) ?? null) : null);
+          }
+        }
+        for (const r of rows) r._clinicLogo = logos.get(r.work_order?.doctor_id) ?? null;
+      }
+      if (alive) setQueueRows(rows);
+    })();
+    return () => { alive = false; };
   }, [profile?.id, reloadTick]);
 
   const maxBar = useMemo(
@@ -516,32 +588,66 @@ export default function StationDashboard() {
   );
 
   // Page title gizli — dashboard'da kullanmıyoruz, content yukarı gelsin
+  // Masaüstünde kabuk başlığı = bugünün tarihi (admin Özet ile aynı, kenar menüyle
+  // aynı hizadan başlar). Mobilde başlık gizli kalır; sayfa kendi başlığını çizer.
+  const _isDeskTitle = require('react-native').useWindowDimensions().width >= 1024;
   useEffect(() => {
-    setTitle('', '');
+    setTitle(_isDeskTitle ? fmtWeekdayDayMonth(new Date()) : '', '');
     return clear;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [_isDeskTitle, i18n.language]);
 
   // ══════════════════════════════════════════════════════════════
   //  MOBILE — Aydın Lab handoff (TechnicianMobileDashboard)
   // ══════════════════════════════════════════════════════════════
+  // İş listeleri — mobil ve masaüstü Özet aynı eşlemeyi kullanır
+  const activeJobsArr = stats.activeJob ? [{
+    id:           stats.activeJob.stage_id,
+    orderNo:      stats.activeJob.order_number ?? '—',
+    patient:      stats.activeJob.patient_name ?? 'Hasta',
+    workType:     stats.activeJob.work_type ?? 'Sipariş',
+    stationName:  stats.activeJob.station_name ?? 'İstasyon',
+    doctorName:   stats.activeJob.doctor_name,
+    clinicName:   stats.activeJob.clinic_name,
+    status:       stats.activeJob.status ?? 'aktif',
+    startedAt:    stats.activeJob.started_at,
+    isCritical:   stats.activeJob.is_critical,
+    deliveryDate: stats.activeJob.delivery_date ?? null,
+    isUrgent:     !!stats.activeJob.is_urgent,
+  }] : [];
+  // Sıra: geri dönen → acil/kritik → teslim tarihi yakın olan
+  const toJob = (r: any) => ({
+    id:           r.id,
+    orderNo:      r.work_order?.order_number ?? '—',
+    patient:      r.work_order?.patient_name ?? 'Hasta',
+    workType:     r.work_order?.work_type ?? 'Sipariş',
+    stationName:  r.station?.name ?? 'İstasyon',
+    status:       r.status ?? 'bekliyor',
+    isCritical:   !!(r.is_critical || r.station?.is_critical),
+    isUrgent:     !!r.work_order?.is_urgent,
+    deliveryDate: r.work_order?.delivery_date ?? null,
+    startedAt:    r.started_at ?? null,
+    doctorName:   r._doctorName ?? null,
+    clinicName:   r._clinicName ?? null,
+    clinicLogoUrl: r._clinicLogo ?? null,
+  });
+  const inHand = (r: any) => r.status === 'aktif' || r.status === 'durakladi';
+  // Elde birden fazla iş varsa hepsi görünsün (şeritteki "Aktif iş" sayısıyla tutarlı):
+  // ilk kart hekim/klinik adı çözülmüş olan, diğerleri bu sorgudan.
+  for (const r of queueRows) {
+    if (inHand(r) && r.id !== stats.activeJob?.stage_id) activeJobsArr.push(toJob(r) as any);
+  }
+  const queueArr = queueRows.filter((r: any) => !inHand(r)).map(toJob).sort((a: any, b: any) => {
+    const rank = (j: any) => (j.status === 'yeniden' ? 0 : (j.isUrgent || j.isCritical) ? 1 : 2);
+    return rank(a) - rank(b) || String(a.deliveryDate ?? '9999').localeCompare(String(b.deliveryDate ?? '9999'));
+  });
+  const deskJobs = { active: activeJobsArr, queue: queueArr };
+
   const { width: _wMob } = require('react-native').useWindowDimensions();
   if (_wMob < 1024) {
     const { TechnicianMobileDashboard } = require('../../modules/station/components/TechnicianMobileDashboard');
     // Aktif işleri "active jobs" listesine çevirelim. stats.activeJob tek bir kayıt;
     // hero'daki kart için yeterli. Daha geniş liste için ileride ayrı query yapılabilir.
-    const activeJobsArr = stats.activeJob ? [{
-      id:           stats.activeJob.stage_id,
-      orderNo:      stats.activeJob.order_number ?? '—',
-      patient:      stats.activeJob.patient_name ?? 'Hasta',
-      workType:     stats.activeJob.work_type ?? 'Sipariş',
-      stationName:  stats.activeJob.station_name ?? 'İstasyon',
-      doctorName:   stats.activeJob.doctor_name,
-      clinicName:   stats.activeJob.clinic_name,
-      status:       stats.activeJob.status ?? 'aktif',
-      startedAt:    stats.activeJob.started_at,
-      isCritical:   stats.activeJob.is_critical,
-    }] : [];
     const monthsShort = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
     const wkStart = new Date(); wkStart.setDate(wkStart.getDate() - 6);
     const weekRange = `${fmtDayMonthShort(wkStart)} → ${fmtDayMonthShort(new Date())}`;
@@ -575,6 +681,10 @@ export default function StationDashboard() {
           weekBars={stats.weekBars.map(b => b.count)}
           weekRange={weekRange}
           activeJobs={activeJobsArr}
+          queue={queueArr}
+          loading={loading}
+          loadError={loadError}
+          onRetry={() => { setLoadError(false); setLoading(true); setReloadTick(t => t + 1); }}
           onOpenJob={(id: string) => router.push(`/(station)/jobs?focus=${id}` as any)}
           onJobs={() => router.push('/(station)/jobs' as any)}
           onHistory={() => router.push('/(station)/history' as any)}
@@ -603,344 +713,22 @@ export default function StationDashboard() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: P.pageBg }}
-      contentContainerStyle={{ padding: 16, paddingTop: mobileTopPad(insets.top), paddingBottom: 120, gap: 16 }}
+      contentContainerStyle={{ padding: 16, paddingTop: 24, paddingBottom: 120, gap: 16 }}   // masaüstü: admin Özet ile aynı üst boşluk
     >
-      {/* ═══ HERO — Tarih + selamlama ═══ */}
-      <View style={{ marginBottom: 6 }}>
-        <Text style={{ fontSize: 11, fontWeight: '600', color: STATION_ACCENT, letterSpacing: 1.4, textTransform: 'uppercase' }}>
-          {todayLabel.day} · {todayLabel.date}
-        </Text>
-        <Text style={{ ...SERIF, fontSize: 42, color: P.ink900, letterSpacing: -1.4, lineHeight: 44, marginTop: 4 }}>
-          Hoş geldin, <Text style={{ color: P.ink400 }}>{displayFirstName(profile?.full_name)}</Text>
-        </Text>
-        <Text style={{ fontSize: 13, color: P.ink500, marginTop: 6 }}>
-          {stats.activeNow === 0
-            ? 'Şu an aktif iş yok — yeni atama gelince burada görünecek.'
-            : `${stats.activeNow} aktif iş seni bekliyor.`}
-        </Text>
-      </View>
-
-      {/* ═══ TOP ROW — Yeni Sipariş CTA + aktif iş + performans (aynı satır) ═══ */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
-        {/* HERO: Aktif iş animated card */}
-        <View style={{ flex: 1.2, minWidth: 240 }}>
-          <AnimatedActiveJobCard
-            activeJob={stats.activeJob}
-            activeNow={stats.activeNow}
-            router={router}
-          />
-        </View>
-
-        {/* Sağ: Tek zengin performans kartı — hero ile aynı yükseklik */}
-        <View style={{ flex: 1, minWidth: 230 }}>
-          <Card style={{ padding: 22, flex: 1, justifyContent: 'space-between', gap: 18 }}>
-            {/* Header */}
-            <View className="flex-row items-center" style={{ gap: 10 }}>
-              <View style={{
-                width: 32, height: 32, borderRadius: 10,
-                backgroundColor: hexA(STATION_DEEP, 0.12),
-                alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Check size={16} color={STATION_DEEP} strokeWidth={2.2} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: P.ink500, letterSpacing: 1.2, textTransform: 'uppercase' }}>
-                  {t('station.dashboard.performance')}
-                </Text>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: P.ink900, letterSpacing: -0.1, marginTop: 1 }}>
-                  {t('station.dashboard.completedStages')}
-                </Text>
-              </View>
-            </View>
-
-            {/* Büyük öne çıkan metrik — Bugün */}
-            <View style={{ gap: 4 }}>
-              <View className="flex-row items-center" style={{ gap: 6 }}>
-                <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#1F6B47' }} />
-                <Text style={{ fontSize: 10.5, fontWeight: '700', color: P.ink500, letterSpacing: 1, textTransform: 'uppercase' }}>
-                  {t('common.today')}
-                </Text>
-                <Text style={{ fontSize: 10.5, color: P.ink400, marginStart: 'auto' }}>{todayLabel.day}</Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-                <Text style={{ ...SERIF, fontSize: 52, lineHeight: 54, color: P.ink900, letterSpacing: -1.4 }}>
-                  {loading ? '…' : stats.todayCount}
-                </Text>
-                <Text style={{ fontSize: 14, color: P.ink500, fontWeight: '500' }}>{t('station.dashboard.stagesCompleted')}</Text>
-              </View>
-            </View>
-
-            {/* Alt: 2 ikincil metrik yan yana */}
-            <View style={{ flexDirection: 'row', alignItems: 'stretch', paddingTop: 14, borderTopWidth: 1, borderTopColor: P.ink100 }}>
-              {/* Toplam */}
-              <View style={{ flex: 1, gap: 4, paddingEnd: 12 }}>
-                <View className="flex-row items-center" style={{ gap: 5 }}>
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: STATION_DEEP }} />
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: P.ink500, letterSpacing: 0.8, textTransform: 'uppercase' }}>
-                    {t('common.total')}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-                  <Text style={{ ...SERIF, fontSize: 26, lineHeight: 28, color: P.ink900, letterSpacing: -0.6 }}>
-                    {loading ? '…' : (Number(stats.completed) || 0).toLocaleString(localeTag(i18n.language))}
-                  </Text>
-                  <Text style={{ fontSize: 11, color: P.ink400 }}>{t('common.stages')}</Text>
-                </View>
-                <Text style={{ fontSize: 10.5, color: P.ink400 }}>{t('common.allTime')}</Text>
-              </View>
-
-              {/* Ayırıcı */}
-              <View style={{ width: 1, backgroundColor: P.ink100 }} />
-
-              {/* Ort. süre */}
-              <View style={{ flex: 1, gap: 4, paddingStart: 12 }}>
-                <View className="flex-row items-center" style={{ gap: 5 }}>
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#9C5E0E' }} />
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: P.ink500, letterSpacing: 0.8, textTransform: 'uppercase' }}>
-                    {t('station.dashboard.averageDuration')}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-                  <Text style={{ ...SERIF, fontSize: 26, lineHeight: 28, color: P.ink900, letterSpacing: -0.6 }}>
-                    {loading || stats.avgDurationHours == null ? '—' : stats.avgDurationHours}
-                  </Text>
-                  {!loading && stats.avgDurationHours != null && (
-                    <Text style={{ fontSize: 11, color: P.ink400 }}>{t('common.hours')}</Text>
-                  )}
-                </View>
-                <Text style={{ fontSize: 10.5, color: P.ink400 }}>{t('station.dashboard.perStage')}</Text>
-              </View>
-            </View>
-          </Card>
-        </View>{/* /sağ KPI kolonu */}
-
-        {/* Yeni Sipariş CTA — en sağda (yalnız manage_order_create yetkili teknisyene) */}
-        {canCreateOrder && (
-          <View style={{ flex: 1, minWidth: 220 }}>
-            <StationCTACard onPress={() => router.push('/(station)/new-order' as any)} />
-          </View>
-        )}
-      </View>{/* /TOP ROW */}
-
-      {/* ═══ BOTTOM ROW — Haftalık + Verimlilik ═══ */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
-        {/* Sol: Haftalık — 7 günlük kart row */}
-        <Card style={{ flex: 1.4, minWidth: 320, padding: 18 }}>
-          {/* Header */}
-          <View className="flex-row items-center" style={{ marginBottom: 14, gap: 12 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: P.ink900 }}>{t('common.thisWeek')}</Text>
-            <Text style={{ fontSize: 13, color: P.ink400 }}>
-              {(() => {
-                const monthsShort = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
-                const first = stats.weekBars[0]?.date;
-                const last  = stats.weekBars[stats.weekBars.length - 1]?.date;
-                if (!first || !last) return '';
-                const fd = new Date(first);
-                const ld = new Date(last);
-                return `${fd.getDate()}–${ld.getDate()} ${monthsShort[ld.getMonth()]} ${ld.getFullYear()}`;
-              })()}
-            </Text>
-            <View style={{ flex: 1 }} />
-            <View
-              className="rounded-full"
-              style={{
-                paddingHorizontal: 10, paddingVertical: 4,
-                backgroundColor: hexA(STATION_ACCENT, 0.12),
-              }}
-            >
-              <Text style={{ fontSize: 11, fontWeight: '600', color: STATION_DEEP, letterSpacing: 0.3 }}>
-                {t('common.total')} {stats.weekBars.reduce((s, b) => s + b.count, 0)}
-              </Text>
-            </View>
-          </View>
-
-          {/* 7 gün — hatched-rail pill kolonlar (admin tarzı) */}
-          {(() => {
-            const SCALE_MAX = 20;
-            const FILL_LIGHT = hexA(STATION_ACCENT, 0.35);
-            const FILL_DARK  = STATION_ACCENT;
-            const STRIPE_BG  = `repeating-linear-gradient(135deg, ${P.ink100} 0 6px, transparent 6px 12px)`;
-            const todayIso = new Date().toISOString().slice(0, 10);
-            const maxInWeek = Math.max(...stats.weekBars.map(b => b.count));
-            return (
-              <View className="flex-row items-end" style={{ gap: 10, minHeight: 160, paddingHorizontal: 2 }}>
-                {stats.weekBars.map(bar => {
-                  const d = new Date(bar.date);
-                  const dayLabels = ['PZ','PA','SA','ÇA','PE','CU','CT'];
-                  const isToday = bar.date === todayIso;
-                  const isMax   = bar.count > 0 && bar.count === maxInWeek;
-                  const pct = bar.count > 0 ? Math.min(Math.max((bar.count / SCALE_MAX) * 100, 8), 100) : 0;
-                  const empty = bar.count === 0;
-                  const showBubble = (isToday || isMax) && bar.count > 0;
-                  return (
-                    <View key={bar.date} style={{ flex: 1, alignItems: 'center', height: 160, justifyContent: 'flex-end', gap: 6 }}>
-                      <View style={{ width: '100%', maxWidth: 56, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
-                        {showBubble && (
-                          <View style={{ marginBottom: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: P.surface, borderWidth: 1, borderColor: P.ink100 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: STATION_DEEP }}>{bar.count}</Text>
-                          </View>
-                        )}
-                        <View
-                          style={{
-                            width: '100%',
-                            height: '100%',
-                            borderRadius: 999,
-                            backgroundColor: P.surfaceAlt,
-                            // @ts-ignore web hatched bg
-                            backgroundImage: STRIPE_BG,
-                            overflow: 'hidden',
-                            position: 'relative' as any,
-                          }}
-                        >
-                          {/* Native: CSS gradyanı yok → SVG tarama */}
-                          <HatchFill color={P.ink100} opacity={1} />
-                          {!empty && (
-                            <View
-                              style={{
-                                position: 'absolute',
-                                left: 0, right: 0, bottom: 0,
-                                height: `${pct}%`,
-                                borderRadius: 999,
-                                backgroundColor: isToday || isMax ? FILL_DARK : FILL_LIGHT,
-                              }}
-                            />
-                          )}
-                        </View>
-                      </View>
-                      <Text style={{
-                        fontSize: 11,
-                        fontWeight: isToday ? '700' : '500',
-                        color: isToday ? P.ink900 : P.ink400,
-                        textTransform: 'uppercase',
-                        letterSpacing: 0.05 * 11,
-                      }}>
-                        {dayLabels[d.getDay()]}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-            );
-          })()}
-        </Card>
-
-        {/* Sağ: Verimlilik ring — koyu denim gradient (hero ile aynı dil) */}
-        <View
-          className="overflow-hidden"
-          style={{
-            flex: 1, minWidth: 280,
-            borderRadius: 24,
-            borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
-            // @ts-ignore — web gradient
-            backgroundImage: `linear-gradient(180deg, ${STATION_DEEP} 0%, #0F2840 100%)`,
-            backgroundColor: '#0F2840',
-            padding: 16,
-            alignItems: 'center',
-            position: 'relative',
-          }}
-        >
-          {/* Ambient soft glow merkezde */}
-          <View
-            style={{
-              position: 'absolute',
-              top: '38%', left: '50%',
-              width: 200, height: 200, borderRadius: 100,
-              backgroundColor: STATION_ACCENT,
-              opacity: 0.10,
-              transform: [{ translateX: -100 }, { translateY: -100 }],
-            }}
-            pointerEvents="none"
-          />
-
-          <View className="w-full flex-row items-center justify-between" style={{ marginBottom: 8 }}>
-            <Text style={{ fontSize: 14, fontWeight: '500', color: '#FFFFFF' }}>{t('station.dashboard.efficiency')}</Text>
-            <View
-              className="items-center justify-center rounded-full"
-              style={{ width: 32, height: 32, backgroundColor: hexA(STATION_ACCENT, 0.20), borderWidth: 1, borderColor: hexA(STATION_ACCENT, 0.40) }}
-            >
-              <TrendingUp size={14} color="#FFFFFF" strokeWidth={1.8} />
-            </View>
-          </View>
-
-          <PercentRingX value={stats.efficiency} size={110} theme="tech" />
-
-          <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 8 }}>
-            {t('station.dashboard.firstTimeSuccess')}
-          </Text>
-
-          <View className="flex-row" style={{ gap: 8, marginTop: 8 }}>
-            <View
-              className="items-center rounded-full"
-              style={{ paddingHorizontal: 10, paddingVertical: 4, flexDirection: 'row', gap: 5, backgroundColor: 'rgba(220,38,38,0.18)', borderWidth: 1, borderColor: 'rgba(220,38,38,0.30)' }}
-            >
-              <Flame size={10} color="#FCA5A5" strokeWidth={1.8} />
-              <Text style={{ fontSize: 10, fontWeight: '500', color: '#FCA5A5' }}>
-                {t('station.dashboard.totalWaste')} {stats.waste.toFixed(1)}
-              </Text>
-            </View>
-          </View>
-        </View>
-      </View>
-
-      {/* ═══ Recent activity ═══ */}
-      <Card style={{ padding: 16 }}>
-        <View className="flex-row items-start justify-between" style={{ marginBottom: 14 }}>
-          <View>
-            <Text style={{ fontSize: 14, fontWeight: '500', color: P.ink900 }}>{t('station.dashboard.recentActivity')}</Text>
-            <Text style={{ ...SERIF, fontSize: 22, lineHeight: 26, color: P.ink900, letterSpacing: -0.4, marginTop: 4 }}>
-              {t('station.dashboard.last5CompletedJobs')}
-            </Text>
-          </View>
-          <Pressable
-            onPress={() => router.push('/(station)/history' as any)}
-            className="items-center justify-center rounded-full"
-            style={{ width: 32, height: 32, backgroundColor: hexA(STATION_ACCENT, 0.10) }}
-          >
-            {isRTL() ? <ArrowUpLeft size={14} color={STATION_ACCENT} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={STATION_ACCENT} strokeWidth={1.8} />}
-          </Pressable>
-        </View>
-
-        {stats.recent.length === 0 ? (
-          <View style={{ paddingVertical: 32, alignItems: 'center', gap: 8 }}>
-            <Calendar size={28} color={P.ink300} strokeWidth={1.5} />
-            <Text style={{ fontSize: 12, color: P.ink400 }}>{t('station.dashboard.noCompletedJobsYet')}</Text>
-          </View>
-        ) : (
-          <View style={{ gap: 8 }}>
-            {stats.recent.map(it => (
-              <View
-                key={it.id}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 12,
-                  paddingHorizontal: 14, paddingVertical: 12,
-                  backgroundColor: P.surfaceAlt,
-                  borderRadius: 12,
-                  borderWidth: 1, borderColor: hexA(STATION_ACCENT, 0.10),
-                }}
-              >
-                <View style={{
-                  width: 32, height: 32, borderRadius: 10,
-                  backgroundColor: hexA('#1F6B47', 0.12),
-                  alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Check size={14} color="#1F6B47" strokeWidth={2.2} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: P.ink900 }} numberOfLines={1}>
-                    {it.station_name ?? '—'}
-                  </Text>
-                  <Text style={{ fontSize: 11, color: P.ink500, marginTop: 2 }} numberOfLines={1}>
-                    #{it.order_number ?? '—'} · {it.patient_name ?? '—'}
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 10, color: P.ink400 }}>
-                  {it.completed_at ? new Date(it.completed_at).toLocaleDateString(localeTag(i18n.language)) : '—'}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </Card>
+      <TechnicianDesktopDashboard
+        activeNow={stats.activeNow}
+        avgDurationHours={stats.avgDurationHours}
+        todayCompleted={stats.todayCount}
+        efficiencyPct={stats.efficiency}
+        weekBars={stats.weekBars.map(b => b.count)}
+        activeJobs={deskJobs.active}
+        queue={deskJobs.queue}
+        loading={loading}
+        loadError={loadError}
+        onRetry={() => { setLoadError(false); setLoading(true); setReloadTick(t => t + 1); }}
+        onOpenJob={(id: string) => router.push(`/(station)/jobs?focus=${id}` as any)}
+        onNewOrder={canCreateOrder ? () => router.push('/(station)/new-order' as any) : undefined}
+      />
     </ScrollView>
   );
 }

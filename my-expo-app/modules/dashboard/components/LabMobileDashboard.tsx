@@ -336,7 +336,7 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
       </View>
 
       {/* ═══ Tarama programı (modül açıksa; ay görünümü, dokunulan günün ajandası altta) ═══ */}
-      <ScanCalendarCard style={{ marginHorizontal: 16, marginBottom: 16 }} />
+      <ScanCalendarCard compact style={{ marginHorizontal: 16, marginBottom: 16 }} />
 
       {/* ═══ Sipariş trendi — masaüstü "Sipariş Trendi" kartının mobil karşılığı (hatched pill kolonları) ═══ */}
       {trend.length > 0 && (() => {
@@ -517,6 +517,7 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
         accentDark={LAB.accentDark}
         onOpenOrder={(id) => props.onOpenOrderById?.(id)}
         onAllOrders={props.onAllOrders}
+        rich
       />
     </ScrollView>
   );

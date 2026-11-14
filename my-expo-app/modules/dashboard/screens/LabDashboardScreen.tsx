@@ -64,7 +64,7 @@ import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
 import { useNeonNavy, NeonPulse, useAccentTones } from '../../../core/ui/HeroGlow';
 import { PipelineFlowRow } from '../../../core/ui/PipelineFlowRow';
 import { FaceScanQuickAction } from '../../orders/components/FaceScanQuickAction';
-import { resolveOrderStatus } from '../components/RecentOrdersMobile';
+import { resolveOrderStatus, richOrderFields } from '../components/RecentOrdersMobile';
 import { mapRevisionCases, flattenRevisionCases } from '../../orders/revisionGroups';
 import { useRevisionParents } from '../../orders/hooks/useRevisionParents';
 import { ScanCalendarCard, useScanCardVisible } from '../../scans/components/ScanCalendarCard';
@@ -1636,6 +1636,7 @@ export function LabDashboardScreen() {
         statusBg: st.bg,
         delivery: o.delivery_date ? fmtDate(o.delivery_date) : '',
         overdue: isOverdue,
+        ...richOrderFields(o, today, isOverdue),
       };
     };
     const recentForMobile = mapRevisionCases(recentWithParents, toRecentItem).slice(0, 6);

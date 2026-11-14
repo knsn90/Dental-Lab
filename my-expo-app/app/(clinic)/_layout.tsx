@@ -296,6 +296,7 @@ export default function ClinicLayout() {
             searchItems={SEARCH_ITEMS}
             onSearchNavigate={(href) => router.push(href as any)}
             getItemRef={getItemRef}
+            labeled
           />
         )}
       </View>
@@ -347,12 +348,13 @@ export default function ClinicLayout() {
           onClose={() => setMoreOpen(false)}
           title={t('clinic.moreMenu.title')}
           items={MORE_ITEMS}
+          layout="grid"
           accentColor={accentColor}
         />
       </React.Suspense>
 
       {/* Sağ üst kalıcı aksiyon butonları (mobile only) — QR · Bell · Profile */}
-      {!hideTopActionBar && <TopActionBar routePrefix="/(clinic)" showSearch accentColor={accentColor} messagesRef={messagesTargetRef} />}
+      {!hideTopActionBar && <TopActionBar routePrefix="/(clinic)" showSearch accentColor={accentColor} messagesRef={messagesTargetRef} bellBadge="dot" profileInitials notificationsLayout="panel" />}
       {!hideTopActionBar && <PanelTopHeader />}
 
       {/* İlk-giriş coach-mark turu (klinik) — sadece ilk girişte */}

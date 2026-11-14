@@ -107,7 +107,7 @@ export function UnreadMessagesCard({
               <MessageCircle size={16} color={accent} strokeWidth={2.2} />
             </View>
           )}
-          <Text style={{ fontSize: 13, fontWeight: '700', color: headerInk, letterSpacing: 0.2 }}>{autoT('Mesajlar')}</Text>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: headerInk, letterSpacing: -0.2 }}>{autoT('Mesajlar')}</Text>
           {totalUnread > 0 && (
             <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: accent, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>{totalUnread > 99 ? '99+' : totalUnread}</Text>

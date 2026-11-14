@@ -4,7 +4,8 @@
 import React from 'react';
 import { View, Text, Pressable, Image } from 'react-native';
 import { ClipboardList, ChevronRight, ChevronLeft, CornerDownRight, CornerDownLeft } from '../../../core/ui/icons';
-import { isRTL } from '../../../core/i18n';
+import { isRTL, localeTag } from '../../../core/i18n';
+import { daysBetween } from '../../orders/holdDates';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { lightenForDark } from '../../../core/ui/HeroGlow';
@@ -38,6 +39,29 @@ export function resolveOrderStatus(status?: string | null, holdStatus?: string |
     iptal:                    { label: autoT('İptal'),          ...RED },
   };
   return M[status ?? ''] ?? { label: status ?? '—', ...GRAY };
+}
+
+/**
+ * `rich` satır düzeninin ek alanları — her panelin satır kurucusu aynı hesabı kullansın diye tek yerde.
+ * `today` laboratuvar gününün 'YYYY-MM-DD' hâli.
+ */
+export function richOrderFields(
+  o: { status?: string | null; delivery_date?: string | null },
+  today: string,
+  isOverdue: boolean,
+): { progress: number; deliveryShort: string; deliveryNote: string } {
+  const progress = ({ alindi: 1, asamada: 2, uretimde: 2, kalite_kontrol: 3, teslimata_hazir: 4, kurye_bekleniyor: 4, kuryede: 4, teslim_edildi: 4 } as Record<string, number>)[String(o.status)] ?? 0;
+  const deliveryShort = o.delivery_date
+    ? new Intl.DateTimeFormat(localeTag(), { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${o.delivery_date}T12:00:00Z`))
+    : '';
+  let deliveryNote = '';
+  if (o.delivery_date && o.status !== 'teslim_edildi' && o.status !== 'iptal') {
+    const left = daysBetween(today, o.delivery_date);
+    if (isOverdue && left < 0) deliveryNote = `${-left} ${autoT('gün gecikti')}`;
+    else if (left === 0) deliveryNote = autoT('Bugün teslim');
+    else if (left > 0) deliveryNote = `${left} ${autoT('gün kaldı')}`;
+  }
+  return { progress, deliveryShort, deliveryNote };
 }
 
 export interface RecentOrderItem {

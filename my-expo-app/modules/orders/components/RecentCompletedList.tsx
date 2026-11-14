@@ -34,9 +34,13 @@ function formatRel(iso: string): string {
 }
 
 export function RecentCompletedList({
-  accentColor, limit = 5, embedded = false, collapsible = false,
+  accentColor, limit = 5, embedded = false, collapsible = false, surface, border,
 }: {
+  /** İnce kenar çizgisi rengi — verilirse 1px çizilir */
+  border?: string;
   accentColor?: string;
+  /** Kart zemini — verilmezse istasyon paleti (Özet'te komşu kartlarla aynı ton için) */
+  surface?: string;
   limit?: number;
   /** true: dış kart yok — başka bir kartın içine gömülü olarak render edilir */
   embedded?: boolean;
@@ -187,8 +191,8 @@ export function RecentCompletedList({
   // ── Standalone variant: kendi kartı ──
   return (
     <View style={{
-      backgroundColor: P.surface, borderRadius: 24,
-      borderWidth: 1, borderColor: P.ink100,
+      backgroundColor: surface ?? P.surface, borderRadius: 28,
+      ...(border ? { borderWidth: 1, borderColor: border } : {}),
       overflow: 'hidden',
       ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } as any : {}),
     }}>
@@ -197,14 +201,7 @@ export function RecentCompletedList({
         paddingHorizontal: 16, paddingVertical: 12,
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View style={{
-            width: 22, height: 22, borderRadius: 7,
-            alignItems: 'center', justifyContent: 'center',
-            backgroundColor: hexA(P.success, 0.14),
-          }}>
-            <CheckCircle2 size={12} color={P.success} strokeWidth={1.8} />
-          </View>
-          <Text style={{ fontSize: 11, fontWeight: '700', color: P.ink900, letterSpacing: 1.0, textTransform: 'uppercase' }}>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: P.ink900, letterSpacing: -0.2 }}>
             Son Tamamlananlar
           </Text>
         </View>
@@ -216,8 +213,8 @@ export function RecentCompletedList({
             ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
           }}
         >
-          <Text style={{ fontSize: 10.5, color: accent, fontWeight: '600' }}>Tümü</Text>
-          {isRTL() ? <ArrowLeft size={11} color={accent} strokeWidth={2} /> : <ArrowRight size={11} color={accent} strokeWidth={2} />}
+          <Text style={{ fontSize: 13, color: accent, fontWeight: '600' }}>Tümü</Text>
+          {isRTL() ? <ArrowLeft size={13} color={accent} strokeWidth={2} /> : <ArrowRight size={13} color={accent} strokeWidth={2} />}
         </Pressable>
       </View>
       <View>
@@ -228,20 +225,19 @@ export function RecentCompletedList({
               key={it.id}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 9,
-                paddingHorizontal: 14, paddingVertical: 6,
-                opacity: 0.7,
+                paddingHorizontal: 16, paddingVertical: 9,
               }}
             >
-              <CheckCircle2 size={12} color={stationColor} strokeWidth={2} />
+              <CheckCircle2 size={15} color={stationColor} strokeWidth={2} />
               <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: P.ink700 }} numberOfLines={1}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: P.ink900, flexShrink: 1 }} numberOfLines={1}>
                   {it.station_name ?? '—'}
                 </Text>
-                <Text style={{ fontSize: 10.5, color: P.ink400 }} numberOfLines={1}>
+                <Text style={{ fontSize: 12, color: P.ink500 }} numberOfLines={1}>
                   #{it.order_number ?? '—'}
                 </Text>
               </View>
-              <Text style={{ fontSize: 10, color: P.ink400 }}>
+              <Text style={{ fontSize: 12, color: P.ink500 }}>
                 {it.completed_at ? formatRel(it.completed_at) : '—'}
               </Text>
             </View>

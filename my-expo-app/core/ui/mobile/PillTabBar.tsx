@@ -560,7 +560,9 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
       ? (labeled
         ? { flex: 1, justifyContent: 'space-between', gap: 0, paddingHorizontal: 4 }
         : { flex: 1, justifyContent: 'space-evenly', gap: 0 })
-      : (labeled ? { gap: 0 } : null));
+      // FAB'sız + etiketli (yetkisi olmayan klinik/lab kullanıcısı): hücreler flex:1 olduğu için
+      // bar içeriğe göre daralamaz → tam genişliğe yayılır, hücreler eşit bölüşür.
+      : (labeled ? { alignSelf: 'stretch', justifyContent: 'space-between', gap: 0, paddingHorizontal: 4 } : null));
   const barContent =
     LIQUID_GLASS ? (
       // iOS 26+ — gerçek liquid glass: arkadaki içerik materyalin içinde

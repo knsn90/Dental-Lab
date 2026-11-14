@@ -10365,5 +10365,22 @@
   "Ağırlık girin.": "Enter the weight.",
   "Aynı gün kurye": "Same-day courier",
   "Kargo firmaları": "Cargo carriers",
-  "Takip numarasını panoya kopyalar": "Copies the tracking number to the clipboard"
+  "Takip numarasını panoya kopyalar": "Copies the tracking number to the clipboard",
+  "İşi aç": "Open job",
+  "Mesaiye başla": "Start your shift",
+  "Girişteki QR kodu okut": "Scan the QR code at the entrance",
+  "Okut": "Scan",
+  "Mesaidesin": "You're on shift",
+  "Bugünkü çalışma": "Today's work",
+  "Makine bekliyor": "Waiting for machine",
+  "Geri döndü": "Returned",
+  "Sıradakiler": "Up next",
+  "Verimlilik ve son 7 gün": "Efficiency and last 7 days",
+  "Sıradaki işlerden birine başlayabilirsin": "You can start one of the jobs in your queue",
+  "Firesiz iş oranı": "Waste-free work rate",
+  "Veriler yüklenemedi": "Couldn't load data",
+  "Bağlantını kontrol edip tekrar dene": "Check your connection and try again",
+  "aktif iş seni bekliyor": "active jobs waiting for you",
+  "Firesiz iş": "Waste-free",
+  "Geri dönen": "Returned"
 }

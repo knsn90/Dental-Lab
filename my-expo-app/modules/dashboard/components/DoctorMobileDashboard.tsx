@@ -508,6 +508,7 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
         accentDark={DOCTOR.accentDark}
         onOpenOrder={(id) => props.onOpenOrderById?.(id)}
         onAllOrders={props.onAllOrders}
+        rich
       />
     </ScrollView>
   );

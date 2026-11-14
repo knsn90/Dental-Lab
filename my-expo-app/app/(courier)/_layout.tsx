@@ -115,6 +115,7 @@ export default function CourierLayout() {
           fabItem={FAB_ITEM}
           baseRoute="/(courier)"
           accentColor={COURIER_ACCENT}
+          labeled
         />
       )}
 

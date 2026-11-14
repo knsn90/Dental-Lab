@@ -48,7 +48,7 @@ import { AlertPillX } from '../../../core/ui/AlertPillX';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { FaceScanQuickAction } from '../../orders/components/FaceScanQuickAction';
 import { PendingReviewsCard } from '../../reviews/components/PendingReviewsCard';
-import { resolveOrderStatus } from '../components/RecentOrdersMobile';
+import { resolveOrderStatus, richOrderFields } from '../components/RecentOrdersMobile';
 import { mapRevisionCases, flattenRevisionCases } from '../../orders/revisionGroups';
 import { useRevisionParents } from '../../orders/hooks/useRevisionParents';
 import { useLabToday } from '../../../core/metrics/useLabToday';
@@ -930,6 +930,7 @@ export function DoctorDashboardScreen() {
         statusBg: st.bg,
         delivery: o.delivery_date ? fmtDate(o.delivery_date) : '',
         overdue: isOverdue,
+        ...richOrderFields(o, today, isOverdue),
       };
     };
     // Gruplama slice'tan ÖNCE: 6 satır = 6 VAKA (aynı vakanın üyeleri yer yemesin)
