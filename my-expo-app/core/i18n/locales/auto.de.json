@@ -10299,5 +10299,14 @@
   "Ölçü tipi": "Abformungsart",
   "Scan body teslim edildi": "Scanbody geliefert",
   "Hekim onayı gerekli": "Zahnarztfreigabe erforderlich",
-  "Okunmamış bildirim yok": "Keine ungelesenen Benachrichtigungen"
+  "Okunmamış bildirim yok": "Keine ungelesenen Benachrichtigungen",
+  "Teslimat belgesi": "Lieferschein",
+  "Teslimat türünü seçin": "Lieferart auswählen",
+  "Teslimat belgesi yazdır": "Lieferschein drucken",
+  "Teslimat türünü sorar, A6 belgeyi basar. Kurye çağırmadan da kullanılır.": "Fragt nach der Lieferart und druckt den A6-Schein. Funktioniert auch ohne Kurierauftrag.",
+  "Belge hazırlanamadı. Tekrar deneyin.": "Der Schein konnte nicht erstellt werden. Bitte erneut versuchen.",
+  "Kurye çağırmadan da basılır. Kurye ve takip numarası yalnız kurye hareketinin kendi fişinde yer alır.": "Druck auch ohne Kurierauftrag möglich. Kurier und Sendungsnummer stehen nur auf dem Beleg der jeweiligen Kurierfahrt.",
+  "Labdan çıkan": "Vom Labor ausgehend",
+  "Laba gelen": "Zum Labor eingehend",
+  "Belge basmadan pencereyi kapatır": "Schließt das Fenster ohne zu drucken"
 }

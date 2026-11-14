@@ -78,6 +78,26 @@ export function resolveShipParties(p: { leg: ShipLegInfo; lab: ShipParty; clinic
   }
 }
 
+/**
+ * Amacın doğal yönü — kurye kaydı OLMADAN basılan fişte (Lojistik kartı başlığındaki
+ * yazdır) gönderen/alıcı buradan çözülür. Kurye çağırma penceresindeki
+ * varsayılanlarla (DeliveryModal → DEFAULT_DIRECTION) aynı tablo.
+ */
+export const PURPOSE_DEFAULT_DIRECTION: Record<string, 'lab_to_clinic' | 'clinic_to_lab'> = {
+  teslimat:    'lab_to_clinic',
+  prova_gidis: 'lab_to_clinic',
+  eksik_parca: 'clinic_to_lab',
+  model_alma:  'clinic_to_lab',
+  prova_donus: 'clinic_to_lab',
+  iade:        'clinic_to_lab',
+  diger:       'lab_to_clinic',
+};
+
+/** Kurye kaydı olmayan fiş için sahte hareket: yalnız amaç + yön + şimdi. */
+export function adHocLeg(purpose: string, now: Date = new Date()): ShipLegInfo & { purpose: string; created_at: string } {
+  return { purpose, direction: PURPOSE_DEFAULT_DIRECTION[purpose] ?? 'lab_to_clinic', created_at: now.toISOString() };
+}
+
 /** Siparişin final teslimatı mı (yoksa ara hareket mi)? Eski kayıtlarda amaç boş = teslimat. */
 export function isFinalLeg(purpose: string | null | undefined): boolean {
   return !purpose || purpose === 'teslimat';

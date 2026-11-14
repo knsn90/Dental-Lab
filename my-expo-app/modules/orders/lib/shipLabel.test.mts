@@ -1,7 +1,7 @@
 // node --test my-expo-app/modules/orders/lib/shipLabel.test.mts   (.mts → tsc kapsamı dışında)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveShipParties, isFinalLeg, labPartyAddress, type ShipParty } from './shipLabel.ts';
+import { resolveShipParties, isFinalLeg, labPartyAddress, adHocLeg, type ShipParty } from './shipLabel.ts';
 
 const lab: ShipParty = { name: 'Nexadent', address: 'Vatan Cad. No: 21, Ataşehir / İstanbul', phone: '0216 000 00 00' };
 const clinic: ShipParty = { name: 'Gülüş Diş Kliniği', person: 'Dt. Ayşe Kaya', address: 'Bağdat Cad. 5, Kadıköy / İstanbul', phone: '0216 111 11 11' };
@@ -74,4 +74,20 @@ test('lab adresi: fatura künyesi parçaları önce, yoksa eski tek satır', () 
   assert.equal(labPartyAddress({ street: '', district: '', city: '', address: '  Eski adres 1 ' }), 'Eski adres 1');
   assert.equal(labPartyAddress({ street: null, district: 'Kadıköy', city: null, address: null }), 'Kadıköy');
   assert.equal(labPartyAddress(null), '');
+});
+
+test('kurye kaydı olmayan fiş: yön amaçtan, adresler klinik/lab kaydından', () => {
+  const out = resolveShipParties({ leg: adHocLeg('prova_gidis'), lab, clinic });
+  assert.equal(out.from.isLab, true);
+  assert.equal(out.to.name, 'Gülüş Diş Kliniği');
+  assert.equal(out.to.address, 'Bağdat Cad. 5, Kadıköy / İstanbul');
+  assert.equal(out.to.phone, '0216 111 11 11');
+
+  const back = resolveShipParties({ leg: adHocLeg('model_alma'), lab, clinic });
+  assert.equal(back.from.name, 'Gülüş Diş Kliniği');
+  assert.equal(back.from.address, 'Bağdat Cad. 5, Kadıköy / İstanbul');
+  assert.equal(back.to.isLab, true);
+  assert.equal(back.to.address, lab.address);
+
+  assert.equal(adHocLeg('bilinmeyen').direction, 'lab_to_clinic');
 });

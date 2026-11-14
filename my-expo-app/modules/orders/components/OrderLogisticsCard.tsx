@@ -22,6 +22,7 @@ import { ProofRow } from '../../delivery/proof/ProofRow';
 import { ProofViewerModal } from '../../delivery/proof/ProofViewerModal';
 import { CloseWithoutProofModal } from '../../delivery/proof/CloseWithoutProofModal';
 import { measureOrigin, type OriginRect } from '../../delivery/proof/useAnchoredSpring';
+import { ShipLabelTypeModal } from './ShipLabelTypeModal';
 
 
 /** Teslimat durumu rozetleri — kurye takip ekranıyla aynı dil. */
@@ -98,6 +99,12 @@ interface Props {
    * düğme çizilmez — yazdırma yalnız web'de; klinik/hekim görünümünde hiç yok.
    */
   onPrintLabel?: (leg: DeliveryLeg) => void;
+  /**
+   * Kurye hareketi OLMADAN teslimat belgesi bas: başlıktaki yazıcı düğmesi her
+   * zaman görünür, basınca teslimat türünü sorar. Başarısızsa fırlatmalı (hata
+   * pencerede gösterilir). Verilmezse düğme çizilmez; klinik/hekimde hiç yok.
+   */
+  onPrintForPurpose?: (purpose: DeliveryPurpose) => Promise<void>;
   /** Fişi hazırlanan hareket — düğmesi o sırada sönük ve basılamaz. */
   printingLegId?: string | null;
   /** Kanıt penceresinin alt başlığı için sipariş no. */
@@ -120,7 +127,7 @@ export function OrderLogisticsCard({
   legs, accent, rowBg, isManager, canCall = true, onCall, onEditFee, fmtDate,
   frameless = false, tone,
   mapsApiKey, labAddress, clinicAddress, onOpenTracking, clientView = false,
-  onPrintLabel, printingLegId = null, orderNumber = null, onProofChanged,
+  onPrintLabel, onPrintForPurpose, printingLegId = null, orderNumber = null, onProofChanged,
 }: Props) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -129,6 +136,9 @@ export function OrderLogisticsCard({
   const [viewerOpen, setViewerOpen] = React.useState(false);
   const [noProof, setNoProof] = React.useState<{ leg: DeliveryLeg; origin: OriginRect | null } | null>(null);
   const [noProofOpen, setNoProofOpen] = React.useState(false);
+  const [typeOpen, setTypeOpen] = React.useState(false);
+  const [typeOrigin, setTypeOrigin] = React.useState<OriginRect | null>(null);
+  const typeBtnRef = React.useRef<any>(null);
   // Çağıran tone geçmediyse: koyuda token-tabanlı, açıkta mevcut açık ton.
   const toneEff = tone ?? (isDark
     ? { label: T.ink3, title: T.ink, muted: T.ink2 }
@@ -176,6 +186,26 @@ export function OrderLogisticsCard({
             {shownLegs.length} hareket
           </Text>
         )}
+        {onPrintForPurpose && !clientView ? (
+          <GlassTooltip title={autoT('Teslimat belgesi')} text={autoT('Teslimat türünü sorar, A6 belgeyi basar. Kurye çağırmadan da kullanılır.')}>
+            <Pressable
+              ref={typeBtnRef}
+              onPress={() => measureOrigin(typeBtnRef.current, (o) => { setTypeOrigin(o); setTypeOpen(true); })}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={autoT('Teslimat belgesi yazdır')}
+              style={({ hovered, pressed }: any) => ({
+                width: 26, height: 26, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
+                backgroundColor: hexA(accent, hovered ? 0.18 : 0.10),
+                opacity: pressed ? 0.6 : 1,
+                transform: [{ scale: pressed ? 0.94 : 1 }],
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              })}
+            >
+              <Printer size={13} color={accent} strokeWidth={2} />
+            </Pressable>
+          </GlassTooltip>
+        ) : null}
         {isManager && canCall && shownLegs.length > 0 && (
           <Pressable
             onPress={onCall}
@@ -347,6 +377,16 @@ export function OrderLogisticsCard({
         origin={viewer?.origin ?? null}
         orderNumber={orderNumber}
       />
+      {onPrintForPurpose && !clientView ? (
+        <ShipLabelTypeModal
+          visible={typeOpen}
+          onClose={() => setTypeOpen(false)}
+          accent={accent}
+          origin={typeOrigin}
+          orderNumber={orderNumber}
+          onPick={onPrintForPurpose}
+        />
+      ) : null}
       <CloseWithoutProofModal
         visible={noProofOpen}
         onClose={() => setNoProofOpen(false)}

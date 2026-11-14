@@ -82,7 +82,7 @@ import { confirmAsync } from '../../../core/util/confirm';
 import { openFileUrl } from '../../../core/util/openFile';
 import { StageMaterialModal } from '../components/StageMaterialModal';
 import { fetchStageMaterialContext, confirmStageMaterials } from '../api';
-import { advanceOrderStatus, forceActivateStage, revertStage, updateDeliveryStatus, addOrderStage, removeOrderStage, requestDesignApproval, adminCompleteStage, adminSkipStage, adminActivateStage, fetchRevisionLinks, type RevisionLink } from '../api';
+import { advanceOrderStatus, forceActivateStage, revertStage, updateDeliveryStatus, addOrderStage, removeOrderStage, requestDesignApproval, adminCompleteStage, adminSkipStage, adminActivateStage, fetchRevisionLinks, type RevisionLink, type DeliveryPurpose } from '../api';
 import { StageWorkflowTimeline } from '../components/StageWorkflowTimeline';
 import { OriginFillButton, OriginFillPressable } from '../../../core/ui/OriginFillButton';
 import { RevisionModal } from '../components/RevisionModal';
@@ -1173,6 +1173,19 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     }
   };
   const shipLabelHandler = Platform.OS === 'web' ? printShipLabel : undefined;
+  // Kurye hareketi olmadan teslimat belgesi — tür Lojistik kartındaki pencerede
+  // sorulur; hata orada gösterildiği için burada yutulmaz (fırlatılır).
+  const printShipLabelForPurpose = async (purpose: DeliveryPurpose) => {
+    try {
+      const html = await buildShipLabelDoc(order, { purpose }, { qrUrl });
+      printHtmlInHiddenFrame(html);
+    } catch (e) {
+      console.error('ship label (purpose) failed', e);
+      throw e;
+    }
+  };
+  // Yalnız lab tarafı (kart klinik/hekimde zaten gizler) ve yalnız web.
+  const shipLabelPurposeHandler = Platform.OS === 'web' ? printShipLabelForPurpose : undefined;
   const handleNavigateRelated = (relatedId: string) => {
     if (panelGroup && panelGroup.startsWith('(')) {
       router.push(`/${panelGroup}/order/${relatedId}` as any);
@@ -1659,6 +1672,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             onOpenTracking={leg => setTrackingLeg(leg)}
             clientView={panelGroup === '(clinic)' || panelGroup === '(doctor)'}
             onPrintLabel={shipLabelHandler}
+            onPrintForPurpose={shipLabelPurposeHandler}
             printingLegId={printingLegId}
             frameless
           />
@@ -3404,6 +3418,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             onOpenTracking={leg => setTrackingLeg(leg)}
             clientView={panelGroup === '(clinic)' || panelGroup === '(doctor)'}
             onPrintLabel={shipLabelHandler}
+            onPrintForPurpose={shipLabelPurposeHandler}
             printingLegId={printingLegId}
           />
 

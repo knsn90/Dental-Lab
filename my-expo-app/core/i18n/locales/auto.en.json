@@ -10299,5 +10299,14 @@
   "Ölçü tipi": "Impression type",
   "Scan body teslim edildi": "Scan body delivered",
   "Hekim onayı gerekli": "Doctor approval required",
-  "Okunmamış bildirim yok": "No unread notifications"
+  "Okunmamış bildirim yok": "No unread notifications",
+  "Teslimat belgesi": "Delivery note",
+  "Teslimat türünü seçin": "Choose the delivery type",
+  "Teslimat belgesi yazdır": "Print delivery note",
+  "Teslimat türünü sorar, A6 belgeyi basar. Kurye çağırmadan da kullanılır.": "Asks for the delivery type, then prints the A6 note. Works without calling a courier.",
+  "Belge hazırlanamadı. Tekrar deneyin.": "The note could not be prepared. Try again.",
+  "Kurye çağırmadan da basılır. Kurye ve takip numarası yalnız kurye hareketinin kendi fişinde yer alır.": "Prints without calling a courier. Courier and tracking number appear only on the slip of the courier movement itself.",
+  "Labdan çıkan": "Leaving the lab",
+  "Laba gelen": "Coming to the lab",
+  "Belge basmadan pencereyi kapatır": "Closes the window without printing"
 }

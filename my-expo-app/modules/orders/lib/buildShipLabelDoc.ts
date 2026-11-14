@@ -5,6 +5,11 @@
  * Lab: ad + logo + fatura künyesindeki açık adres + telefon. Klinik: kayıtlı
  * ad, adres, telefon; hekim adı siparişten. Hasta bilgisi basılmaz.
  *
+ * Hedef bir kurye hareketi (id) ya da — kurye çağrılmadan belge almak için —
+ * yalnız bir AMAÇ olabilir. Amaçla basılan fişte hareket kaydı yoktur: yön amacın
+ * doğal yönüdür, adresler klinik/lab kaydından, tarih bugünden gelir; kurye ve
+ * takip no satırı basılmaz.
+ *
  * Şablon ve QR üreticisi dinamik import ile yüklenir.
  */
 import { supabase } from '../../../core/api/supabase';
@@ -13,7 +18,7 @@ import { DELIVERY_PURPOSE_LABELS, type DeliveryPurpose } from '../api';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { htmlAttrs, printLocale } from '../../../core/i18n/printLocale';
 import { isRTL } from '../../../core/i18n';
-import { resolveShipParties, isFinalLeg, labPartyAddress } from './shipLabel';
+import { resolveShipParties, isFinalLeg, labPartyAddress, adHocLeg } from './shipLabel';
 import { localQrSvg } from './qrSvg';
 import { formatAddress } from '../../../core/util/formatAddress';
 
@@ -42,12 +47,18 @@ async function loadClinic(order: WorkOrder): Promise<{ name: string; address: st
   };
 }
 
-export async function buildShipLabelDoc(order: WorkOrder, legId: string, opts: { qrUrl: string }): Promise<string> {
+export async function buildShipLabelDoc(
+  order: WorkOrder,
+  target: string | { purpose: DeliveryPurpose },
+  opts: { qrUrl: string },
+): Promise<string> {
   const { buildShipLabelHtml } = await import('../../../lib/printShipLabelHtml');
   const labId = (order as any).lab_id as string | undefined;
 
   const [legRes, labRes, clinic, qrSvg] = await Promise.all([
-    supabase.from('deliveries').select(LEG_SELECT).eq('id', legId).maybeSingle(),
+    typeof target === 'string'
+      ? supabase.from('deliveries').select(LEG_SELECT).eq('id', target).maybeSingle()
+      : Promise.resolve({ data: adHocLeg(target.purpose), error: null } as any),
     labId
       ? supabase.from('labs').select('name, logo_url, phone, address, street, district, city').eq('id', labId).maybeSingle()
       : Promise.resolve({ data: null } as const),
@@ -67,9 +78,12 @@ export async function buildShipLabelDoc(order: WorkOrder, legId: string, opts: {
   const from = { ...parties.from, address: formatAddress(parties.from.address) };
   const to = { ...parties.to, address: formatAddress(parties.to.address) };
 
-  const carrier = leg.mode === 'internal'
-    ? [autoT('Bizim kurye'), leg.courier?.full_name].filter(Boolean).join(' · ')
-    : (leg.external_provider || autoT('Dış kargo'));
+  // Kurye kaydı olmayan fişte (mode yok) kurye satırı hiç basılmaz.
+  const carrier = !leg.mode
+    ? null
+    : leg.mode === 'internal'
+      ? [autoT('Bizim kurye'), leg.courier?.full_name].filter(Boolean).join(' · ')
+      : (leg.external_provider || autoT('Dış kargo'));
 
   return buildShipLabelHtml({
     orderNumber: order.order_number,

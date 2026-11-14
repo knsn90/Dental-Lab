@@ -10299,5 +10299,14 @@
   "Ölçü tipi": "نوع قالب‌گیری",
   "Scan body teslim edildi": "اسکن‌بادی تحویل داده شد",
   "Hekim onayı gerekli": "تأیید دندانپزشک لازم است",
-  "Okunmamış bildirim yok": "اعلان خوانده‌نشده‌ای نیست"
+  "Okunmamış bildirim yok": "اعلان خوانده‌نشده‌ای نیست",
+  "Teslimat belgesi": "برگه تحویل",
+  "Teslimat türünü seçin": "نوع تحویل را انتخاب کنید",
+  "Teslimat belgesi yazdır": "چاپ برگه تحویل",
+  "Teslimat türünü sorar, A6 belgeyi basar. Kurye çağırmadan da kullanılır.": "نوع تحویل را می‌پرسد و برگه A6 را چاپ می‌کند. بدون درخواست پیک هم قابل استفاده است.",
+  "Belge hazırlanamadı. Tekrar deneyin.": "برگه آماده نشد. دوباره تلاش کنید.",
+  "Kurye çağırmadan da basılır. Kurye ve takip numarası yalnız kurye hareketinin kendi fişinde yer alır.": "بدون درخواست پیک هم چاپ می‌شود. نام پیک و شماره پیگیری فقط در برگه خودِ همان حرکت پیک می‌آید.",
+  "Labdan çıkan": "خروجی از لابراتوار",
+  "Laba gelen": "ورودی به لابراتوار",
+  "Belge basmadan pencereyi kapatır": "پنجره را بدون چاپ می‌بندد"
 }
