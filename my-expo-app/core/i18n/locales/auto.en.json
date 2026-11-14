@@ -10333,5 +10333,12 @@
   "Teslim geri alındı": "Delivery undone",
   "Labdan çıkan": "Leaving the lab",
   "Laba gelen": "Coming to the lab",
-  "Belge basmadan pencereyi kapatır": "Closes the window without printing"
+  "Belge basmadan pencereyi kapatır": "Closes the window without printing",
+  "Kargo etiketi": "Carrier label",
+  "Kargo firmasının barkodlu etiketini açar; kutuya yapıştırılır": "Opens the carrier's barcode label to stick on the box",
+  "Takip sayfasını aç": "Open tracking page",
+  "Kargoya verildi": "Handed to carrier",
+  "Takip numarası henüz atanmadı": "Tracking number not assigned yet",
+  "Kargo bilgilerine döner": "Back to shipment details",
+  "Takip sayfasını tarayıcıda açar": "Opens the tracking page in the browser"
 }

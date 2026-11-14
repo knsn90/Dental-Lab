@@ -1038,6 +1038,8 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
       await supabase.from('deliveries').update({
         external_tracking_code: d.shipment_id ? String(d.shipment_id) : null,
         external_label_url:     d.label_url ?? null,
+        external_carrier_name:  d.carrier_name ?? null,
+        external_tracking_url:  d.tracking_url ?? null,
       }).eq('id', res.deliveryId!);
     }
     setShpBusy(false);

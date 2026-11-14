@@ -68,7 +68,7 @@ interface Pkg {
 interface ReqBody {
   action:
     | 'test' | 'carrier_accounts' | 'cards' | 'warehouses' | 'warehouse_sync'
-    | 'rates' | 'create' | 'check' | 'cancel' | 'label';
+    | 'rates' | 'create' | 'check' | 'cancel' | 'label' | 'sync';
   /** yalnız 'test' — kayıt öncesi doğrulama, kimlik henüz DB'de yok */
   username?: string;
   password?: string;
@@ -374,6 +374,8 @@ serve(async (req) => {
         external_tracking_no:   info.tracking ?? String(info.shipmentId ?? ''),
         external_tracking_code: info.shipmentId ? String(info.shipmentId) : null,
         external_label_url:     info.labelUrl,
+        external_carrier_name:  info.carrierName,
+        external_tracking_url:  info.trackingUrl,
         status: 'beklemede',
       }).eq('id', body.delivery_id);
     }
@@ -384,6 +386,7 @@ serve(async (req) => {
       shipment_id:      info.shipmentId,
       tracking_number:  info.tracking,
       label_url:        info.labelUrl,
+      tracking_url:     info.trackingUrl,
       carrier_name:     info.carrierName,
       price:            info.price,
       currency:         info.currency ?? currency,
@@ -449,6 +452,51 @@ serve(async (req) => {
       labels: sh?.document?.labels ?? [],
       label_url: info.labelUrl,
       tracking_number: info.tracking,
+    });
+  }
+
+  // ── sync: gönderiyi kimliğiyle sor + teslimat kaydını tamamla ──
+  // Takip numarası gönderi anında boş gelebiliyor (taşıyıcı sonradan atar); bu
+  // uç gönderi kaydını yeniden okuyup takip no, takip sayfası, taşıyıcı, etiket
+  // ve durumu kayda yazar. Yalnız DOLU gelen alanlar yazılır — boş değer mevcut
+  // bilgiyi silmez. Tanınmayan durum kayda dokunmaz (mapStatus NULL döner).
+  if (body.action === 'sync') {
+    const id = (body.shipment_id ?? '').trim();
+    if (!id) return json({ ok: false, message: 'shipment_id gerekli' });
+    if (!(await ownsDelivery(body.delivery_id))) return denyTenant();
+    const r = await call(cEnv, token, 'GET', `/shipments/${encodeURIComponent(id)}`);
+    if (!r.ok) return json({ ok: false, message: errText(r), debug: dbg(r) });
+    const sh     = r.data?.data ?? r.data ?? {};
+    const info   = extractShipment(sh);
+    const mapped = mapStatus(info.statusRaw);
+
+    if (body.delivery_id) {
+      const { data: cur } = await admin.from('deliveries')
+        .select('status, picked_up_at, delivered_at').eq('id', body.delivery_id).maybeSingle();
+      const patch: Record<string, any> = {};
+      if (info.tracking)    patch.external_tracking_no  = info.tracking;
+      if (info.trackingUrl) patch.external_tracking_url = info.trackingUrl;
+      if (info.carrierName) patch.external_carrier_name = info.carrierName;
+      if (info.labelUrl)    patch.external_label_url    = info.labelUrl;
+      // Kapanmış (teslim/iptal) kayıt geriye çekilmez.
+      const closed = cur?.status === 'teslim_edildi' || cur?.status === 'iptal';
+      if (mapped && !closed && mapped !== cur?.status) {
+        patch.status = mapped;
+        if (mapped === 'teslim_alindi' && !cur?.picked_up_at) patch.picked_up_at = info.shippedAt ?? new Date().toISOString();
+        if (mapped === 'teslim_edildi' && !cur?.delivered_at) patch.delivered_at = info.deliveredAt ?? new Date().toISOString();
+        if (mapped === 'iptal') patch.cancelled_at = new Date().toISOString();
+      }
+      if (Object.keys(patch).length) await admin.from('deliveries').update(patch).eq('id', body.delivery_id);
+    }
+
+    return json({
+      ok: true,
+      status: mapped,
+      status_raw: info.statusRaw ?? '',
+      tracking_number: info.tracking,
+      tracking_url: info.trackingUrl,
+      carrier_name: info.carrierName,
+      label_url: info.labelUrl,
     });
   }
 
@@ -745,16 +793,39 @@ function normalizeRate(r: any) {
 }
 
 /** Gönderi cevabından takip no / etiket / ücret çıkarır (şekil esnek). */
+/**
+ * "kolay_gelsin" → "Kolay Gelsin" — Shipink taşıyıcıyı yalnız kimlikle döndürüyor.
+ * Büyütme bilerek yerel-bağımsız (ASCII): istemci addan kimliği geri türetip
+ * logoyu buluyor (CarrierLogo.carrierLogoUrl); Türkçe İ/ı dönüşümü bunu bozardı.
+ */
+function carrierLabel(id: unknown): string | null {
+  const t = String(id ?? '').trim();
+  if (!t) return null;
+  return t.split(/[_\s-]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+/**
+ * Gönderi kaydından panelde gösterilen alanlar. Şema canlı yanıttan doğrulandı
+ * (2026-11-14): takip numarası `tracking.id`, takip sayfası `tracking.url`,
+ * durum `tracking.status`, taşıyıcı `carrier.carrier_id`, ücret `rate.*`.
+ * Eski tahmini adlar (tracking_number, carrier_name, price) yedek olarak durur.
+ */
 function extractShipment(sh: any) {
   const labels = sh?.document?.labels;
   const first  = Array.isArray(labels) ? labels[0] : null;
+  const num = (v: unknown) => { const n = Number(v); return isFinite(n) && n > 0 ? n : null; };
+  const str = (v: unknown) => { const t = String(v ?? '').trim(); return t || null; };
   return {
     shipmentId:  sh?.id ?? null,
-    tracking:    sh?.tracking_number ?? sh?.tracking?.number ?? sh?.carrier_tracking_number ?? null,
+    tracking:    str(sh?.tracking?.id) ?? str(sh?.tracking_number) ?? str(sh?.tracking?.number) ?? str(sh?.carrier_tracking_number),
+    trackingUrl: str(sh?.tracking?.url) ?? str(sh?.carrier?.tracking_url),
+    statusRaw:   str(sh?.tracking?.status) ?? str(sh?.status),
     labelUrl:    first?.pdf ?? first?.png ?? first?.zpl ?? null,
-    carrierName: sh?.carrier_name ?? sh?.carrier?.name ?? null,
-    price:       sh?.price ?? sh?.rate?.price ?? null,
-    currency:    sh?.currency ?? sh?.rate?.currency ?? null,
+    carrierName: str(sh?.carrier_name) ?? str(sh?.carrier?.name) ?? carrierLabel(sh?.carrier?.carrier_id),
+    price:       num(sh?.rate?.actual_price) ?? num(sh?.rate?.estimated_price) ?? num(sh?.price) ?? num(sh?.rate?.price),
+    currency:    str(sh?.currency) ?? str(sh?.rate?.currency),
+    shippedAt:   str(sh?.shipped_at),
+    deliveredAt: str(sh?.delivered_at),
   };
 }
 

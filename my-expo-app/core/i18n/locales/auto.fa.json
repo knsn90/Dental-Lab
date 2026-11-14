@@ -10333,5 +10333,12 @@
   "Teslim geri alındı": "تحویل لغو شد",
   "Labdan çıkan": "خروجی از لابراتوار",
   "Laba gelen": "ورودی به لابراتوار",
-  "Belge basmadan pencereyi kapatır": "پنجره را بدون چاپ می‌بندد"
+  "Belge basmadan pencereyi kapatır": "پنجره را بدون چاپ می‌بندد",
+  "Kargo etiketi": "برچسب پست",
+  "Kargo firmasının barkodlu etiketini açar; kutuya yapıştırılır": "برچسب بارکددار شرکت پست را باز می‌کند؛ روی بسته چسبانده می‌شود",
+  "Takip sayfasını aç": "باز کردن صفحه پیگیری",
+  "Kargoya verildi": "تحویل پست شد",
+  "Takip numarası henüz atanmadı": "شماره پیگیری هنوز اختصاص نیافته",
+  "Kargo bilgilerine döner": "بازگشت به جزئیات مرسوله",
+  "Takip sayfasını tarayıcıda açar": "صفحه پیگیری را در مرورگر باز می‌کند"
 }

@@ -8,8 +8,11 @@
 // Canlı konum useExternalCourier + (kendi kuryemiz) gps_pings CourierTrackingMap içinde.
 
 import React, { useState } from 'react';
-import { View, Text, Pressable, Modal, Platform, ScrollView, useWindowDimensions, Image, Linking } from 'react-native';
-import { X, Phone, MapPin, Navigation, Package, Clock, ArrowRight } from '../../../core/ui/icons';
+import { View, Text, Pressable, Modal, Platform, ScrollView, useWindowDimensions, Image, Linking, ActivityIndicator } from 'react-native';
+import { X, Phone, MapPin, Navigation, Package, Clock, ArrowRight, ArrowUpRight, ChevronLeft, ChevronRight, ExternalLink } from '../../../core/ui/icons';
+import { CarrierBadge } from './CarrierLogo';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { CourierTrackingMap } from '../../courier/CourierTrackingMap';
 import { legRouteAddresses } from './StaticRouteMap';
 import { useExternalCourier } from '../../courier/useExternalCourier';
@@ -106,6 +109,11 @@ export function OrderCourierTrackingModal({ visible, onClose, leg, labAddress, c
   const safeBottom = isNarrow ? insets.bottom : 0;
 
   if (!leg) return null;
+
+  // Kargo (toplayıcı) hareketi: canlı kurye konumu yok → harita yerine sade bilgi kartı.
+  if (leg.external_provider === 'Shipink') {
+    return <CargoTrackingModal visible={visible} onClose={onClose} leg={leg} labAddress={labAddress} clinicAddress={clinicAddress} accent={accent} />;
+  }
 
   const { originText, destText } = legRouteAddresses(leg, labAddress ?? null, clinicAddress ?? null);
   const courierName = extCourier?.name ?? leg.ext_courier_name ?? leg.courier?.full_name ?? leg.external_provider ?? autoT('Kurye');
@@ -318,4 +326,200 @@ export function OrderCourierTrackingModal({ visible, onClose, leg, labAddress, c
       </Pressable>
     </Modal>
   );
+}
+
+/**
+ * Kargo takibi — haritasız. Kargo firması canlı konum vermez; işe yarayan bilgi
+ * taşıyıcı, durum, takip numarası ve taşıyıcının takip sayfasıdır. Karttaki diğer
+ * pencerelerle aynı yüzey (bulanık zemin, ortada kart).
+ */
+function CargoTrackingModal({ visible, onClose, leg, labAddress, clinicAddress, accent }: Props) {
+  const U = useInkUI();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const { width, height } = useWindowDimensions();
+  const narrow = width < 768;
+  // Taşıyıcının takip sayfası pencerenin İÇİNDE açılır (yeni sekmeye atmaz).
+  const [page, setPage] = useState(false);
+  React.useEffect(() => { if (!visible) setPage(false); }, [visible]);
+  if (!leg) return null;
+
+  const carrier = leg.external_carrier_name || leg.external_provider || autoT('Kargo');
+  const trackingNo: string | null = leg.external_tracking_no || null;
+  const trackUrl: string | null = leg.external_tracking_url || null;
+  const stRaw = STATUS_CFG[String(leg.status)] ?? STATUS_CFG.beklemede;
+  const st = isDark ? { ...stRaw, fg: DARK_STATUS_FG[stRaw.fg] ?? U.ink[500] } : stRaw;
+  const incoming = leg.direction === 'clinic_to_lab';
+  const { destText } = legRouteAddresses(leg, labAddress ?? null, clinicAddress ?? null);
+  const senderLabel = incoming ? (formatAddress(clinicAddress) || autoT('Klinik')) : autoT('Laboratuvar');
+  const recipientName = leg.destination_name || (incoming ? autoT('Laboratuvar') : null);
+  const recipientAddr = formatAddress(leg.destination_address) || destText || '';
+  const accentFg = isDark ? '#93C5FD' : accent;
+  const webPtr: any = Platform.OS === 'web' ? { cursor: 'pointer' } : null;
+
+  const openExternal = () => {
+    if (!trackUrl) return;
+    if (Platform.OS === 'web') { try { window.open(trackUrl, '_blank', 'noopener'); } catch { /* */ } }
+    else { try { Linking.openURL(trackUrl); } catch { /* */ } }
+  };
+  const Back = isRTL() ? ChevronRight : ChevronLeft;
+
+  const steps = [
+    { label: autoT('Oluşturuldu'),     at: leg.created_at,   done: !!leg.created_at },
+    { label: autoT('Kargoya verildi'), at: leg.picked_up_at, done: !!leg.picked_up_at },
+    { label: autoT('Teslim edildi'),   at: leg.delivered_at, done: !!leg.delivered_at },
+  ];
+  const groupBg = isDark ? U.surfaceSoft : '#F5F5F5';
+  const sectionLabel = { fontSize: 11, fontWeight: '600' as const, letterSpacing: 1.1, textTransform: 'uppercase' as const, color: U.ink[400], paddingHorizontal: 4, marginBottom: 7 };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={[U.modalOverlay, narrow ? { padding: 12 } : null]}>
+        <Pressable onPress={onClose} accessibilityLabel={autoT('Kapat')} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+        <View
+          style={[U.modalCard, page
+            ? { maxWidth: 560, height: Math.round(height * 0.9), padding: 18 }
+            : { maxWidth: 400, maxHeight: Math.round(height * 0.9), padding: 18 }]}
+          accessibilityViewIsModal
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            {page ? (
+              <GlassTooltip title={autoT('Geri')} text={autoT('Kargo bilgilerine döner')} placement="bottom">
+                <Pressable onPress={() => setPage(false)} hitSlop={8} accessibilityRole="button" accessibilityLabel={autoT('Geri')}
+                  style={({ pressed }: any) => ({ ...U.modalCloseBtn, opacity: pressed ? 0.6 : 1, ...webPtr })}>
+                  <Back size={16} color={U.ink[500]} strokeWidth={2} />
+                </Pressable>
+              </GlassTooltip>
+            ) : (
+              <CarrierBadge name={leg.external_carrier_name} width={52} height={22} />
+            )}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontSize: 20, fontWeight: '400', letterSpacing: -0.4, color: U.ink[900], fontFamily: Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : undefined }} numberOfLines={1}>
+                {carrier}
+              </Text>
+              <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2 }} numberOfLines={1}>
+                {[autoT('Kargo takip'), leg.external_carrier_name ? leg.external_provider : null, leg.order_number ? `#${leg.order_number}` : null].filter(Boolean).join(' · ')}
+              </Text>
+            </View>
+            {page ? (
+              <GlassTooltip title={autoT('Yeni sekmede aç')} text={autoT('Takip sayfasını tarayıcıda açar')} placement="bottom">
+                <Pressable onPress={openExternal} hitSlop={8} accessibilityRole="link" accessibilityLabel={autoT('Yeni sekmede aç')}
+                  style={({ pressed }: any) => ({ ...U.modalCloseBtn, opacity: pressed ? 0.6 : 1, ...webPtr })}>
+                  <ExternalLink size={14} color={U.ink[500]} strokeWidth={2} />
+                </Pressable>
+              </GlassTooltip>
+            ) : (
+              <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: st.bg }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: st.fg }}>{autoT(st.label)}</Text>
+              </View>
+            )}
+            <Pressable onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel={autoT('Kapat')}
+              style={({ pressed }: any) => ({ ...U.modalCloseBtn, opacity: pressed ? 0.6 : 1, ...webPtr })}>
+              <X size={15} color={U.ink[500]} strokeWidth={2} />
+            </Pressable>
+          </View>
+
+          {page && trackUrl ? (
+            // Takip sayfası taşıyıcının kendi sitesi (açık zemin) → çerçeve her temada beyaz.
+            <View style={{ flex: 1, marginTop: 14, borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF' }}>
+              <TrackingFrame url={trackUrl} />
+            </View>
+          ) : (
+          <ScrollView style={{ marginTop: 16 }} showsVerticalScrollIndicator={false}>
+            {/* Takip numarası + taşıyıcının takip sayfası */}
+            <View style={{ borderRadius: 16, backgroundColor: groupBg, padding: 14, gap: 12 }}>
+              <View style={{ gap: 3 }}>
+                <Text style={{ fontSize: 11, color: U.ink[500] }}>{autoT('Takip no')}</Text>
+                {trackingNo ? (
+                  <Text selectable style={{
+                    fontSize: 17, fontWeight: '600', letterSpacing: 0.2, color: U.ink[900], fontVariant: ['tabular-nums'],
+                    fontFamily: Platform.OS === 'web' ? 'JetBrains Mono, ui-monospace, Menlo, monospace' : undefined,
+                  }}>
+                    {trackingNo}
+                  </Text>
+                ) : (
+                  <Text style={{ fontSize: 13, color: U.ink[500] }}>{autoT('Takip numarası henüz atanmadı')}</Text>
+                )}
+              </View>
+              {trackUrl ? (
+                <Pressable
+                  onPress={() => setPage(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={autoT('Takip sayfasını aç')}
+                  style={({ pressed }: any) => ({
+                    height: 44, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    backgroundColor: hexAlpha(accentFg, isDark ? 0.18 : 0.10),
+                    transform: [{ scale: pressed ? 0.97 : 1 }], ...webPtr,
+                  })}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: accentFg }}>{autoT('Takip sayfasını aç')}</Text>
+                  {isRTL() ? <ChevronLeft size={15} color={accentFg} strokeWidth={2} /> : <ChevronRight size={15} color={accentFg} strokeWidth={2} />}
+                </Pressable>
+              ) : null}
+            </View>
+
+            <Text style={[sectionLabel, { marginTop: 16 }]}>{autoT('Zaman Çizelgesi')}</Text>
+            <View style={{ borderRadius: 16, backgroundColor: groupBg, paddingHorizontal: 14, paddingVertical: 12, gap: 10 }}>
+              {steps.map((step, i) => (
+                <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: step.done ? accentFg : 'transparent', borderWidth: step.done ? 0 : 1.5, borderColor: U.ink[300] }} />
+                  <Text style={{ flex: 1, fontSize: 13, fontWeight: step.done ? '600' : '400', color: step.done ? U.ink[900] : U.ink[400] }}>{step.label}</Text>
+                  {fmtDT(step.at) ? <Text style={{ fontSize: 11.5, color: U.ink[400], fontVariant: ['tabular-nums'] }}>{fmtDT(step.at)}</Text> : null}
+                </View>
+              ))}
+            </View>
+
+            <Text style={[sectionLabel, { marginTop: 16 }]}>{autoT('Güzergâh')}</Text>
+            <View style={{ borderRadius: 16, backgroundColor: groupBg, paddingHorizontal: 14, paddingVertical: 12, gap: 10 }}>
+              <View style={{ gap: 2 }}>
+                <Text style={{ fontSize: 11, color: U.ink[500] }}>{autoT('Gönderen')}</Text>
+                <Text style={{ fontSize: 13, color: U.ink[900] }} numberOfLines={2}>{senderLabel}</Text>
+              </View>
+              <View style={{ height: 1, backgroundColor: U.hairline }} />
+              <View style={{ gap: 2 }}>
+                <Text style={{ fontSize: 11, color: U.ink[500] }}>{autoT('Alıcı adres')}</Text>
+                {recipientName ? <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>{recipientName}</Text> : null}
+                {recipientAddr ? <Text style={{ fontSize: 12.5, lineHeight: 18, color: U.ink[500] }} numberOfLines={3}>{recipientAddr}</Text> : null}
+              </View>
+            </View>
+          </ScrollView>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/**
+ * Taşıyıcının takip sayfası: web'de <iframe>, mobilde WebView (LegalDocModal kalıbı).
+ * Sayfa birkaç saniyede geliyor — o sırada boş beyaz kutu yerine bekleme halkası.
+ */
+function TrackingFrame({ url }: { url: string }) {
+  const [loaded, setLoaded] = useState(false);
+  if (Platform.OS !== 'web') {
+    // Lazy require: web paketine webview girmesin.
+    const { WebView } = require('react-native-webview');
+    return <WebView source={{ uri: url }} style={{ flex: 1, backgroundColor: '#fff' }} startInLoadingState />;
+  }
+  return (
+    <View style={{ flex: 1 }}>
+      {React.createElement('iframe', {
+        src: url,
+        title: 'kargo-takip',
+        onLoad: () => setLoaded(true),
+        style: { width: '100%', height: '100%', border: 'none', background: '#fff', display: 'block' },
+      })}
+      {!loaded ? (
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }}>
+          <ActivityIndicator color="#6B6B6B" />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** #RRGGBB + alfa → rgba. */
+function hexAlpha(hex: string, a: number): string {
+  const h = hex.replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }

@@ -59,3 +59,30 @@ export function CarrierLogo({ url, width = 54, height = 24 }: Props) {
     </View>
   );
 }
+
+/**
+ * Taşıyıcı adından ("Kolay Gelsin") Shipink logo adresi. Kayıtta yalnız ad duruyor
+ * (deliveries.external_carrier_name); ad, kimliğin ASCII büyütülmüş hâli olduğu
+ * için geri çevrilebilir. Bilinmeyen ad → dosya bulunmaz → CarrierLogo ikona düşer.
+ */
+export function carrierLogoUrl(name?: string | null): string | null {
+  const id = String(name ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return id ? `https://shipink.io/img/logo/${id}-original-colored.svg` : null;
+}
+
+/**
+ * Logo beyaz rozet içinde — marka logoları renkli ve açık zemin için çizilmiş;
+ * koyu temada da okunsun diye rozet her iki temada beyaz kalır (marka yüzeyi).
+ */
+export function CarrierBadge({ name, width = 44, height = 18 }: { name?: string | null; width?: number; height?: number }) {
+  const url = carrierLogoUrl(name);
+  if (!url) return null;
+  return (
+    <View style={{
+      paddingHorizontal: Math.round(height * 0.4), paddingVertical: Math.round(height * 0.25), borderRadius: Math.round(height * 0.5),
+      backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', flexShrink: 0,
+    }}>
+      <CarrierLogo url={url} width={width} height={height} />
+    </View>
+  );
+}

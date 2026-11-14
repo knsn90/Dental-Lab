@@ -7,8 +7,8 @@
 // `frameless` mobilde dış kartın içine gömmek için (kendi çerçevesini çizmez).
 
 import React from 'react';
-import { View, Text, Pressable, Platform } from 'react-native';
-import { Truck, ArrowLeft, ArrowRight, Plus, ChevronLeft, ChevronRight, Printer } from '../../../core/ui/icons';
+import { View, Text, Pressable, Platform, Linking } from 'react-native';
+import { Truck, ArrowLeft, ArrowRight, Plus, ChevronLeft, ChevronRight, Printer, ScanLine, ArrowUpRight } from '../../../core/ui/icons';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { isRTL } from '../../../core/i18n';
@@ -23,6 +23,7 @@ import { ProofViewerModal } from '../../delivery/proof/ProofViewerModal';
 import { CloseWithoutProofModal } from '../../delivery/proof/CloseWithoutProofModal';
 import { measureOrigin, type OriginRect } from '../../delivery/proof/useAnchoredSpring';
 import { ShipLabelTypeModal } from './ShipLabelTypeModal';
+import { CarrierBadge } from './CarrierLogo';
 
 
 /** Teslimat durumu rozetleri — kurye takip ekranıyla aynı dil. */
@@ -42,6 +43,13 @@ export interface DeliveryLeg {
   purpose?: string | null;
   direction?: string | null;
   external_provider?: string | null;
+  /** Shipink gönderi id'si — etiket ucu bunu ister. */
+  external_tracking_code?: string | null;
+  external_label_url?: string | null;
+  /** Toplayıcının seçtiği gerçek taşıyıcı (ör. "Kolay Gelsin"). */
+  external_carrier_name?: string | null;
+  external_tracking_no?: string | null;
+  external_tracking_url?: string | null;
   stage_snapshot?: string | null;
   created_at?: string | null;
   fee_amount?: number | null;
@@ -105,6 +113,13 @@ interface Props {
    * pencerede gösterilir). Verilmezse düğme çizilmez; klinik/hekimde hiç yok.
    */
   onPrintForPurpose?: (purpose: DeliveryPurpose) => Promise<void>;
+  /**
+   * Kargo firmasının kendi etiketi (barkod) — Shipink hareketlerinin satırında
+   * düğme olarak çıkar. Yalnız yönetici; klinik/hekimde hiç yok.
+   */
+  onCargoLabel?: (leg: DeliveryLeg) => void;
+  /** Kargo etiketi alınan hareket — düğmesi o sırada "Alınıyor…" yazar. */
+  cargoLabelLegId?: string | null;
   /** Fişi hazırlanan hareket — düğmesi o sırada sönük ve basılamaz. */
   printingLegId?: string | null;
   /** Kanıt penceresinin alt başlığı için sipariş no. */
@@ -127,7 +142,7 @@ export function OrderLogisticsCard({
   legs, accent, rowBg, isManager, canCall = true, onCall, onEditFee, fmtDate,
   frameless = false, tone,
   mapsApiKey, labAddress, clinicAddress, onOpenTracking, clientView = false,
-  onPrintLabel, onPrintForPurpose, printingLegId = null, orderNumber = null, onProofChanged,
+  onPrintLabel, onPrintForPurpose, onCargoLabel, cargoLabelLegId = null, printingLegId = null, orderNumber = null, onProofChanged,
 }: Props) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -272,7 +287,12 @@ export function OrderLogisticsCard({
             const purposeLabel = DELIVERY_PURPOSE_LABELS[(leg.purpose ?? 'teslimat') as DeliveryPurpose] ?? 'Teslimat';
             const who = leg.mode === 'internal'
               ? (leg.courier?.full_name ?? 'Bizim kurye')
-              : (leg.external_provider ?? 'Dış kargo');
+              // Toplayıcıyla gönderildiyse gerçek taşıyıcı öne gelir: "Kolay Gelsin · Shipink".
+              : ([leg.external_carrier_name, leg.external_provider].filter(Boolean).join(' · ') || 'Dış kargo');
+            // Kargo (toplayıcı) hareketi: canlı kurye yok → rota haritası anlamsız; takip no gösterilir.
+            const isCargo = leg.external_provider === 'Shipink';
+            const trackNo = isCargo && !clientView ? (leg.external_tracking_no ?? null) : null;
+            const trackUrl = leg.external_tracking_url ?? null;
             const fee = leg.fee_amount != null
               ? formatMoney(Number(leg.fee_amount) || 0, (leg.fee_currency ?? 'TRY') as any)
               : null;
@@ -302,6 +322,7 @@ export function OrderLogisticsCard({
                   </View>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {isCargo && leg.external_carrier_name ? <CarrierBadge name={leg.external_carrier_name} width={40} height={16} /> : null}
                   <Text style={{ flex: 1, fontSize: 11, color: toneEff.muted }} numberOfLines={1}>
                     {who}
                     {leg.stage_snapshot ? ` · ${leg.stage_snapshot}` : ''}
@@ -341,6 +362,61 @@ export function OrderLogisticsCard({
 
                 {/* Teslim kanıtı (2. dalga 5) — türü yoksa hiçbir şey çizilmez */}
                 <ProofRow leg={leg as any} onOpen={(origin) => { setViewer({ leg, origin }); setViewerOpen(true); }} />
+                {/* Kargo takip numarası — bağlantı varsa taşıyıcının takip sayfasını açar */}
+                {trackNo ? (
+                  <Pressable
+                    onPress={trackUrl ? () => {
+                      if (Platform.OS === 'web') { if (typeof window !== 'undefined') window.open(trackUrl, '_blank', 'noopener'); }
+                      else void Linking.openURL(trackUrl);
+                    } : undefined}
+                    disabled={!trackUrl}
+                    accessibilityRole={trackUrl ? 'link' : undefined}
+                    accessibilityLabel={`${autoT('Takip no')} ${trackNo}`}
+                    style={({ pressed }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6,
+                      opacity: pressed ? 0.6 : 1,
+                      ...(trackUrl && Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    })}
+                  >
+                    <Text style={{ fontSize: 11, color: toneEff.muted }}>{autoT('Takip no')}</Text>
+                    <Text
+                      selectable
+                      style={{
+                        flexShrink: 1, fontSize: 11.5, fontWeight: '600', color: toneEff.title, fontVariant: ['tabular-nums'],
+                        fontFamily: Platform.OS === 'web' ? 'JetBrains Mono, ui-monospace, Menlo, monospace' : undefined,
+                      }}
+                      numberOfLines={1}
+                    >
+                      {trackNo}
+                    </Text>
+                    {trackUrl ? <ArrowUpRight size={12} color={toneEff.muted} strokeWidth={2} /> : null}
+                  </Pressable>
+                ) : null}
+                {onCargoLabel && isManager && !clientView && leg.external_provider === 'Shipink'
+                  && (leg.external_label_url || leg.external_tracking_code) ? (
+                  <View style={{ flexDirection: 'row', marginTop: 10 }}>
+                    <GlassTooltip title={autoT('Kargo etiketi')} text={autoT('Kargo firmasının barkodlu etiketini açar; kutuya yapıştırılır')}>
+                      <Pressable
+                        onPress={() => onCargoLabel(leg)}
+                        disabled={cargoLabelLegId === leg.id}
+                        accessibilityRole="button"
+                        accessibilityLabel={autoT('Kargo etiketi')}
+                        style={({ pressed }: any) => ({
+                          flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+                          backgroundColor: hexA(accent, 0.10),
+                          opacity: cargoLabelLegId === leg.id ? 0.55 : 1,
+                          transform: [{ scale: pressed ? 0.97 : 1 }],
+                          ...(Platform.OS === 'web' ? { cursor: cargoLabelLegId === leg.id ? 'default' : 'pointer' } as any : {}),
+                        })}
+                      >
+                        <ScanLine size={13} color={accent} strokeWidth={2} />
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: accent }}>
+                          {autoT(cargoLabelLegId === leg.id ? 'Alınıyor…' : 'Kargo etiketi')}
+                        </Text>
+                      </Pressable>
+                    </GlassTooltip>
+                  </View>
+                ) : null}
                 {isManager && !clientView && leg.mode === 'internal' && leg.status !== 'teslim_edildi' && leg.status !== 'iptal' ? (
                   <NoProofButton accent={accent} onOpen={(origin) => { setNoProof({ leg, origin }); setNoProofOpen(true); }} />
                 ) : null}
@@ -348,7 +424,7 @@ export function OrderLogisticsCard({
                 {/* Rota önizlemesi yalnız en son kurye hareketinde. Anahtar ya da
                     adres yoksa bileşen kendini zaten gizler. */}
                 {(() => {
-                  if (leg.id !== mapLegId) return null;
+                  if (leg.id !== mapLegId || isCargo) return null;
                   const { originText, destText } = legRouteAddresses(leg, labAddress, clinicAddress);
                   if (!mapsApiKey || !originText || !destText) return null;
                   return (

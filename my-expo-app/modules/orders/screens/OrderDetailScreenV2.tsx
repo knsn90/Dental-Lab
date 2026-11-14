@@ -468,7 +468,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     const fetchDeliveries = async () => {
       const { data } = await supabase
         .from('deliveries')
-        .select(`id, mode, status, courier_id, external_provider, external_tracking_no, external_tracking_code, external_label_url, picked_up_at, delivered_at, created_at, notes, destination_name, destination_address, destination_phone, purpose, direction, fee_amount, fee_currency, fee_source, stage_snapshot, ext_courier_name, ext_courier_phone, ext_courier_photo, ${PROOF_SELECT}, courier:profiles!deliveries_courier_profiles_fkey(full_name, avatar_url)`)
+        .select(`id, mode, status, courier_id, external_provider, external_tracking_no, external_tracking_code, external_label_url, external_carrier_name, external_tracking_url, picked_up_at, delivered_at, created_at, notes, destination_name, destination_address, destination_phone, purpose, direction, fee_amount, fee_currency, fee_source, stage_snapshot, ext_courier_name, ext_courier_phone, ext_courier_photo, ${PROOF_SELECT}, courier:profiles!deliveries_courier_profiles_fkey(full_name, avatar_url)`)
         .eq('work_order_id', orderUuid)
         .order('created_at', { ascending: false });
       const rows = (data ?? []) as any[];
@@ -707,6 +707,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const [bbkTracking, setBbkTracking] = useState(false);
   const [cancelingDelivery, setCancelingDelivery] = useState(false);
   const [shpBusy, setShpBusy] = useState(false);
+  const [cargoLabelLegId, setCargoLabelLegId] = useState<string | null>(null);   // Shipink etiketi alınıyor
   const [editDeliveryTarget, setEditDeliveryTarget] = useState<{ id: string; orderId: string } | null>(null);
   // Aşama aksiyon dropdown'u — hangi aşamanın menüsü açık (birincil "Tamamla" + ▼).
   const [stageMenuOpen, setStageMenuOpen] = useState<string | null>(null);
@@ -730,6 +731,24 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   // Triaj yetkisi: admin + lab_manager (C seçildi)
   // 'triage' station'ına atanmış teknisyen kontrolü ileride eklenebilir
   const canTriage = isManager;
+
+  // Shipink: takip numarası ve taşıyıcı gönderi ANINDA belli olmayabiliyor (taşıyıcı
+  // sonradan atar). Eksik bilgisi olan açık kargo hareketi, ekran açılınca bir kez
+  // sessizce eşitlenir; kayıt güncellenince realtime listeyi yeniler.
+  const shpSyncedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!isManager) return;
+    for (const l of deliveryLegs as any[]) {
+      if (l.external_provider !== 'Shipink' || !l.external_tracking_code) continue;
+      if (l.status === 'teslim_edildi' || l.status === 'iptal') continue;
+      if (l.external_tracking_no && l.external_carrier_name) continue;
+      if (shpSyncedRef.current.has(l.id)) continue;
+      shpSyncedRef.current.add(l.id);
+      supabase.functions.invoke('shipink-dispatch', {
+        body: { action: 'sync', shipment_id: l.external_tracking_code, delivery_id: l.id },
+      }).catch(() => { /* sessiz — "Durumu Güncelle" ile elle denenebilir */ });
+    }
+  }, [deliveryLegs, isManager]);
 
   // Teslim edilmiş / iptal iş (madde 14): üretim, onay ve kurye eylemleri kapanır; aşamalar salt okunur.
   const closedState = order ? closedStateOf(order as any) : null;
@@ -1189,6 +1208,33 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   };
   // Yalnız lab tarafı (kart klinik/hekimde zaten gizler) ve yalnız web.
   const shipLabelPurposeHandler = Platform.OS === 'web' ? printShipLabelForPurpose : undefined;
+  // Shipink kargo etiketi (barkod) — Lojistik kartındaki hareket satırından açılır.
+  // Bağlantı kayıtta yoksa (etiket gönderi anında hazır olmayabiliyor) gönderi
+  // id'siyle yeniden sorulur. Final teslimat ya da ara hareket fark etmez.
+  // NOT: mobil dal bu satırların altında erken döner — işleyici ondan ÖNCE tanımlı olmalı.
+  const handleShipinkLabel = async (leg: { id: string; external_label_url?: string | null; external_tracking_code?: string | null }) => {
+    if (cargoLabelLegId) return;
+    let url: string | null = leg.external_label_url ?? null;
+    if (!url) {
+      setCargoLabelLegId(leg.id);
+      const { data, error: e } = await supabase.functions.invoke('shipink-dispatch', {
+        body: { action: 'label', shipment_id: leg.external_tracking_code },
+      });
+      setCargoLabelLegId(null);
+      if (e || !(data as any)?.ok) {
+        toast.error((data as any)?.message ?? e?.message ?? autoT('Etiket alınamadı'));
+        return;
+      }
+      url = (data as any)?.label_url ?? null;
+      if (url) {
+        await supabase.from('deliveries').update({ external_label_url: url }).eq('id', leg.id);
+        refetch();
+      }
+    }
+    if (!url) { toast.error(autoT('Etiket henüz hazır değil — birkaç dakika sonra tekrar deneyin.')); return; }
+    if (Platform.OS === 'web') { if (typeof window !== 'undefined') window.open(url, '_blank'); }
+    else await Linking.openURL(url);
+  };
   const handleNavigateRelated = (relatedId: string) => {
     if (panelGroup && panelGroup.startsWith('(')) {
       router.push(`/${panelGroup}/order/${relatedId}` as any);
@@ -1687,6 +1733,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             clientView={panelGroup === '(clinic)' || panelGroup === '(doctor)'}
             onPrintLabel={shipLabelHandler}
             onPrintForPurpose={shipLabelPurposeHandler}
+            onCargoLabel={handleShipinkLabel}
+            cargoLabelLegId={cargoLabelLegId}
             printingLegId={printingLegId}
             frameless
           />
@@ -1905,19 +1953,18 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     prova: provaPanel && order.status !== 'iptal',
     // teslimat işleri — sığmayınca "•••" (ana iş "Teslim Edildi" hep görünür)
     dlvTrack: !!(isManager && activeDelivery && activeDelivery.status !== 'teslim_edildi'
-      && (activeDelivery.external_provider === 'BanaBiKurye' || activeDelivery.external_provider === 'Shipink')
-      && activeDelivery.external_tracking_no),
+      && ((activeDelivery.external_provider === 'BanaBiKurye' && activeDelivery.external_tracking_no)
+        // Shipink: takip no henüz atanmamış olsa da gönderi id'siyle sorulabilir.
+        || (activeDelivery.external_provider === 'Shipink' && (activeDelivery.external_tracking_no || activeDelivery.external_tracking_code)))),
     dlvEdit: !!(isManager && activeDelivery && activeDelivery.status !== 'teslim_edildi'
       && activeDelivery.external_provider === 'BanaBiKurye' && activeDelivery.external_tracking_no),
-    dlvLabel: !!(isManager && activeDelivery && activeDelivery.external_provider === 'Shipink'
-      && (activeDelivery.external_label_url || activeDelivery.external_tracking_code)),
     dlvCancel: !!(isManager && activeDelivery && activeDelivery.status !== 'teslim_edildi'),
   };
-  const PILL_KEYS = ['hold', 'replan', 'approval', 'revision', 'continuation', 'prova', 'dlvTrack', 'dlvEdit', 'dlvLabel'];
+  const PILL_KEYS = ['hold', 'replan', 'approval', 'revision', 'continuation', 'prova', 'dlvTrack', 'dlvEdit'];
   const ICON_KEYS = ['dlvCancel', 'undoDelivery', 'support', 'print', 'history'];
   // prova en son gizlenir: durum noktası (klinikte/gecikti) operasyonel olarak en önemli bilgi
   // Teslimatı iptal (yıkıcı, seyrek) İLK gizlenir; teslimat işleri ikonlardan sonra gizlenir.
-  const HIDE_ORDER = ['dlvCancel', 'undoDelivery', 'continuation', 'revision', 'replan', 'hold', 'approval', 'support', 'print', 'history', 'dlvLabel', 'dlvEdit', 'dlvTrack', 'prova'];
+  const HIDE_ORDER = ['dlvCancel', 'undoDelivery', 'continuation', 'revision', 'replan', 'hold', 'approval', 'support', 'print', 'history', 'dlvEdit', 'dlvTrack', 'prova'];
   const secKeys = PILL_KEYS.filter(k => secAvail[k]);
   const secShownSet = (() => {
     const all = new Set([...secKeys, ...ICON_KEYS.filter(k => secAvail[k])]);
@@ -1959,7 +2006,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   // ── Teslimat işleri (hero) — işleyiciler hem düğmede hem "•••" menüsünde kullanılır ──
   const dlvLive = !!(isManager && activeDelivery && activeDelivery.status !== 'teslim_edildi');
   const isBbkLive = dlvLive && activeDelivery.external_provider === 'BanaBiKurye' && !!activeDelivery.external_tracking_no;
-  const isShpLive = dlvLive && activeDelivery.external_provider === 'Shipink' && !!activeDelivery.external_tracking_no;
+  const isShpLive = dlvLive && activeDelivery.external_provider === 'Shipink' && !!(activeDelivery.external_tracking_no || activeDelivery.external_tracking_code);
   const handleBbkEdit = () => {
     setEditDeliveryTarget({ id: activeDelivery.id, orderId: String(activeDelivery.external_tracking_no) });
     setDeliveryModalOpen(true);
@@ -1990,7 +2037,11 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const handleShipinkTrack = async () => {
     setShpBusy(true);
     const { data, error: e } = await supabase.functions.invoke('shipink-dispatch', {
-      body: { action: 'check', tracking_number: activeDelivery.external_tracking_no, delivery_id: activeDelivery.id },
+      // Gönderi id'si varsa gönderi kaydı sorulur: durumla birlikte takip no, taşıyıcı
+      // ve etiketi de tamamlar. Eski kayıtlarda (id yok) takip numarasıyla sorulur.
+      body: activeDelivery.external_tracking_code
+        ? { action: 'sync', shipment_id: activeDelivery.external_tracking_code, delivery_id: activeDelivery.id }
+        : { action: 'check', tracking_number: activeDelivery.external_tracking_no, delivery_id: activeDelivery.id },
     });
     setShpBusy(false);
     if (e || !(data as any)?.ok) {
@@ -2008,28 +2059,6 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     } else {
       toast.success(`Shipink durumu: ${raw}`);
     }
-  };
-  const handleShipinkLabel = async () => {
-    let url: string | null = activeDelivery.external_label_url ?? null;
-    if (!url) {
-      setShpBusy(true);
-      const { data, error: e } = await supabase.functions.invoke('shipink-dispatch', {
-        body: { action: 'label', shipment_id: activeDelivery.external_tracking_code },
-      });
-      setShpBusy(false);
-      if (e || !(data as any)?.ok) {
-        toast.error((data as any)?.message ?? e?.message ?? 'Etiket alınamadı');
-        return;
-      }
-      url = (data as any)?.label_url ?? null;
-      if (url) {
-        await supabase.from('deliveries').update({ external_label_url: url }).eq('id', activeDelivery.id);
-        refetch();
-      }
-    }
-    if (!url) { toast.error('Etiket henüz hazır değil — birkaç dakika sonra tekrar deneyin.'); return; }
-    if (Platform.OS === 'web') { if (typeof window !== 'undefined') window.open(url, '_blank'); }
-    else await Linking.openURL(url);
   };
   const handleCancelDelivery = async () => {
     const ok = await confirmAsync('Teslimatı İptal Et', 'Teslimat iptal edilsin mi? Sipariş "Kuryeye Gönder" durumuna döner, kurye yeniden çağrılabilir.', { confirmText: 'İptal Et', destructive: true });
@@ -2071,7 +2100,6 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     prova: { key: 'prova', label: provaHero.text, icon: ProvaIcon as any, onPress: () => { setProvaOrigin(null); setProvaOpen(true); } },
     dlvTrack: { key: 'dlvTrack', label: autoT('Durumu Güncelle'), icon: RotateCcw, onPress: () => { void (isBbkLive ? handleBbkTrack() : handleShipinkTrack()); }, disabled: bbkTracking || shpBusy },
     dlvEdit: { key: 'dlvEdit', label: autoT('Teslimatı düzenle'), icon: Pencil, onPress: handleBbkEdit },
-    dlvLabel: { key: 'dlvLabel', label: autoT('Kargo Etiketi'), icon: Printer, onPress: () => { void handleShipinkLabel(); }, disabled: shpBusy },
     dlvCancel: { key: 'dlvCancel', label: autoT('Teslimatı iptal et'), icon: CloseIcon as any, tone: 'danger', onPress: () => { void handleCancelDelivery(); }, disabled: cancelingDelivery },
   };
   const secMenu: RowAction[] = [...PILL_KEYS, ...ICON_KEYS]
@@ -2639,16 +2667,6 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                       </PillBtn>
                     </Pressable>
                   )}
-                  {/* Shipink — kutuya yapıştırılacak kargo etiketi (barkod).
-                      Bağlantı kayıtta yoksa (etiket gönderi anında hazır
-                      olmayabiliyor) gönderi id'siyle yeniden sorulur. */}
-                  {secAvail.dlvLabel && secShown('dlvLabel') && (
-                    <Pressable disabled={shpBusy} onPress={handleShipinkLabel}>
-                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={Printer}>
-                        {shpBusy ? 'Alınıyor…' : 'Kargo Etiketi'}
-                      </PillBtn>
-                    </Pressable>
-                  )}
                 </View>
                 {/* Sağ: tek tip ikon kümesi — Destek · Yazdır · Geçmiş · (sığmayanlar) */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginStart: 'auto' as any }}>
@@ -2708,8 +2726,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                     if (w !== actSecW[k]) setActSecW(prev => ({ ...prev, [k]: w }));
                   }}>
                     <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm"
-                      icon={k === 'hold' ? Pause : k === 'replan' ? ListChecks : k === 'approval' ? UserCheck : k === 'revision' || k === 'dlvTrack' ? RotateCcw : k === 'prova' ? ProvaIcon : k === 'dlvEdit' ? Pencil : k === 'dlvLabel' ? Printer : Layers}>
-                      {k === 'hold' ? 'İşi beklet' : k === 'replan' ? 'Yeniden Planla' : k === 'approval' ? 'Hekim Onayına Gönder' : k === 'revision' ? 'Revizyon Oluştur' : k === 'prova' ? provaHero.text : k === 'dlvTrack' ? 'Durumu Güncelle' : k === 'dlvEdit' ? 'Düzenle' : k === 'dlvLabel' ? 'Kargo Etiketi' : 'Devam Siparişi'}
+                      icon={k === 'hold' ? Pause : k === 'replan' ? ListChecks : k === 'approval' ? UserCheck : k === 'revision' || k === 'dlvTrack' ? RotateCcw : k === 'prova' ? ProvaIcon : k === 'dlvEdit' ? Pencil : Layers}>
+                      {k === 'hold' ? 'İşi beklet' : k === 'replan' ? 'Yeniden Planla' : k === 'approval' ? 'Hekim Onayına Gönder' : k === 'revision' ? 'Revizyon Oluştur' : k === 'prova' ? provaHero.text : k === 'dlvTrack' ? 'Durumu Güncelle' : k === 'dlvEdit' ? 'Düzenle' : 'Devam Siparişi'}
                     </PillBtn>
                   </View>
                 ))}
@@ -3441,6 +3459,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             clientView={panelGroup === '(clinic)' || panelGroup === '(doctor)'}
             onPrintLabel={shipLabelHandler}
             onPrintForPurpose={shipLabelPurposeHandler}
+            onCargoLabel={handleShipinkLabel}
+            cargoLabelLegId={cargoLabelLegId}
             printingLegId={printingLegId}
           />
 

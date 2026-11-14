@@ -10333,5 +10333,12 @@
   "Teslim geri alındı": "Lieferung rückgängig gemacht",
   "Labdan çıkan": "Vom Labor ausgehend",
   "Laba gelen": "Zum Labor eingehend",
-  "Belge basmadan pencereyi kapatır": "Schließt das Fenster ohne zu drucken"
+  "Belge basmadan pencereyi kapatır": "Schließt das Fenster ohne zu drucken",
+  "Kargo etiketi": "Versandetikett",
+  "Kargo firmasının barkodlu etiketini açar; kutuya yapıştırılır": "Öffnet das Barcode-Etikett des Versanddienstes zum Aufkleben auf das Paket",
+  "Takip sayfasını aç": "Sendungsverfolgung öffnen",
+  "Kargoya verildi": "An Versanddienst übergeben",
+  "Takip numarası henüz atanmadı": "Sendungsnummer noch nicht vergeben",
+  "Kargo bilgilerine döner": "Zurück zu den Versanddetails",
+  "Takip sayfasını tarayıcıda açar": "Öffnet die Sendungsverfolgung im Browser"
 }
