@@ -10382,5 +10382,12 @@
   "Bağlantını kontrol edip tekrar dene": "Verbindung prüfen und erneut versuchen",
   "aktif iş seni bekliyor": "aktive Aufträge warten auf dich",
   "Firesiz iş": "Ausschussfrei",
-  "Geri dönen": "Zurückgekommen"
+  "Geri dönen": "Zurückgekommen",
+  "Elimde": "In Arbeit",
+  "Bu süzgeçte iş yok": "Keine Aufträge in diesem Filter",
+  "Başlatılamadı": "Start fehlgeschlagen",
+  "İşe başlandı": "Auftrag gestartet",
+  "İş listesine döner": "Zurück zur Auftragsliste",
+  "Dosya kontrolü başarısız": "Dateiprüfung fehlgeschlagen",
+  "Önce bitmesi gereken aşama": "Zuerst abzuschließende Stufe"
 }

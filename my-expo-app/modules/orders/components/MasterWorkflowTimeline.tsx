@@ -5,8 +5,8 @@
 // Hero kartının üst stripinde durur, "büyük resmi" gösterir.
 // Üretim adımı altında WorkflowTimeline (sub-stages) zaten render ediliyor.
 
-import React from 'react';
-import { View, Text, Platform } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, Platform, Animated, Easing } from 'react-native';
 import {
   Inbox, ListTodo, Cog, ShieldCheck, PackageCheck, Truck, Check,
 } from '../../../core/ui/icons';
@@ -111,7 +111,7 @@ export function MasterWorkflowTimeline({
 
         return (
           <React.Fragment key={step.key}>
-            <View style={{ flex: 1, minWidth: 0, alignItems: 'center', gap: 4 }}>
+            <StepIn index={idx} style={{ flex: 1, minWidth: 0, alignItems: 'center', gap: 4 }}>
               <View style={{
                 width: 30, height: 30, borderRadius: 999,
                 alignItems: 'center', justifyContent: 'center',
@@ -143,7 +143,7 @@ export function MasterWorkflowTimeline({
               }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
                 {step.label}
               </Text>
-            </View>
+            </StepIn>
 
             {idx < STEP_DEFS.length - 1 && (
               <View style={{
@@ -179,4 +179,22 @@ export function deriveMasterStep(
   if (triagedAt && stationName) return 'uretim';
   if (!triagedAt) return 'planlama';
   return 'alindi';
+}
+
+// Adım sırayla belirir ve yerine oturur — çizgi soldan sağa "doluyor" gibi okunur.
+// Hareketi azalt açıksa doğrudan görünür.
+function StepIn({ index, style, children }: { index: number; style?: any; children: React.ReactNode }) {
+  const reduce = Platform.OS === 'web' && typeof window !== 'undefined'
+    && !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+  const v = useRef(new Animated.Value(reduce ? 1 : 0)).current;
+  useEffect(() => {
+    if (reduce) return;
+    Animated.timing(v, { toValue: 1, duration: 320, delay: 120 + index * 90, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <Animated.View style={[style, { opacity: v, transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }] }]}>
+      {children}
+    </Animated.View>
+  );
 }

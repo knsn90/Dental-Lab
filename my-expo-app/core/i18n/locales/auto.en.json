@@ -10382,5 +10382,12 @@
   "Bağlantını kontrol edip tekrar dene": "Check your connection and try again",
   "aktif iş seni bekliyor": "active jobs waiting for you",
   "Firesiz iş": "Waste-free",
-  "Geri dönen": "Returned"
+  "Geri dönen": "Returned",
+  "Elimde": "In hand",
+  "Bu süzgeçte iş yok": "No jobs in this filter",
+  "Başlatılamadı": "Couldn't start",
+  "İşe başlandı": "Job started",
+  "İş listesine döner": "Returns to the job list",
+  "Dosya kontrolü başarısız": "File check failed",
+  "Önce bitmesi gereken aşama": "Stage that must finish first"
 }

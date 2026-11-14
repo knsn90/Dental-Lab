@@ -43,8 +43,7 @@ export function StageStateBadge({
         <Icon size={dims.iconSize} color={fg} strokeWidth={2} />
       )}
       <Text style={{
-        fontSize: dims.fs, fontWeight: '700', color: fg,
-        letterSpacing: 0.6, textTransform: 'uppercase',
+        fontSize: dims.fs + 0.5, fontWeight: '600', color: fg,
       }}>
         {meta.short}
       </Text>

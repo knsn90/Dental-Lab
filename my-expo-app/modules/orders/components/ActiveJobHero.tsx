@@ -12,6 +12,9 @@ import { WorkflowTimeline, type TimelineStage } from './WorkflowTimeline';
 import { StageStateBadge } from './StageStateBadge';
 import { MasterWorkflowTimeline, type MasterStep } from './MasterWorkflowTimeline';
 import type { StageStatus } from '../stations/stageStates';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 const SERIF = {
   fontFamily: Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light',
@@ -74,6 +77,14 @@ export function ActiveJobHero({
   actionSlot?: React.ReactNode;
 }) {
   const P = useStationTheme();
+  const T = useMobileTokens();
+  const U = useInkUI();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
+  const accentInk = isDark ? '#93C5FD' : P.accent;
+  void accentInk;
+  // Kartın üst bölümü DÜZ panel mavisi (gradyan yok) — sayfadaki tek renkli yüzey.
+  // Koyu ton seçildi: beyaz küçük metin okunur kalsın (≈5.9:1).
+  const heroBg = isDark ? '#004B87' : P.accentDeep;
   const desc = useMemo(() => getStationDescriptor(job?.station_name ?? null), [job?.station_name]);
   const Icon = desc.icon;
   const isWaiting = job?.status === 'bekliyor';
@@ -121,9 +132,9 @@ export function ActiveJobHero({
 
   // Tone bazlı bottom-row chip rengi
   const dueChipColor = dueLabel?.tone === 'danger'
-    ? '#FCA5A5'
-    : dueLabel?.tone === 'warning' ? '#FBBF24'
-    : 'rgba(255,255,255,0.7)';
+    ? '#FECACA'
+    : dueLabel?.tone === 'warning' ? '#FDE68A'
+    : 'rgba(255,255,255,0.76)';
 
   // Canlı timer bloğu — masaüstünde başlığın sağında, mobilde başlığın altında (tam okunur)
   const timerBlock = (job && job.status !== 'bekliyor') ? (
@@ -134,11 +145,7 @@ export function ActiveJobHero({
     }}>
       {job.started_at ? (
         <>
-          <Text style={{
-            fontSize: 9.5, fontWeight: '700',
-            color: 'rgba(255,255,255,0.65)',
-            letterSpacing: 1.0, textTransform: 'uppercase',
-          }}>
+          <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.76)' }}>
             Bu Aşama
           </Text>
           <Text style={{
@@ -152,9 +159,9 @@ export function ActiveJobHero({
           {(() => {
             const isPaused = job.status === 'durakladi';
             const isBlocked = ['bloklu','makine_bekliyor','onay_bekliyor','yeniden'].includes(job.status as string);
-            const dotColor = isPaused ? '#FBBF24' : isBlocked ? '#FCA5A5' : '#86EFAC';
+            const dotColor = isPaused ? '#FDE68A' : isBlocked ? '#FECACA' : '#86EFAC';
             const dotShadow = isPaused ? 'rgba(251,191,36,0.6)' : isBlocked ? 'rgba(252,165,165,0.6)' : 'rgba(134,239,172,0.6)';
-            const label = isPaused ? 'DURAKLATILDI' : isBlocked ? 'BLOKLU' : 'ÇALIŞIYOR';
+            const label = isPaused ? autoT('Duraklatıldı') : isBlocked ? autoT('Bloklu') : autoT('Çalışıyor');
             const animate = !isPaused && !isBlocked;
             return (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
@@ -165,7 +172,7 @@ export function ActiveJobHero({
                     ? { boxShadow: `0 0 0 0 ${dotShadow}`, animation: 'heroDotPulse 1.6s ease-out infinite' } as any
                     : {}),
                 }} />
-                <Text style={{ fontSize: 10, fontWeight: '600', color: dotColor, letterSpacing: 0.5 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: dotColor }}>
                   {label}
                 </Text>
               </View>
@@ -174,11 +181,7 @@ export function ActiveJobHero({
         </>
       ) : (
         <>
-          <Text style={{
-            fontSize: 9.5, fontWeight: '700',
-            color: 'rgba(252,211,77,0.85)',
-            letterSpacing: 1.0, textTransform: 'uppercase',
-          }}>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: '#FDE68A' }}>
             Kuyrukta
           </Text>
           <Text style={{
@@ -189,10 +192,7 @@ export function ActiveJobHero({
           }}>
             {fmtLive(liveQueueWaitSec)}
           </Text>
-          <Text style={{
-            fontSize: 9.5, fontWeight: '500',
-            color: 'rgba(255,255,255,0.55)', marginTop: 2,
-          }}>
+          <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.76)', marginTop: 2 }}>
             süre işlemiyor
           </Text>
         </>
@@ -206,17 +206,14 @@ export function ActiveJobHero({
     <View
       style={{
         backgroundColor: P.surface,
-        borderRadius: 24,
+        borderRadius: 28,
+        borderWidth: 1, borderColor: P.ink100,
         overflow: 'hidden',
-        ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } as any : {}),
       }}
     >
-      {/* ═══ ÜST — Denim gradient hero ═══ */}
+      {/* ═══ ÜST — düz mavi başlık (gradyan/desen yok; Özet'teki mesai kartıyla aynı dil) ═══ */}
       <View style={{
-        // @ts-ignore web gradient
-        backgroundImage: `linear-gradient(135deg, ${P.accentDeep} 0%, ${P.ctaBg} 100%)`,
-        backgroundColor: P.ctaBg,
-        minHeight: 180,
+        backgroundColor: heroBg,
         position: 'relative',
         overflow: 'hidden',
         paddingHorizontal: isMobile ? 16 : 24, paddingTop: isMobile ? 18 : 22, paddingBottom: 18,
@@ -229,10 +226,10 @@ export function ActiveJobHero({
             <View style={{
               flexDirection: 'row', alignItems: 'center', gap: 6,
               paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
-              backgroundColor: 'rgba(255,255,255,0.15)',
+              backgroundColor: 'rgba(255,255,255,0.18)',
             }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.8 }}>
-                BEKLEMEDE
+              <Text style={{ fontSize: 11.5, fontWeight: '600', color: '#FFFFFF' }}>
+                {autoT('Beklemede')}
               </Text>
             </View>
           )}
@@ -244,8 +241,8 @@ export function ActiveJobHero({
                 backgroundColor: 'rgba(220,38,38,0.95)',
                 flexDirection: 'row', alignItems: 'center', gap: 4,
               }}>
-                <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.4 }}>
-                  ACİL
+                <Text style={{ fontSize: 11.5, fontWeight: '600', color: '#FFFFFF' }}>
+                  {autoT('Acil')}
                 </Text>
               </View>
             )}
@@ -255,9 +252,9 @@ export function ActiveJobHero({
                 backgroundColor: 'rgba(217,119,6,0.95)',
                 flexDirection: 'row', alignItems: 'center', gap: 4,
               }}>
-                <AlertTriangle size={9} color="#FFFFFF" strokeWidth={2.4} />
-                <Text style={{ fontSize: 9, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.4 }}>
-                  KRİTİK
+                <AlertTriangle size={11} color="#FFFFFF" strokeWidth={2.2} />
+                <Text style={{ fontSize: 11.5, fontWeight: '600', color: '#FFFFFF' }}>
+                  {autoT('Kritik')}
                 </Text>
               </View>
             )}
@@ -272,11 +269,10 @@ export function ActiveJobHero({
           }}>
             <View style={{
               width: 56, height: 56, borderRadius: 16,
-              backgroundColor: hexA(P.accent, 0.20),
-              borderWidth: 1.5, borderColor: hexA(P.accent, 0.45),
+              backgroundColor: 'rgba(255,255,255,0.18)',
               alignItems: 'center', justifyContent: 'center',
             }}>
-              {job ? <Icon size={26} color="#FFFFFF" strokeWidth={1.7} /> : <Inbox size={26} color="rgba(255,255,255,0.7)" strokeWidth={1.6} />}
+              {job ? <Icon size={26} color="#FFFFFF" strokeWidth={1.7} /> : <Inbox size={26} color="rgba(255,255,255,0.76)" strokeWidth={1.6} />}
             </View>
 
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -286,12 +282,8 @@ export function ActiveJobHero({
                       geçiyordu: kuyruk kartı → hero eyebrow → hero başlığı. Üstelik
                       teknisyen hangi istasyonda çalıştığını zaten biliyor; bilmediği
                       HANGİ HASTA. Kimlik başlığa, istasyon etikete alındı. */}
-                  <Text style={{
-                    fontSize: 10.5, fontWeight: '700',
-                    color: 'rgba(255,255,255,0.65)',
-                    letterSpacing: 1.4, textTransform: 'uppercase',
-                  }}>
-                    {job.station_name ?? desc.eyebrow} · Aşama #{job.sequence_order}
+                  <Text style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.80)' }} numberOfLines={1}>
+                    {`${job.station_name ?? desc.eyebrow} · ${autoT('Aşama')} #${job.sequence_order}`}
                   </Text>
                   <Text
                     numberOfLines={2}
@@ -302,10 +294,10 @@ export function ActiveJobHero({
                       marginTop: 2,
                     }}
                   >
-                    {job.patient_name ?? 'Hasta belirtilmemiş'}
+                    {job.patient_name ?? autoT('Hasta belirtilmemiş')}
                   </Text>
                   <Text numberOfLines={1} style={{
-                    fontSize: 12, color: 'rgba(255,255,255,0.72)', marginTop: 3,
+                    fontSize: 12, color: 'rgba(255,255,255,0.80)', marginTop: 3,
                     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   }}>
                     #{job.order_number}
@@ -313,16 +305,12 @@ export function ActiveJobHero({
                 </>
               ) : (
                 <>
-                  <Text style={{
-                    fontSize: 10.5, fontWeight: '700',
-                    color: 'rgba(255,255,255,0.55)',
-                    letterSpacing: 1.4, textTransform: 'uppercase',
-                  }}>
+                  <Text style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.80)' }}>
                     Workstation
                   </Text>
                   <Text style={{
                     ...SERIF, fontSize: 28,
-                    color: 'rgba(255,255,255,0.95)',
+                    color: '#FFFFFF',
                     letterSpacing: -0.7, lineHeight: 32, marginTop: 2,
                   }}>
                     Bir iş seç
@@ -346,18 +334,18 @@ export function ActiveJobHero({
         }}>
           {job && idleLabel && !isWaiting && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-              <Clock size={11} color="rgba(255,255,255,0.7)" strokeWidth={1.8} />
-              <Text style={{ fontSize: 11, fontWeight: '500', color: 'rgba(255,255,255,0.85)' }}>
+              <Clock size={13} color="rgba(255,255,255,0.80)" strokeWidth={1.8} />
+              <Text style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.90)' }}>
                 {idleLabel}
               </Text>
             </View>
           )}
           {job && dueLabel && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-              <Calendar size={11} color={dueChipColor} strokeWidth={1.8} />
+              <Calendar size={13} color={dueChipColor} strokeWidth={1.8} />
               <Text style={{
-                fontSize: 11, fontWeight: '600',
-                color: dueLabel.tone !== 'neutral' ? dueChipColor : 'rgba(255,255,255,0.85)',
+                fontSize: 12.5, fontWeight: dueLabel.tone !== 'neutral' ? '600' : '400',
+                color: dueLabel.tone !== 'neutral' ? dueChipColor : 'rgba(255,255,255,0.90)',
               }}>
                 {dueLabel.text}
               </Text>
@@ -396,7 +384,7 @@ export function ActiveJobHero({
             {/* İş türü — tam genişlik, çok satır okunur */}
             {job.work_type_label && (
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 2 }}>
-                <Text style={{ fontSize: 9.5, fontWeight: '700', color: P.ink400, letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 3 }}>
+                <Text style={{ fontSize: 12.5, color: P.ink500, marginTop: 1 }}>
                   İş
                 </Text>
                 <Text style={{ flex: 1, fontSize: 13, color: P.ink700, lineHeight: 18 }} numberOfLines={3}>
@@ -410,10 +398,10 @@ export function ActiveJobHero({
           {(job.tooth_count > 0 || job.shade) && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
               {job.tooth_count > 0 && (
-                <HeroChip label={`${job.tooth_count} diş`} />
+                <HeroChip label={`${job.tooth_count} ${autoT('diş')}`} />
               )}
               {job.shade && (
-                <HeroChip label={`Renk ${job.shade}`} />
+                <HeroChip label={`${autoT('Renk')} ${job.shade}`} />
               )}
             </View>
           )}
@@ -461,7 +449,7 @@ export function ActiveJobHero({
                 flexDirection: 'row', alignItems: 'center', gap: 8,
                 paddingTop: 10, borderTopWidth: 1, borderTopColor: P.ink100,
               }}>
-                <Text style={{ fontSize: 9.5, fontWeight: '700', color: P.ink400, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                <Text style={{ fontSize: 12.5, color: P.ink500 }}>
                   Sipariş Akışı
                 </Text>
                 <View style={{ flex: 1 }} />
@@ -469,7 +457,7 @@ export function ActiveJobHero({
               </View>
             ) : (
               <View style={{ paddingTop: 12 }}>
-                <Text style={{ fontSize: 9.5, fontWeight: '700', color: P.ink400, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
+                <Text style={{ fontSize: 12.5, color: P.ink500, marginBottom: 8 }}>
                   Sipariş Akışı
                 </Text>
                 <MasterWorkflowTimeline currentStep={masterStep} />

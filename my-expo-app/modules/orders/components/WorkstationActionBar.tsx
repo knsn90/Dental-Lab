@@ -16,6 +16,10 @@ import { toast } from '../../../core/ui/Toast';
 import { pauseStage, resumeStage, transitionStageState, startStage } from '../api/timing';
 import type { StageStatus } from '../stations/stageStates';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 type ActionKey = 'pause' | 'resume' | 'machine' | 'approval' | 'block' | 'rework';
 
@@ -41,6 +45,8 @@ function StateActionChip({
 }) {
   const [hovered, setHovered] = useState(false);
   const Icon = a.icon;
+  // Mavi kart üstünde: yarı saydam beyaz zemin + beyaz ikon/metin
+  const tone = { bg: 'rgba(255,255,255,0.18)', fg: '#FFFFFF' };
   return (
     <View style={{ position: 'relative' }}>
       <Pressable
@@ -51,24 +57,23 @@ function StateActionChip({
         style={{
           // Icon-only kompakt yuvarlak buton — sadece "Devam Et" durumunda label görünür
           alignItems: 'center', justifyContent: 'center',
-          width: a.key === 'resume' ? undefined : 38,
-          height: 38,
+          width: a.key === 'resume' ? undefined : 44,
+          height: 44,
           paddingHorizontal: a.key === 'resume' ? 14 : 0,
           flexDirection: 'row', gap: a.key === 'resume' ? 6 : 0,
           borderRadius: 999,
-          backgroundColor: hovered ? 'rgba(255,255,255,0.28)' : a.bgColor,
-          borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
-          opacity: disabled ? 0.4 : 1,
+          backgroundColor: tone.bg,
+          opacity: disabled ? 0.4 : hovered ? 0.8 : 1,
           ...(Platform.OS === 'web' ? {
             cursor: disabled || isLoading ? 'not-allowed' : 'pointer',
-            transition: 'background-color 0.15s',
+            transition: 'opacity 0.15s',
           } as any : {}),
         }}
       >
-        <Icon size={15} color={a.color} strokeWidth={2} />
+        <Icon size={17} color={tone.fg} strokeWidth={2} />
         {/* Sadece "Devam Et" için metin görünür — diğerleri icon-only */}
         {a.key === 'resume' && (
-          <Text style={{ fontSize: 12, fontWeight: '600', color: a.color, letterSpacing: -0.1 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: tone.fg, letterSpacing: -0.1 }}>
             {a.label}
           </Text>
         )}
@@ -172,6 +177,9 @@ export function WorkstationActionBar({
   disabledLabel?:    string;
 }) {
   const P = useStationTheme();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
+  void T; void isDark;
   const [busy, setBusy] = useState<ActionKey | null>(null);
   const [starting, setStarting] = useState(false);
   const [estimateModalOpen, setEstimateModalOpen] = useState(false);
@@ -195,10 +203,10 @@ export function WorkstationActionBar({
     try {
       const res = await startStage(stageId, estimate);
       if (!res.ok) {
-        toast.error(`Başlatılamadı: ${res.error ?? ''}`);
+        toast.error(`${autoT('Başlatılamadı')}: ${res.error ?? ''}`);
         return;
       }
-      toast.success('İşe başlandı ✓');
+      toast.success(autoT('İşe başlandı'));
       setEstimateModalOpen(false);
       onStarted?.();
     } finally {
@@ -213,22 +221,21 @@ export function WorkstationActionBar({
     return (
       <View style={{
         flexDirection: 'row', alignItems: 'flex-start', gap: 11,
-        padding: 14, borderRadius: 14,
+        padding: 14, borderRadius: 16,
         backgroundColor: 'rgba(255,255,255,0.14)',
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
       }}>
         <View style={{
-          width: 30, height: 30, borderRadius: 999,
-          backgroundColor: 'rgba(255,255,255,0.18)',
+          width: 32, height: 32, borderRadius: 999,
+          backgroundColor: 'rgba(255,255,255,0.20)',
           alignItems: 'center', justifyContent: 'center', marginTop: 1,
         }}>
-          <Clock size={15} color="#FFFFFF" strokeWidth={2} />
+          <Clock size={16} color="#FFFFFF" strokeWidth={2} />
         </View>
         <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
-            {blockedBy ? `Önce "${blockedBy}" bitmeli` : 'Sıra henüz sana gelmedi'}
+          <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }}>
+            {blockedBy ? `${autoT('Önce bitmesi gereken aşama')}: ${blockedBy}` : autoT('Sıra henüz sana gelmedi')}
           </Text>
-          <Text style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.78)', lineHeight: 16 }}>
+          <Text style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.88)', lineHeight: 18 }}>
             {waitingHint ?? 'O aşama tamamlandığında bu iş otomatik olarak sana açılır — bir şey yapmana gerek yok.'}
           </Text>
         </View>
@@ -242,10 +249,10 @@ export function WorkstationActionBar({
     try {
       const res = await action.invoke(stageId);
       if (!res.ok) {
-        toast.error(`${action.label} başarısız: ${res.error ?? ''}`);
+        toast.error(`${autoT(action.label)} — ${autoT('başarısız')}: ${res.error ?? ''}`);
         return;
       }
-      toast.success(`${action.label} ✓`);
+      toast.success(autoT(action.label));
       onStateChanged?.();
     } finally {
       setBusy(null);
@@ -257,18 +264,14 @@ export function WorkstationActionBar({
     return (
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 10,
-        padding: 14, borderRadius: 14,
-        backgroundColor: P.surface,
-        borderWidth: 1, borderColor: hexA(P.accent, 0.28),
-        ...(Platform.OS === 'web' ? {
-          boxShadow: '0 4px 14px rgba(15,23,42,0.10)',
-        } as any : {}),
+        padding: 14, borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.14)',
       }}>
         <View style={{ flex: 1, gap: 2 }}>
-          <Text style={{ fontSize: 11, fontWeight: '700', color: P.accentDeep, letterSpacing: 0.6, textTransform: 'uppercase' }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }}>
             Sıra Sende
           </Text>
-          <Text style={{ fontSize: 12, color: P.ink700, fontWeight: '500' }}>
+          <Text style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.88)', lineHeight: 18 }}>
             Süre, "İşe Başla" butonuna basana kadar işlemez. Şu an kuyrukta bekliyor.
           </Text>
         </View>
@@ -277,17 +280,14 @@ export function WorkstationActionBar({
           disabled={starting}
           style={{
             flexDirection: 'row', alignItems: 'center', gap: 8,
-            paddingHorizontal: 18, paddingVertical: 11, borderRadius: 12,
-            backgroundColor: P.accent,
+            paddingHorizontal: 20, minHeight: 46, borderRadius: 14,
+            backgroundColor: '#FFFFFF',
             opacity: starting ? 0.6 : 1,
-            ...(Platform.OS === 'web' ? {
-              cursor: starting ? 'wait' : 'pointer',
-              boxShadow: `0 6px 18px ${hexA(P.accent, 0.32)}`,
-            } as any : {}),
+            ...(Platform.OS === 'web' ? { cursor: starting ? 'wait' : 'pointer' } as any : {}),
           }}
         >
-          <Play size={14} color="#FFFFFF" strokeWidth={2.5} />
-          <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.4, textTransform: 'uppercase' }}>
+          <Play size={15} color={P.accentDeep} strokeWidth={2.5} />
+          <Text style={{ fontSize: 15, fontWeight: '600', color: P.accentDeep }}>
             İşe Başla
           </Text>
         </Pressable>
@@ -327,42 +327,28 @@ export function WorkstationActionBar({
 
       {/* Sağ — birincil CTA (sadece aktif stage'de) */}
       {status === 'aktif' && (
-        <View style={{ position: 'relative', borderRadius: 999, overflow: 'hidden' }}>
+        <View style={{ position: 'relative', borderRadius: 14, overflow: 'hidden' }}>
           <Pressable
             onPress={canComplete ? onComplete : undefined}
             disabled={!canComplete}
             style={{
               flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-              height: 38, paddingHorizontal: 14, borderRadius: 999,
-              // Mavi hero üstünde okunaklı: beyaz pill + accent text
-              backgroundColor: validationReady ? '#FFFFFF' : 'rgba(255,255,255,0.30)',
+              height: 44, paddingHorizontal: 20, borderRadius: 14,
+              // Mavi kartta tek dolu düğme: beyaz zemin + koyu mavi yazı
+              backgroundColor: validationReady ? '#FFFFFF' : 'rgba(255,255,255,0.25)',
               opacity: submitting ? 0.5 : 1,
-              ...(Platform.OS === 'web' ? {
-                cursor: !canComplete ? 'not-allowed' : 'pointer',
-                boxShadow: !canComplete ? 'none' : '0 4px 12px rgba(255,255,255,0.22)',
-              } as any : {}),
+              ...(Platform.OS === 'web' ? { cursor: !canComplete ? 'not-allowed' : 'pointer' } as any : {}),
             }}
           >
-            <Check size={13} color={validationReady ? P.accentDeep : 'rgba(255,255,255,0.6)'} strokeWidth={2.5} />
+            <Check size={15} color={validationReady ? P.accentDeep : 'rgba(255,255,255,0.8)'} strokeWidth={2.5} />
             {validationReady && !submitting ? (
-              <Text style={{
-                fontSize: 11.5, fontWeight: '700',
-                color: P.accentDeep,
-                letterSpacing: 0.3, textTransform: 'uppercase',
-              }} numberOfLines={1}>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: P.accentDeep }} numberOfLines={1}>
                 {ctaLabel}
               </Text>
             ) : submitting ? (
-              <Text style={{
-                fontSize: 12.5, fontWeight: '700', color: P.accentDeep,
-                letterSpacing: 0.3, textTransform: 'uppercase',
-              }}>Kontrol…</Text>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: P.accentDeep }}>Kontrol…</Text>
             ) : (
-              <Text style={{
-                fontSize: 11.5, fontWeight: '700',
-                color: 'rgba(255,255,255,0.85)',
-                letterSpacing: 0.3, textTransform: 'uppercase',
-              }} numberOfLines={1}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.88)' }} numberOfLines={1}>
                 {disabledLabel ?? 'Önce Kontrol Listesi'}
               </Text>
             )}
@@ -375,12 +361,11 @@ export function WorkstationActionBar({
          Dar ekranda chips ile aynı satıra sığmazsa flexWrap ile alt satıra iner. */}
       {status !== 'aktif' && (
         <View style={{
-          paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12,
-          backgroundColor: P.surface, borderWidth: 1, borderColor: P.ink100,
+          paddingHorizontal: 4, paddingVertical: 11,
           flexDirection: 'row', alignItems: 'center', gap: 8,
           flexShrink: 1, minWidth: 0,
         }}>
-          <Text style={{ fontSize: 12, color: P.ink700, fontWeight: '500', flexShrink: 1 }}>
+          <Text style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.88)', flexShrink: 1 }}>
             Tamamlamak için önce <Text style={{ fontWeight: '700' }}>Devam Et</Text>'e bas
           </Text>
         </View>

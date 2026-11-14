@@ -10,7 +10,8 @@ import { autoT } from '../../../core/i18n/autoTranslate';
  */
 
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, Platform, useWindowDimensions, Modal, findNodeHandle } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, useWindowDimensions, Modal, findNodeHandle, Animated, Easing, Image } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Check, ChevronRight, ChevronLeft, ChevronDown, Clock, Calendar,
@@ -21,7 +22,13 @@ import { useAppResume } from '../../../core/hooks/useAppResume';
 import { toast } from '../../../core/ui/Toast';
 import { useAuthStore } from '../../../core/store/authStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
-import { fetchStageMaterialContext, confirmStageMaterials, resolveDoctorClinicNames } from '../api';
+import { fetchStageMaterialContext, confirmStageMaterials, resolveDoctorClinicNames, resolveClinicLogos } from '../api';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { SlideTabBar } from '../../../core/ui/SlideTabBar';
+import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
+import { dueInfo, initialsOf } from '../../station/components/TechnicianMobileDashboard';
 import { recordStageActivity, completeStageResilient, startStage } from '../api/timing';
 import { StageMaterialModal } from '../components/StageMaterialModal';
 import { ValidationChecklistModal } from '../components/ValidationChecklistModal';
@@ -95,6 +102,7 @@ interface AssignedJob {
   doctor_id:       string | null;
   doctor_name:     string | null;
   clinic_name:     string | null;
+  clinic_logo_url?: string | null;
   // Phase A timing fields
   active_work_seconds:     number;
   machine_runtime_seconds: number;
@@ -135,9 +143,10 @@ function workTypeLabel(t?: string | null): string | null {
 // ── Standart panel card stili — palete (gece moduna) duyarlı factory ──
 const panelCardStyle = (p: StationPalette) => ({
   backgroundColor: p.surface,
-  borderRadius:    14,
+  borderRadius:    28,
+  borderWidth:     1,
+  borderColor:     p.ink100,
   overflow:        'hidden' as const,
-  ...(Platform.OS === 'web' ? { boxShadow: '0 4px 12px rgba(0,0,0,0.06)' } as any : {}),
 });
 
 // Standart panel header (uppercase eyebrow + sayı/aksiyon sağda)
@@ -146,13 +155,14 @@ const PANEL_HEADER_STYLE = {
   flexDirection:  'row' as const,
   alignItems:     'center' as const,
   justifyContent: 'space-between' as const,
-  paddingHorizontal: 14,
-  paddingTop:        12,
-  paddingBottom:     6,
+  paddingHorizontal: 16,
+  paddingTop:        14,
+  paddingBottom:     8,
 };
+// Kart başlığı — Özet ile aynı: 15/600, cümle düzeni
 const panelHeaderLabel = (p: StationPalette) => ({
-  fontSize: 11, fontWeight: '700' as const,
-  color: p.ink900, letterSpacing: 1.2, textTransform: 'uppercase' as const,
+  fontSize: 15, fontWeight: '600' as const,
+  color: p.ink900, letterSpacing: -0.2,
 });
 
 interface SlaInfo {
@@ -209,6 +219,18 @@ export function OperatorScreen() {
   const [checklistOpen, setChecklistOpen] = useState(false);
   // İşlerim kuyruğu collapse — varsayılan kapalı: yalnız aktif iş görünür
   const [queueExpanded, setQueueExpanded] = useState(false);
+  // Liste süzgeci — Tümü · Elimde · Sırada · Acil
+  const [jobFilter, setJobFilter] = useState<JobFilter>('all');
+  // Mobilde iş ayrıntısı ayrı ekran gibi açılır (liste gizlenir); masaüstünde yan yana
+  const [mobileDetail, setMobileDetail] = useState(false);
+  const T = useMobileTokens();
+  const toolDark = useThemeModeStore(st => st.resolvedDark);
+  // Özet'ten "?focus=<aşama>" ile gelindiyse o iş seçili açılır
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  useEffect(() => {
+    if (focus && jobs.some(j => j.stage_id === focus)) { setSelectedId(String(focus)); setMobileDetail(true); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus, jobs.length]);
   // selected stage değişince sıfırla
   useEffect(() => { setChecked(new Set()); }, [selectedId]);
   const toggleCheck = (key: string) => setChecked(prev => {
@@ -363,6 +385,9 @@ export function OperatorScreen() {
           const info = j.doctor_id ? nameMap.get(j.doctor_id) : null;
           if (info) { j.doctor_name = info.doctorName; j.clinic_name = info.clinicName; }
         }
+        // Klinik logosu — satırdaki yuvarlak görsel (yoksa baş harfler)
+        const logos = await resolveClinicLogos(docIds);
+        for (const j of list) j.clinic_logo_url = j.doctor_id ? (logos.get(j.doctor_id) ?? null) : null;
       } catch (e) {
         console.warn('[operator] doctor/clinic name resolve failed:', (e as any)?.message);
       }
@@ -436,20 +461,20 @@ export function OperatorScreen() {
   async function handleComplete() {
     if (!selected || submitting) return;
     if (selectedDesc?.requiresFileUpload && stageFileCount === 0) {
-      toast.error('Önce tasarım dosyasını yükleyin');
+      toast.error(autoT('Önce tasarım dosyasını yükleyin'));
       return;
     }
     setSubmitting(true);
     try {
       const { data, error } = await fetchStageMaterialContext(selected.stage_id);
       if (error || !data) {
-        toast.error('Aşama bilgisi alınamadı');
+        toast.error(autoT('Aşama bilgisi alınamadı'));
         return;
       }
       if (!data.station.consumes_materials) {
         const res = await completeStageResilient(selected.stage_id, []);
         if (!res.ok) {
-          toast.error('Aşama tamamlanamadı: ' + (res.error ?? ''));
+          toast.error(`${autoT('Aşama tamamlanamadı')}: ${res.error ?? ''}`);
           return;
         }
         void recordStageActivity(selected.stage_id, 'stage_completed', 'system', {
@@ -542,6 +567,16 @@ export function OperatorScreen() {
     [jobs],
   );
 
+  const filterCounts = useMemo(() => ({
+    all:    jobs.length,
+    hand:   jobs.filter(inHandJob).length,
+    queue:  jobs.filter(j => !inHandJob(j)).length,
+    urgent: jobs.filter(urgentJob).length,
+  }), [jobs]);
+  const shownJobs = useMemo(() => jobs.filter(j =>
+    jobFilter === 'hand' ? inHandJob(j) : jobFilter === 'queue' ? !inHandJob(j) : jobFilter === 'urgent' ? urgentJob(j) : true,
+  ), [jobs, jobFilter]);
+
   // Collapse kapalıyken görünecek işler: aktif iş(ler); yoksa seçili; o da yoksa ilk iş
   const collapsedJobs = useMemo(() => {
     const active = jobs.filter(j => j.status === 'aktif');
@@ -625,6 +660,8 @@ export function OperatorScreen() {
    * tamamlanmamış (ve atlanmamış) ilk aşama. Teknisyen kimi beklediğini
    * bilmeden ne yapacağını da bilemiyordu.
    */
+  // Mobilde alta sabitlenecek eylem çubuğu (heroActionSlot hesaplarken doldurulur)
+  const stickyBarRef = useRef<React.ReactNode>(null);
   const blockedBy = useMemo(() => {
     if (!selected || selected.status !== 'bekliyor') return null;
     const prior = timelineStages
@@ -637,8 +674,9 @@ export function OperatorScreen() {
   const heroActionSlot = useMemo(() => {
     if (!selected || !selectedDesc) return null;
     const hasNotes = !!(selected.notes && selected.notes.trim()) || !!((selected as any).lab_notes && (selected as any).lab_notes.trim());
-    return (
-      <View style={{ gap: 12 }}>
+    // Mobilde (bekleyen iş dışında) eylem çubuğu ekranın altına sabitlenir; burada çizilmez
+    const barInHero = isWide || selected.status === 'bekliyor';
+    const actionBar = (
         <WorkstationActionBar
           stageId={selected.stage_id}
           status={selected.status}
@@ -655,11 +693,11 @@ export function OperatorScreen() {
                 .select('id', { count: 'exact', head: true })
                 .eq('work_order_id', selected.work_order_id);
               if (error) {
-                toast.error('Dosya kontrolü başarısız: ' + error.message);
+                toast.error(`${autoT('Dosya kontrolü başarısız')}: ${error.message}`);
                 return;
               }
               if (!count || count === 0) {
-                toast.error('Tasarım dosyası yüklenmedi');
+                toast.error(autoT('Tasarım dosyası yüklenmedi'));
                 return;
               }
             }
@@ -670,6 +708,11 @@ export function OperatorScreen() {
           waitingHint={selectedDesc.waitingHint}
           blockedBy={blockedBy}
         />
+    );
+    if (!barInHero) stickyBarRef.current = actionBar; else stickyBarRef.current = null;
+    return (
+      <View style={{ gap: 12 }}>
+        {barInHero ? actionBar : null}
         {/* Hero araç çubuğu — mavi alanda: Dosyalar / Hekim Notu ilgili bölüme kaydırır, Mesajlar sohbeti açar. */}
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {([
@@ -682,19 +725,19 @@ export function OperatorScreen() {
               onPress={x.onPress}
               style={{
                 flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                paddingVertical: 10, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.16)',
+                minHeight: 40, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.18)',
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               }}
             >
               <x.Icon size={15} color="#FFFFFF" strokeWidth={2} />
-              <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF' }}>{x.label}</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>{x.label}</Text>
             </Pressable>
           ))}
         </View>
       </View>
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected?.stage_id, selected?.status, selected?.started_at, selectedDesc, canComplete, submitting, stageFileCount, blockedBy]);
+  }, [selected?.stage_id, selected?.status, selected?.started_at, selectedDesc, canComplete, submitting, stageFileCount, blockedBy, toolDark, isWide]);
 
   // Üst-seviye macro adım — teknisyen için hep uretim/qc/hazir aralığında
   const masterStep = useMemo(() => {
@@ -707,6 +750,28 @@ export function OperatorScreen() {
     );
   }, [selected]);
 
+  // Seçili iş değişince ayrıntı paneli solarak ve hafifçe kayarak gelir
+  const detailIn = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (prefersReducedMotionWeb()) return;
+    detailIn.setValue(0);
+    Animated.timing(detailIn, { toValue: 1, duration: 240, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.stage_id, mobileDetail]);
+
+  // Mobil alt eylem çubuğu — ayrıntı açılınca aşağıdan yükselir
+  const showSticky = !isWide && mobileDetail && !!selected && selected.status !== 'bekliyor';
+  const stickyIn = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (prefersReducedMotionWeb()) { stickyIn.setValue(showSticky ? 1 : 0); return; }
+    Animated.spring(stickyIn, { toValue: showSticky ? 1 : 0, speed: 16, bounciness: 4, useNativeDriver: true }).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSticky]);
+
+  // Edge-to-edge: mobil safe-area insets (hook — erken dönüşten ÖNCE çağrılmalı; eskiden
+  // sonradaydı ve profil geç yüklenince "hook sırası değişti" hatası veriyordu)
+  const insets = useSafeAreaInsets();
+
   // Tüm hook'lardan SONRA early return — hook sırası tutarlı kalır
   if (!profile) {
     return (
@@ -716,9 +781,8 @@ export function OperatorScreen() {
     );
   }
 
-  // Edge-to-edge: mobil safe-area insets'i içerik paddingTop'una uygulanır (status bar altında başla)
-  const insets = useSafeAreaInsets();
   return (
+    <View style={{ flex: 1, backgroundColor: P.pageBg }}>
     <ScrollView
       ref={scrollRef}
       style={{ flex: 1, backgroundColor: P.pageBg }}
@@ -729,19 +793,16 @@ export function OperatorScreen() {
         // 16 yetmiyordu ve "İşlerim" logonun altına giriyordu.
         paddingTop: isWide ? 16 : mobileTopPad(insets.top),
         // Mobile'da yüzen tab bar (~76px) + alt safe-area için ekstra padding (içerik arkaya girmesin)
-        paddingBottom: isWide ? 16 : insets.bottom + 96,
+        paddingBottom: isWide ? 16 : insets.bottom + (showSticky ? 176 : 96),
       }}
     >
       {/* iOS native büyük sayfa başlığı — sadece mobilde, kartların üstünde */}
-      {!isWide && (
+      {!isWide && !mobileDetail && (
         <View style={{ paddingHorizontal: 4, paddingBottom: 14 }}>
-          <Text style={{ fontSize: 11, fontWeight: '600', color: P.ink400, letterSpacing: 1, textTransform: 'uppercase' }}>
-            İSTASYON
-          </Text>
-          <Text style={{
-            fontFamily: DISPLAY_FONT, fontWeight: '300', fontSize: 34, color: P.ink900,
-            letterSpacing: -1.2, lineHeight: 38, marginTop: 4,
-          }}>
+          <Text
+            accessibilityRole="header"
+            style={{ fontFamily: DISPLAY_FONT, fontWeight: '500', fontSize: 30, color: T.ink, letterSpacing: -0.6, lineHeight: 34 }}
+          >
             İşlerim
           </Text>
         </View>
@@ -749,135 +810,89 @@ export function OperatorScreen() {
 
       <View style={[{ flexDirection: 'column', gap: 16 }, isWide && { flexDirection: 'row' }]}>
         {/* ═══ SOL KOLON: İşlerim + Son Tamamlananlar ═══ */}
+        {(isWide || !mobileDetail) && (
         <View style={{
           width: isWide ? 360 : '100%',
           flexShrink: 0,
           gap: 8,
           alignSelf: 'flex-start',
         }}>
-        {/* ── Section header — kartın DIŞINDA (iOS grouped-list deseni).
-              Yuvarlak köşe artık metni kırpamaz; tekrar eden sayı kaldırıldı
-              (rozet zaten "N AKTİF" diyor). ── */}
+        {/* ── Süzgeç — kayan hap; liste hep açık (eskiden kapalı gelip işleri gizliyordu) ── */}
         {jobs.length > 0 && (
-          <Pressable
-            onPress={() => (jobs.length > 1 ? setQueueExpanded(v => !v) : undefined)}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 10,
-              paddingHorizontal: 4,
-              paddingBottom: 2,
-              ...(Platform.OS === 'web' ? { cursor: jobs.length > 1 ? 'pointer' : 'default' } as any : {}),
-            }}
-          >
-            {/* Başlık gerçeği söylesin: hiç aktif iş yokken "AKTİF KUYRUK"
-                yazmak yanıltıyordu — Test Tek'in 5 aşamasının hepsi bekliyor
-                durumdayken de aynı başlık çıkıyordu. */}
-            <Text style={{ fontSize: 11, fontWeight: '700', color: P.ink500, letterSpacing: 0.8, textTransform: 'uppercase', lineHeight: 16 }}>
-              {totalActive > 0 ? 'Şu an çalışılan' : 'Sıradaki işler'}
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              {/* Aktif varsa canlı nokta + "N AKTİF"; yoksa sessiz "N iş" —
-                  eskiden aktif yokken rozet hiç çıkmıyordu ve teknisyen kaç iş
-                  beklediğini ancak listeyi açınca görüyordu. */}
-              {(totalActive > 0 || jobs.length > 0) && (
-                <View style={{
-                  paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999,
-                  backgroundColor: totalActive > 0 ? hexA(P.accent, 0.10) : hexA(P.ink500, 0.07),
-                  borderWidth: 1, borderColor: totalActive > 0 ? hexA(P.accent, 0.22) : 'transparent',
-                  flexDirection: 'row', alignItems: 'center', gap: 5,
-                }}>
-                  {totalActive > 0 && (
-                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: P.accent }} />
-                  )}
-                  <Text style={{
-                    fontSize: 10.5, fontWeight: '700', letterSpacing: 0.4,
-                    color: totalActive > 0 ? P.accentDeep : P.ink500,
-                  }}>
-                    {totalActive > 0 ? `${totalActive} AKTİF` : `${jobs.length} İŞ`}
-                  </Text>
-                </View>
-              )}
-              {jobs.length > 1 && (
-                <ChevronDown
-                  size={18}
-                  color={P.ink400}
-                  strokeWidth={2}
-                  style={Platform.OS === 'web' ? ({ transform: [{ rotate: queueExpanded ? '180deg' : '0deg' }] } as any) : undefined}
-                />
-              )}
-            </View>
-          </Pressable>
+          <SlideTabBar
+            size="sm"
+            accentColor={P.accent}
+            activeKey={jobFilter}
+            onChange={setJobFilter}
+            items={[
+              { key: 'all',    label: autoT('Tümü'),   count: filterCounts.all },
+              { key: 'hand',   label: autoT('Elimde'), count: filterCounts.hand },
+              { key: 'queue',  label: autoT('Sırada'), count: filterCounts.queue },
+              { key: 'urgent', label: autoT('Acil'),   count: filterCounts.urgent },
+            ]}
+          />
         )}
 
         <View style={{
+          // İstasyon paleti: koyu temada alt kartlarla aynı yüzey tonu
           backgroundColor: P.surface,
-          borderRadius: 24,
+          borderRadius: 28,
+          borderWidth: 1, borderColor: P.ink100,
           overflow: 'hidden',
-          ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } as any : {}),
         }}>
           {loading ? (
-            <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-              <Text style={{ fontSize: 12, color: P.ink400, marginTop: 10 }}>Yükleniyor…</Text>
+            <View style={{ padding: 16, gap: 14 }}>
+              {[0, 1, 2].map(k => (
+                <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: T.hairline }} />
+                  <View style={{ flex: 1, gap: 6 }}>
+                    <View style={{ width: '55%', height: 14, borderRadius: 6, backgroundColor: T.hairline }} />
+                    <View style={{ width: '80%', height: 11, borderRadius: 6, backgroundColor: T.hairline }} />
+                  </View>
+                </View>
+              ))}
             </View>
           ) : jobs.length === 0 ? (
             <View style={{ paddingVertical: 28, paddingHorizontal: 20, alignItems: 'center', gap: 8 }}>
-              <Inbox size={28} color={P.ink300} strokeWidth={1.5} />
-              <Text style={{ fontSize: 13, fontWeight: '600', color: P.ink700 }}>
+              <Inbox size={28} color={T.ink3} strokeWidth={1.5} />
+              <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink }}>
                 Aktif işin yok
               </Text>
-              <Text style={{ fontSize: 11, color: P.ink500, textAlign: 'center', maxWidth: 240 }}>
+              <Text style={{ fontSize: 12.5, color: T.ink3, textAlign: 'center', maxWidth: 240 }}>
                 Yeni atama geldiğinde burada görünür.
               </Text>
             </View>
+          ) : shownJobs.length === 0 ? (
+            <View style={{ paddingVertical: 24, paddingHorizontal: 20, alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, color: T.ink3, textAlign: 'center' }}>{autoT('Bu süzgeçte iş yok')}</Text>
+            </View>
           ) : (
-            <ScrollView
-              style={{ maxHeight: isWide ? undefined : 320 }}
-              showsVerticalScrollIndicator={false}
-            >
-              {(queueExpanded ? jobs : collapsedJobs).map(j => (
+            <View style={{ padding: 6, gap: 2 }}>
+              {shownJobs.map((j, idx) => (
                 <QueueCard
                   key={j.stage_id}
+                  index={idx}
                   job={j}
-                  isSelected={j.stage_id === selectedId}
+                  isSelected={isWide && j.stage_id === selectedId}   // mobilde seçili vurgusu yok: ayrıntı ayrı ekranda
                   now={now}
-                  onPress={() => setSelectedId(j.stage_id)}
+                  onPress={() => {
+                    setSelectedId(j.stage_id);
+                    if (!isWide) { setMobileDetail(true); scrollRef.current?.scrollTo({ y: 0, animated: false }); }
+                  }}
                   onStart={async () => {
                     const res = await startStage(j.stage_id);
                     if (!res.ok) {
-                      toast.error(`Başlatılamadı: ${res.error ?? ''}`);
+                      toast.error(`${autoT('Başlatılamadı')}: ${res.error ?? ''}`);
                       return;
                     }
-                    toast.success('İşe başlandı ✓');
+                    toast.success(autoT('İşe başlandı'));
                     setSelectedId(j.stage_id);
+                    if (!isWide) setMobileDetail(true);
                     load();
                   }}
                 />
               ))}
-            </ScrollView>
-          )}
-
-          {/* Collapsed iken kalan işleri göster ipucu */}
-          {!loading && !queueExpanded && jobs.length > collapsedJobs.length && (
-            <Pressable
-              onPress={() => setQueueExpanded(true)}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                paddingVertical: 12,
-                borderTopWidth: 1,
-                borderTopColor: P.ink100,
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              }}
-            >
-              <Text style={{ fontSize: 12.5, fontWeight: '600', color: P.accentDeep }}>
-                {jobs.length - collapsedJobs.length} iş daha
-              </Text>
-              <ChevronDown size={15} color={P.accentDeep} strokeWidth={2} />
-            </Pressable>
+            </View>
           )}
 
           {/* Son tamamlananlar — MASAÜSTÜNDE kuyruğun altında (sol kolon boş kalmasın).
@@ -887,12 +902,25 @@ export function OperatorScreen() {
           {isWide && <RecentCompletedList accentColor={P.accent} limit={5} embedded collapsible />}
         </View>
         </View>
+        )}
 
         {/* ═══ SAĞ KOLON: Hero + Workstation ═══
             Mobilde: hiç iş yoksa bu kolonu komple gizle (tek boş durum yukarıdaki
             "Aktif işin yok" kartında kalsın). Masaüstünde her zaman göster. */}
-        {(isWide || jobs.length > 0) && (
-        <View style={{ flex: 1, flexDirection: 'column', gap: 16, minWidth: 0 }}>
+        {(isWide || (mobileDetail && jobs.length > 0)) && (
+        <Animated.View style={{
+          flex: 1, flexDirection: 'column', gap: 16, minWidth: 0,
+          opacity: detailIn,
+          // Masaüstü: aşağıdan hafifçe; mobil: sağdan kayarak (geri dönüş aynı yoldan)
+          transform: [isWide
+            ? { translateY: detailIn.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }
+            : { translateX: detailIn.interpolate({ inputRange: [0, 1], outputRange: [isRTL() ? -28 : 28, 0] }) }],
+        }}>
+          {!isWide && (
+            <View style={{ flexDirection: 'row' }}>
+              <NavyBackButtonX label={autoT('İşlerim')} tooltip="İş listesine döner" onPress={() => setMobileDetail(false)} />
+            </View>
+          )}
           {/* Hero — seçili işin animasyonlu özeti */}
           <ActiveJobHero
             job={heroData}
@@ -945,13 +973,13 @@ export function OperatorScreen() {
               </Text>
             </View>
           ) : null}
-        </View>
+        </Animated.View>
         )}
       </View>
 
       {/* Son tamamlananlar (mobil) — asıl işten SONRA, sayfanın en altında */}
-      {!isWide && jobs.length > 0 && (
-        <View style={{ marginTop: 16 }}>
+      {!isWide && !mobileDetail && jobs.length > 0 && (
+        <View style={{ marginTop: 16, borderRadius: 28, overflow: 'hidden', backgroundColor: P.surface, borderWidth: 1, borderColor: P.ink100 }}>
           <RecentCompletedList accentColor={P.accent} limit={5} embedded collapsible />
         </View>
       )}
@@ -1017,6 +1045,7 @@ export function OperatorScreen() {
           }
 
           setSelectedId(null);
+          setMobileDetail(false);
           load();
         }}
       />
@@ -1032,6 +1061,24 @@ export function OperatorScreen() {
         }}
       />
     </ScrollView>
+
+    {/* Mobil — alta sabit eylem çubuğu (Durdur / Tamamla …). Düz mavi: sayfadaki
+        seçili iş başlığıyla aynı ton; yüzen sekme çubuğunun hemen üstünde durur. */}
+    {showSticky && stickyBarRef.current ? (
+      <Animated.View
+        style={{
+          position: 'absolute', left: 16, right: 16, bottom: insets.bottom + 92,
+          padding: 10, borderRadius: 22,
+          backgroundColor: toolDark ? '#004B87' : P.accentDeep,
+          opacity: stickyIn,
+          transform: [{ translateY: stickyIn.interpolate({ inputRange: [0, 1], outputRange: [90, 0] }) }],
+          ...(Platform.OS === 'web' ? { boxShadow: '0 10px 28px rgba(15,40,64,0.28)' } as any : { elevation: 8 }),
+        }}
+      >
+        {stickyBarRef.current}
+      </Animated.View>
+    ) : null}
+    </View>
   );
 }
 
@@ -1154,7 +1201,7 @@ function SelectedJobDetail({
           onPress={() => onChatOpen?.(true)}
           style={({ pressed }: any) => ({
             flexDirection: 'row', alignItems: 'center', gap: 10,
-            paddingHorizontal: 14, paddingVertical: 11, borderRadius: 14,
+            paddingHorizontal: 16, paddingVertical: 14, borderRadius: 28,
             backgroundColor: P.surface, borderWidth: 1, borderColor: P.ink100,
             opacity: pressed ? 0.7 : 1,
             transform: [{ scale: pressed ? 0.99 : 1 }],
@@ -1626,100 +1673,137 @@ function NoteBlock({
 }
 
 // ── Queue card — enriched job tile (left list) ───────────────────────
+type JobFilter = 'all' | 'hand' | 'queue' | 'urgent';
+const inHandJob = (j: AssignedJob) => j.status === 'aktif' || (j.status as string) === 'durakladi';
+const urgentJob = (j: AssignedJob) =>
+  j.is_urgent || j.is_critical || j.station_critical || (j.status as string) === 'yeniden' || !!computeSla(j.delivery_date)?.late;
+
+function prefersReducedMotionWeb(): boolean {
+  return Platform.OS === 'web' && typeof window !== 'undefined'
+    && !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+}
+
+// İş satırı — Özet'teki Sıradakiler satırıyla aynı dil: yuvarlak klinik logosu,
+// hasta + durum rozeti, hekim · sipariş no, iş · istasyon, teslim notu.
+// Hareket: ilk gelişte sırayla belirip yükselir; dokununca hafifçe küçülür.
 function QueueCard({
-  job, isSelected, now, onPress, onStart,
+  job, isSelected, now, onPress, onStart, index = 0,
 }: {
   job: AssignedJob;
   isSelected: boolean;
   now: number;
   onPress: () => void;
   onStart?: () => Promise<void> | void;
+  index?: number;
 }) {
   const P = useStationTheme();
+  const T = useMobileTokens();
+  const U = useInkUI();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const accentInk = isDark ? '#93C5FD' : P.accent;
   const [starting, setStarting] = useState(false);
-  const isWaiting  = job.status === 'bekliyor';
+  void now;
+  const status     = job.status as string;
   const isCritical = job.station_critical || job.is_critical;
-  const idleMs     = job.assigned_at ? now - new Date(job.assigned_at).getTime() : 0;
   const sla        = computeSla(job.delivery_date);
-  const slaRisk    = !!sla && (sla.late || sla.risky);
   const wtLabel    = workTypeLabel(job.work_type);
-
-  // Sol kenar şerit rengi: gecikti=danger, riskli=warning, kritik=warning, seçili=accent
-  const stripeColor = sla?.late
-    ? P.danger
-    : (sla?.risky || isCritical)
-      ? P.warning
-      : isSelected
-        ? P.accent
-        : 'transparent';
-
-  const isActive    = job.status === 'aktif';
+  const isActive    = status === 'aktif';
   const isStarted   = isActive && !!job.started_at;
   const notStartedYet = isActive && !job.started_at;
+  const due = dueInfo(job.delivery_date);
+
+  const chip: { label: string; tone: { bg: string; fg: string }; live?: boolean } | null =
+    isStarted ? { label: autoT('Çalışıyor'), tone: U.chipTones.success, live: true }
+    : status === 'durakladi' ? { label: autoT('Duraklatıldı'), tone: U.chipTones.neutral }
+    : status === 'yeniden' ? { label: autoT('Geri döndü'), tone: U.chipTones.warning }
+    : sla?.late ? { label: autoT('Gecikti'), tone: U.chipTones.danger }
+    : (job.is_urgent || isCritical) ? { label: autoT('Acil'), tone: U.chipTones.danger }
+    : status === 'makine_bekliyor' ? { label: autoT('Makine bekliyor'), tone: U.chipTones.neutral }
+    : status === 'onay_bekliyor' ? { label: autoT('Onay bekliyor'), tone: U.chipTones.neutral }
+    : status === 'bloklu' ? { label: autoT('Bloklu'), tone: U.chipTones.neutral }
+    : null;
+
+  // Giriş: sırayla belir + yüksel (yalnız ilk gelişte)
+  const enter = useRef(new Animated.Value(prefersReducedMotionWeb() ? 1 : 0)).current;
+  useEffect(() => {
+    if (prefersReducedMotionWeb()) return;
+    Animated.timing(enter, {
+      toValue: 1, duration: 320, delay: Math.min(index, 8) * 40,
+      easing: Easing.out(Easing.cubic), useNativeDriver: true,
+    }).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Dokunma: parmak değdiği anda küçül
+  const press = useRef(new Animated.Value(0)).current;
+  const pressTo = (v: number) => Animated.spring(press, { toValue: v, speed: 40, bounciness: 0, useNativeDriver: true }).start();
 
   return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        width: '100%',
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        paddingHorizontal: 14,
-        paddingVertical: 13,
-        borderBottomWidth: 1,
-        borderBottomColor: P.ink100,
-        backgroundColor: isSelected
-          ? hexA(P.accent, 0.08)
-          : isActive
-            ? hexA(P.accent, 0.04)
-            : P.surface,
-        opacity: isWaiting ? 0.6 : 1,
-        ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'background-color 0.15s, opacity 0.15s' } as any : {}),
-      }}
-    >
-      {/* Sequence badge */}
-      <View style={{
-        width: 30, height: 30, borderRadius: 9, flexShrink: 0,
-        alignItems: 'center', justifyContent: 'center',
-        backgroundColor: isActive
-          ? P.accent
-          : hexA(P.accent, isSelected ? 0.16 : 0.10),
-        borderWidth: 1,
-        borderColor: isActive
-          ? P.accent
-          : hexA(P.accent, isSelected ? 0.30 : 0.18),
-      }}>
-        <Text style={{
-          fontSize: 13, fontWeight: '700',
-          color: isActive ? '#FFFFFF' : P.accentDeep,
-          fontFamily: DISPLAY_FONT,
+    <Animated.View style={{
+      opacity: enter,
+      transform: [
+        { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) },
+        { scale: press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.985] }) },
+      ],
+    }}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => pressTo(1)}
+        onPressOut={() => pressTo(0)}
+        accessibilityRole="button"
+        accessibilityState={{ selected: isSelected }}
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 12,
+          paddingHorizontal: 10, paddingVertical: 10, borderRadius: 18,
+          backgroundColor: isSelected ? hexA(P.accent, isDark ? 0.22 : 0.10) : 'transparent',
+          ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'background-color 180ms ease' } as any : {}),
+        }}
+      >
+        {/* Klinik logosu (yuvarlak); yoksa klinik / hasta baş harfleri */}
+        <View style={{
+          width: 36, height: 36, borderRadius: 18, overflow: 'hidden', flexShrink: 0,
+          backgroundColor: job.clinic_logo_url ? '#FFFFFF' : hexA(P.accent, 0.12),
+          ...(job.clinic_logo_url ? { borderWidth: 1, borderColor: T.hairline } : {}),
+          alignItems: 'center', justifyContent: 'center',
         }}>
-          {job.sequence_order || '·'}
-        </Text>
-      </View>
+          {job.clinic_logo_url
+            ? <Image source={{ uri: job.clinic_logo_url }} style={{ width: 36, height: 36 }} resizeMode="cover" accessibilityLabel={job.clinic_name ?? undefined} />
+            : <Text style={{ fontSize: 12, fontWeight: '600', color: accentInk }}>{initialsOf(job.clinic_name || job.patient_name)}</Text>}
+        </View>
 
-      {/* Body — iki satır: başlık (istasyon) + alt (hasta · no) */}
-      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-        <Text
-          style={{ fontSize: 14.5, fontWeight: '600', color: P.ink900, letterSpacing: -0.2 }}
-          numberOfLines={1}
-        >
-          {job.station_name ?? '—'}
-        </Text>
-        <Text style={{ fontSize: 12, color: P.ink500 }} numberOfLines={1}>
-          {job.patient_name ?? '—'}
-          {job.order_number ? `  ·  ${job.order_number}` : ''}
-        </Text>
-        {(job.doctor_name || job.clinic_name) && (
-          <Text style={{ fontSize: 11.5, color: P.ink400 }} numberOfLines={1}>
-            {[job.doctor_name, job.clinic_name].filter(Boolean).join('  ·  ')}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink, flexShrink: 1 }} numberOfLines={1}>
+              {job.patient_name ?? '—'}
+            </Text>
+            {chip ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: chip.tone.bg, flexShrink: 0 }}>
+                {chip.live ? (
+                  <View style={{
+                    width: 6, height: 6, borderRadius: 3, backgroundColor: chip.tone.fg,
+                    ...(Platform.OS === 'web' && !prefersReducedMotionWeb()
+                      ? { boxShadow: `0 0 0 0 ${hexA('#059669', 0.55)}`, animation: 'queueActiveDot 1.6s ease-out infinite' } as any
+                      : {}),
+                  }}>
+                    {Platform.OS === 'web' && <QueueActiveDotKeyframes />}
+                  </View>
+                ) : null}
+                <Text style={{ fontSize: 11.5, fontWeight: '600', color: chip.tone.fg }}>{chip.label}</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={{ fontSize: 12.5, color: T.ink3, marginTop: 2 }} numberOfLines={1}>
+            {[job.doctor_name, job.order_number ? `#${job.order_number}` : null].filter(Boolean).join(' · ')}
           </Text>
-        )}
-      </View>
+          <Text style={{ fontSize: 12.5, color: T.ink3, marginTop: 1 }} numberOfLines={1}>
+            {[wtLabel, job.station_name].filter(Boolean).join(' · ') || '—'}
+          </Text>
+          {due.label ? (
+            <Text style={{ fontSize: 12, marginTop: 1, color: due.late ? U.chipTones.danger.fg : T.ink3, fontWeight: due.late ? '600' : '400' }} numberOfLines={1}>
+              {due.label}
+            </Text>
+          ) : null}
+        </View>
 
-      {/* Sağ küme — durum göstergesi + chevron, TEK satır, asla sıkışmaz/sarmaz */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 }}>
         {notStartedYet ? (
           <Pressable
             onPress={async (e: any) => {
@@ -1729,61 +1813,25 @@ function QueueCard({
               try { await onStart(); } finally { setStarting(false); }
             }}
             disabled={starting}
-            style={({ hovered }: any) => ({
-              flexDirection: 'row', alignItems: 'center', gap: 5,
-              paddingHorizontal: 11, paddingVertical: 6,
-              borderRadius: 999,
-              backgroundColor: hovered ? P.accentDeep : P.accent,
-              opacity: starting ? 0.6 : 1,
-              ...(Platform.OS === 'web' ? {
-                cursor: starting ? 'wait' : 'pointer',
-                boxShadow: `0 2px 8px ${hexA(P.accent, 0.32)}`,
-                transition: 'background-color 0.15s, transform 0.15s',
-              } as any : {}),
-            })}
+            accessibilityRole="button"
+            hitSlop={6}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 34,
+              paddingHorizontal: 13, borderRadius: 999,
+              backgroundColor: P.accent, opacity: starting ? 0.6 : 1,
+              ...(Platform.OS === 'web' ? { cursor: starting ? 'wait' : 'pointer' } as any : {}),
+            }}
           >
-            <Play size={10} color="#FFFFFF" strokeWidth={2.8} />
-            <Text style={{ fontSize: 10.5, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.5, textTransform: 'uppercase' }}>
-              {starting ? '...' : 'Başla'}
-            </Text>
+            <Play size={11} color="#FFFFFF" strokeWidth={2.6} />
+            <Text style={{ fontSize: 12.5, fontWeight: '600', color: '#FFFFFF' }}>{starting ? '…' : autoT('Başla')}</Text>
           </Pressable>
-        ) : isStarted ? (
-          // Çalışılan iş: canlı yeşil "Çalışıyor" rozeti
-          <View style={{
-            flexDirection: 'row', alignItems: 'center', gap: 5,
-            paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999,
-            backgroundColor: hexA(P.success, 0.10),
-            borderWidth: 1, borderColor: hexA(P.success, 0.24),
-          }}>
-            <View style={{
-              width: 6, height: 6, borderRadius: 3, backgroundColor: P.success,
-              ...(Platform.OS === 'web'
-                ? { boxShadow: `0 0 0 0 ${hexA("#059669", 0.55)}`, animation: 'queueActiveDot 1.6s ease-out infinite' } as any
-                : {}),
-            }}>
-              {Platform.OS === 'web' && <QueueActiveDotKeyframes />}
-            </View>
-            <Text style={{ fontSize: 9.5, fontWeight: '700', color: P.success, letterSpacing: 0.3, textTransform: 'uppercase' }}>
-              Aktif
-            </Text>
-          </View>
-        ) : sla?.late ? (
-          <Pill bg={P.dangerBg} fg={P.danger}>GECİKTİ</Pill>
-        ) : job.is_urgent ? (
-          <Pill bg={P.dangerBg} fg={P.danger} icon={<Flame size={9} color={P.danger} strokeWidth={2.2} />}>ACİL</Pill>
-        ) : sla?.risky ? (
-          <Pill bg={P.warningBg} fg={P.warning}>{sla.formatted.toUpperCase()}</Pill>
-        ) : isCritical ? (
-          <Pill bg={P.warningBg} fg={P.warning}>KRİTİK</Pill>
-        ) : isWaiting ? (
-          <Pill bg={P.ink100} fg={P.ink500}>SIRADA</Pill>
-        ) : null}
-
-        {isRTL()
-          ? <ChevronLeft size={15} color={isSelected ? P.accent : P.ink300} strokeWidth={1.8} />
-          : <ChevronRight size={15} color={isSelected ? P.accent : P.ink300} strokeWidth={1.8} />}
-      </View>
-    </Pressable>
+        ) : (
+          isRTL()
+            ? <ChevronLeft size={15} color={isSelected ? accentInk : T.ink3} strokeWidth={1.8} />
+            : <ChevronRight size={15} color={isSelected ? accentInk : T.ink3} strokeWidth={1.8} />
+        )}
+      </Pressable>
+    </Animated.View>
   );
 }
 

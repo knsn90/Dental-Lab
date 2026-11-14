@@ -256,6 +256,31 @@ export async function resolveDoctorClinicNames(
   return out;
 }
 
+/**
+ * Bir dizi (polimorfik) doctor_id için KLİNİK LOGOSUNU çözer: hekim kaydı →
+ * kliniği; hekim bir uygulama kullanıcısıysa (profiles) → clinic_id → kliniği.
+ * Bulunamayan id haritada yer almaz (çağıran baş harflere düşer).
+ */
+export async function resolveClinicLogos(ids: string[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  const uniq = Array.from(new Set(ids.filter(Boolean)));
+  if (uniq.length === 0) return out;
+  const { data: docs } = await supabase.from('doctors').select('id, clinic:clinics(logo_url)').in('id', uniq);
+  for (const d of (docs ?? []) as any[]) out.set(d.id, d.clinic?.logo_url ?? null);
+  const rest = uniq.filter(id => !out.has(id));
+  if (rest.length) {
+    const { data: profs } = await supabase.from('profiles').select('id, clinic_id').in('id', rest);
+    const clinicIds = Array.from(new Set(((profs ?? []) as any[]).map(p => p.clinic_id).filter(Boolean)));
+    if (clinicIds.length) {
+      const { data: cls } = await supabase.from('clinics').select('id, logo_url').in('id', clinicIds);
+      const byClinic = new Map<string, string | null>();
+      for (const c of (cls ?? []) as any[]) byClinic.set(c.id, c.logo_url ?? null);
+      for (const p of (profs ?? []) as any[]) if (p.clinic_id) out.set(p.id, byClinic.get(p.clinic_id) ?? null);
+    }
+  }
+  return out;
+}
+
 export async function fetchWorkOrdersForDoctor(_doctorId: string) {
   // NOT: work_orders.doctor_id POLİMORFİK (doctors.id VEYA profiles.id). Sipariş
   // oluşturulurken doctor_id doctors-satırına çevriliyor, bu yüzden `.eq('doctor_id',

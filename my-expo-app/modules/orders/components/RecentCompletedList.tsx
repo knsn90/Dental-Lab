@@ -1,3 +1,4 @@
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { localeTag } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 // modules/orders/components/RecentCompletedList.tsx
@@ -48,6 +49,8 @@ export function RecentCompletedList({
   collapsible?: boolean;
 }) {
   const P = useStationTheme();
+  const bandDark = useThemeModeStore((st: any) => st.resolvedDark);
+  const bandBg = bandDark ? '#004B87' : P.accentDeep;
   const accent = accentColor ?? P.accent;
   const { profile } = useAuthStore();
   const router = useRouter();
@@ -106,13 +109,13 @@ export function RecentCompletedList({
   // ── Embedded variant: dış kart yok, sadece divider header + kompakt satırlar ──
   if (embedded) {
     return (
-      <View>
-        {/* Inline divider header */}
+      // Alt bölümün TAMAMI düz mavi (başlık + açılan satırlar + alt boşluk) —
+      // İşlerim'deki seçili iş kartının başlığıyla aynı ton.
+      <View style={{ backgroundColor: bandBg }}>
+        {/* Inline header */}
         <View style={{
           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-          paddingHorizontal: 14, paddingTop: 14, paddingBottom: 8,
-          borderTopWidth: 1, borderTopColor: P.ink100,
-          marginTop: 4,
+          paddingHorizontal: 16, paddingVertical: 13,
         }}>
           <Pressable
             onPress={() => collapsible && setExpanded(v => !v)}
@@ -124,15 +127,15 @@ export function RecentCompletedList({
               ...(Platform.OS === 'web' && collapsible ? { cursor: 'pointer' } as any : {}),
             }}
           >
-            <Text style={{ fontSize: 10.5, fontWeight: '700', color: P.ink400, letterSpacing: 1, textTransform: 'uppercase' }}>
+            <Text style={{ fontSize: 13.5, fontWeight: '600', color: '#FFFFFF' }}>
               Son Tamamlananlar
             </Text>
             {collapsible && (
               <>
-                <Text style={{ fontSize: 10.5, fontWeight: '600', color: P.ink400 }}>{items.length}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.80)' }}>{items.length}</Text>
                 <ChevronDown
-                  size={14}
-                  color={P.ink400}
+                  size={15}
+                  color="#FFFFFF"
                   strokeWidth={2}
                   style={Platform.OS === 'web' ? ({ transform: [{ rotate: expanded ? '180deg' : '0deg' }] } as any) : undefined}
                 />
@@ -151,39 +154,37 @@ export function RecentCompletedList({
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
             }}
           >
-            <Text style={{ fontSize: 11, color: accent, fontWeight: '600' }}>Tümü</Text>
-            {isRTL() ? <ArrowLeft size={11} color={accent} strokeWidth={2} /> : <ArrowRight size={11} color={accent} strokeWidth={2} />}
+            <Text style={{ fontSize: 13, color: '#FFFFFF', fontWeight: '600' }}>Tümü</Text>
+            {isRTL() ? <ArrowLeft size={13} color="#FFFFFF" strokeWidth={2} /> : <ArrowRight size={13} color="#FFFFFF" strokeWidth={2} />}
           </Pressable>
         </View>
 
         {/* Kompakt geçmiş satırları */}
         {showRows && items.map((it) => {
-          const stationColor = it.station_color ?? P.ink400;
           return (
             <View
               key={it.id}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 9,
-                paddingHorizontal: 14, paddingVertical: 6,
-                opacity: 0.7,
+                paddingHorizontal: 16, paddingVertical: 7,
               }}
             >
-              <CheckCircle2 size={12} color={stationColor} strokeWidth={2} />
+              <CheckCircle2 size={14} color="rgba(255,255,255,0.85)" strokeWidth={2} />
               <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: P.ink700 }} numberOfLines={1}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF', flexShrink: 1 }} numberOfLines={1}>
                   {it.station_name ?? '—'}
                 </Text>
-                <Text style={{ fontSize: 10.5, color: P.ink400 }} numberOfLines={1}>
+                <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }} numberOfLines={1}>
                   #{it.order_number ?? '—'}
                 </Text>
               </View>
-              <Text style={{ fontSize: 10, color: P.ink400 }}>
+              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
                 {it.completed_at ? formatRel(it.completed_at) : '—'}
               </Text>
             </View>
           );
         })}
-        <View style={{ height: 8 }} />
+        {showRows ? <View style={{ height: 8 }} /> : null}
       </View>
     );
   }

@@ -25,9 +25,9 @@ export function CollapsibleSection({
 
   return (
     <View style={{
-      borderRadius: 14,
+      borderRadius: 28,
       backgroundColor: P.surface, overflow: 'hidden',
-      ...(Platform.OS === 'web' ? { boxShadow: '0 4px 12px rgba(0,0,0,0.06)' } as any : {}),
+      borderWidth: 1, borderColor: P.ink100,
     }}>
       <Pressable
         onPress={() => setOpen(o => !o)}
@@ -35,8 +35,8 @@ export function CollapsibleSection({
           flexDirection: 'row',
           alignItems: 'center',
           gap: 10,
-          paddingHorizontal: 14,
-          paddingVertical: 12,
+          paddingHorizontal: 16,
+          paddingVertical: 14,
           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
         }}
       >
@@ -51,13 +51,13 @@ export function CollapsibleSection({
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{
-            fontSize: 11, fontWeight: '700', color: P.ink900,
-            letterSpacing: 1.0, textTransform: 'uppercase',
+            fontSize: 15, fontWeight: '600', color: P.ink900,
+            letterSpacing: -0.2,
           }} numberOfLines={1}>
             {title}
           </Text>
           {subtitle && (
-            <Text style={{ fontSize: 11, color: P.ink400, marginTop: 1 }} numberOfLines={1}>
+            <Text style={{ fontSize: 12.5, color: P.ink500, marginTop: 1 }} numberOfLines={1}>
               {subtitle}
             </Text>
           )}

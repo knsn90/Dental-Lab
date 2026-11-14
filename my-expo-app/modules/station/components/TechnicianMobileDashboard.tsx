@@ -498,7 +498,7 @@ function EfficiencyRing({ value, size = 132 }: { value: number; size?: number })
 }
 
 // Teslim notu — "16 Kas · 2 gün kaldı" / "… · 3 gün gecikti". Tarih yoksa boş.
-function dueInfo(deliveryDate?: string | null): { label: string; late: boolean } {
+export function dueInfo(deliveryDate?: string | null): { label: string; late: boolean } {
   if (!deliveryDate) return { label: '', late: false };
   const d = new Date();
   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -621,7 +621,7 @@ export function QueueCard({ jobs, onOpen, onAll, flush, max = 4, wide }: { jobs:
   );
 }
 
-function initialsOf(name?: string | null): string {
+export function initialsOf(name?: string | null): string {
   return (name ?? '').trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toLocaleUpperCase() ?? '').join('') || '—';
 }
 
