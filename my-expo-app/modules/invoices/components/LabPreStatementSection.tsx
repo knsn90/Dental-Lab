@@ -12,8 +12,9 @@
  *    "Klinik adına onay kaydet". Yazma yalnız canLabWrite(actor, can_manage).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, Platform, useWindowDimensions } from 'react-native';
-import { AlertTriangle, FileCheck, RefreshCw, Info, Send } from '../../../core/ui/icons';
+import { View, Text, Pressable, Platform, useWindowDimensions, Modal } from 'react-native';
+import { AlertTriangle, FileCheck, RefreshCw, Info, Send, X } from '../../../core/ui/icons';
+import { InvoiceDetailScreen } from '../screens/InvoiceDetailScreen';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
@@ -213,6 +214,9 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
   const isDesktop = width >= 900;
   const shown = useShown(st);
   const [noteItemId, setNoteItemId] = useState<string | null>(null);
+  const [editInvoiceId, setEditInvoiceId] = useState<string | null>(null);
+  // Düzenleme popup'ı kapanınca ön ekstre taze tutarları göstersin
+  const closeEdit = useCallback(() => { setEditInvoiceId(null); void st.reload(); }, [st]);
   const [approveOpen, setApproveOpen] = useState(false);
   // "Onay iste" yeni bağlantı oluşturur (eskisi iptal) → bağlantı paneli yeniden kurulur, eski bağlantı görünmez.
   const [linkEpoch, setLinkEpoch] = useState(0);
@@ -345,6 +349,7 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
                     itemTotal={itemTotal[inv.id]}
                     onToggle={() => view.toggle(inv.id)}
                     onItem={it => setNoteItemId(it.id)}
+                    onEdit={canWrite ? () => setEditInvoiceId(inv.id) : undefined}
                   />
                 ))}
               </View>
@@ -358,6 +363,25 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
           </Text>
         ) : null}
       </View>
+
+      {/* Faturayı ekstreden ayrılmadan düzenle — kapanınca ön ekstre yenilenir */}
+      <Modal visible={!!editInvoiceId} transparent animationType="fade" onRequestClose={closeEdit}>
+        <View style={U.modalOverlay}>
+          <View style={[U.modalCard, { maxWidth: 1180, height: '92%', maxHeight: '92%', backgroundColor: U.surfaceSoft }]}>
+            <View style={[U.modalHeaderRow, { backgroundColor: U.surface }]}>
+              <Text style={U.modalTitle}>{autoT('Faturayı düzenle')}</Text>
+              <GlassTooltip title={autoT('Kapat')} text={autoT('Ön ekstreye dön')}>
+                <Pressable onPress={closeEdit} accessibilityLabel={autoT('Kapat')} style={U.modalCloseBtn}>
+                  <X size={15} color={U.ink[700]} strokeWidth={1.9} />
+                </Pressable>
+              </GlassTooltip>
+            </View>
+            <View style={{ flex: 1, minHeight: 0 }}>
+              {editInvoiceId ? <InvoiceDetailScreen invoiceId={editInvoiceId} onBack={closeEdit} /> : null}
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <StatementNoteSheet
         open={!!noteItemId}

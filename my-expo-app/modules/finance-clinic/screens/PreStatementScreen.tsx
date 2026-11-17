@@ -19,9 +19,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Modal, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
 import {
-  FileCheck, ChevronDown, ChevronRight, User, MessageSquare, Info, CheckCircle2, AlertTriangle, RefreshCw,
+  FileCheck, ChevronDown, ChevronRight, User, MessageSquare, Info, CheckCircle2, AlertTriangle, RefreshCw, Pencil,
 } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { KPICardX } from '../../../core/ui/KPICardX';
 import { formatMoney, type Currency } from '../../../core/money/currency';
@@ -359,9 +360,11 @@ const GROUPS_OPEN_BELOW = 100;
 /** Bir sipariş grubunda ilk çizilen kalem sayısı; gerisi "Daha fazla göster" ile. */
 const PAGE_SIZE = 60;
 
-export function InvoiceBlock({ inv, desktop, expanded, onToggle, onItem, filtered, itemTotal }: {
+export function InvoiceBlock({ inv, desktop, expanded, onToggle, onItem, filtered, itemTotal, onEdit }: {
   inv: PreStatementInvoice; desktop: boolean; expanded: boolean;
   onToggle: () => void; onItem: (it: PreStatementItem) => void;
+  /** Yalnız lab: faturayı aynı sayfada popup'ta düzenle. Verilmezse düğme çizilmez (klinik paneli). */
+  onEdit?: () => void;
   /** Süzülmüş görünüm: kalemler süzülü, fatura toplamları tam faturanın */
   filtered?: boolean;
   /** Süzülmeden önceki kalem sayısı */
@@ -398,6 +401,25 @@ export function InvoiceBlock({ inv, desktop, expanded, onToggle, onItem, filtere
             {`${date} · ${countText}`}
           </Text>
         </View>
+        {onEdit ? (
+          <GlassTooltip title={autoT('Faturayı düzenle')} text={autoT('Adet, fiyat, para birimi ve KDV — ekstreden ayrılmadan')}>
+            <Pressable
+              onPress={(e: any) => { e?.stopPropagation?.(); onEdit(); }}
+              accessibilityRole="button"
+              accessibilityLabel={autoT('Faturayı düzenle')}
+              style={({ pressed, hovered }: any) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                paddingHorizontal: desktop ? 12 : 9, paddingVertical: 7, borderRadius: 999,
+                backgroundColor: hovered || pressed ? U.plainBtn.hoverBg : U.plainBtn.bg,
+                borderWidth: 1, borderColor: U.plainBtn.border,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              })}
+            >
+              <Pencil size={13} color={U.plainBtn.fg} strokeWidth={1.8} />
+              {desktop ? <Text style={{ fontSize: 12, fontWeight: '600', color: U.plainBtn.fg }}>{autoT('Düzenle')}</Text> : null}
+            </Pressable>
+          </GlassTooltip>
+        ) : null}
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={{ fontSize: 14, fontWeight: '700', color: U.ink[900] }}>{money(inv.total, inv.currency)}</Text>
           {desktop ? (

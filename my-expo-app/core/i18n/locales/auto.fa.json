@@ -10398,5 +10398,14 @@
   "teknisyen daha": "تکنسین دیگر",
   "Canlı üretim": "تولید زنده",
   "aktif sipariş": "سفارش فعال",
-  "En eski açık sipariş": "قدیمی‌ترین سفارش باز"
+  "En eski açık sipariş": "قدیمی‌ترین سفارش باز",
+  "Faturayı düzenle": "ویرایش فاکتور",
+  "Adet, fiyat, para birimi ve KDV — ekstreden ayrılmadan": "تعداد، قیمت، ارز و مالیات — بدون خروج از صورت‌حساب",
+  "Ön ekstreye dön": "بازگشت به پیش‌صورت‌حساب",
+  "Uyarıya dön": "بازگشت به هشدار",
+  "Taslak fatura güncellenmedi": "پیش‌نویس فاکتور به‌روز نشد",
+  "Uyarıyı kapat": "بستن هشدار",
+  "Siparişin kalemleri değişti, ama taslak faturası eski tutarla duruyor. Fatura otomatik güncellenmez; kliniğe gitmeden önce faturayı da düzeltin.": "اقلام سفارش تغییر کرد، اما پیش‌نویس فاکتور هنوز مبلغ قبلی را نشان می‌دهد. فاکتور خودکار به‌روز نمی‌شود؛ پیش از ارسال به کلینیک آن را هم اصلاح کنید.",
+  "Taslak hizmet bedeli": "هزینه خدمات پیش‌نویس",
+  "Daha sonra": "بعداً"
 }

@@ -937,6 +937,8 @@ export interface ClientOrderEditFields {
 export interface ClientOrderEditItem {
   name: string;
   price?: number;
+  /** Boş/eksikse sunucu eski kalemin para birimini korur. */
+  currency?: string | null;
   quantity?: number;
   tooth_numbers?: number[];
   notes?: string | null;

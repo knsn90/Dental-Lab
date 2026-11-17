@@ -10398,5 +10398,14 @@
   "teknisyen daha": "more technicians",
   "Canlı üretim": "Live production",
   "aktif sipariş": "active orders",
-  "En eski açık sipariş": "Oldest open order"
+  "En eski açık sipariş": "Oldest open order",
+  "Faturayı düzenle": "Edit invoice",
+  "Adet, fiyat, para birimi ve KDV — ekstreden ayrılmadan": "Quantity, price, currency and VAT — without leaving the statement",
+  "Ön ekstreye dön": "Back to the pre-statement",
+  "Uyarıya dön": "Back to the notice",
+  "Taslak fatura güncellenmedi": "Draft invoice was not updated",
+  "Uyarıyı kapat": "Close the notice",
+  "Siparişin kalemleri değişti, ama taslak faturası eski tutarla duruyor. Fatura otomatik güncellenmez; kliniğe gitmeden önce faturayı da düzeltin.": "The order's items changed, but its draft invoice still shows the old amount. The invoice is not updated automatically; correct it before it goes to the clinic.",
+  "Taslak hizmet bedeli": "Draft service fee",
+  "Daha sonra": "Later"
 }

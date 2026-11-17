@@ -41,6 +41,7 @@ import { createWorkOrder, addOrderItem, updateOrderAdmin, updateOrderClient, isO
 import { createChangeRequest } from '../changeRequests';
 import type { OrderPrefill, OrderEditPrefill } from '../prefillFromOrder';
 import { fetchOrderEditPrefill } from '../prefillFromOrder';
+import { DraftInvoiceNoticeModal, type DraftInvoiceRef } from '../../invoices/components/DraftInvoiceNoticeModal';
 import { implantFieldsPayload } from '../implantInfo';
 import { ageFromDob, parseAgeInput, sanitizeAgeInput } from '../lib/patientAge';
 import { reconcileImplantDetails } from '../implantDetails';
@@ -692,6 +693,7 @@ export function NewOrderScreen({
 
   // Düzenleme modu — mevcut siparişi yerinde günceller (yeni oluşturmaz).
   const isEdit = !!editOrderId;
+  const [draftNotice, setDraftNotice] = useState<DraftInvoiceRef[] | null>(null);
   // Simanty yeni sipariş OLUŞTURMA formunu doldurur; mevcut siparişi
   // düzenleyemez. Düzenleme sihirbazı açıkken FAB gizlenir — modalın üstünde
   // durup (kök FAB zIndex 9999) Kaydet düğmesiyle çakışıyordu.
@@ -2526,11 +2528,12 @@ export function NewOrderScreen({
     // Kalemler — diş-işlemi grupları (yeni-sipariş ile birebir kodlama) + serbest servis kalemleri
     const items: ClientOrderEditItem[] = [];
     {
-      const opGroupMap = new Map<string, { ops: ToothOp[]; teeth: number[]; name: string; price: number }>();
+      const opGroupMap = new Map<string, { ops: ToothOp[]; teeth: number[]; name: string; price: number; currency?: string }>();
       form.tooth_ops.forEach(o => {
         if (!o.work_type) return;
         const k = [o.work_type, o.shade, o.material, o.implant_system, o.implant_type, o.abutment, o.screw].join('||');
-        if (!opGroupMap.has(k)) opGroupMap.set(k, { ops: [], teeth: [], name: o.work_type, price: o.price || 0 });
+        // currency: fiyat listesinden gelen birim — gönderilmezse sunucu eskisini korur
+        if (!opGroupMap.has(k)) opGroupMap.set(k, { ops: [], teeth: [], name: o.work_type, price: o.price || 0, currency: o.currency });
         const g = opGroupMap.get(k)!;
         g.ops.push(o); g.teeth.push(o.tooth);
       });
@@ -2558,6 +2561,7 @@ export function NewOrderScreen({
         items.push({
           name: g.name,
           price: g.price,
+          currency: g.currency ?? null,
           quantity: priceUnitQty(rep.price_unit, teethUnique),
           tooth_numbers: teethUnique,
           notes: noteParts.length ? noteParts.join(' · ') : null,
@@ -2565,7 +2569,7 @@ export function NewOrderScreen({
       }
       form.pending_items.forEach((it: any) => {
         if (!it?.name) return;
-        items.push({ name: it.name, price: Number(it.price) || 0, quantity: Number(it.quantity) || 1, tooth_numbers: [], notes: null });
+        items.push({ name: it.name, price: Number(it.price) || 0, currency: it.currency ?? null, quantity: Number(it.quantity) || 1, tooth_numbers: [], notes: null });
       });
     }
     if (items.length === 0) { setSubmitError('En az bir iş kalemi gerekli.'); return; }
@@ -2625,6 +2629,16 @@ export function NewOrderScreen({
       fields.doctor_id = docId;
     }
 
+    // (d) Kayıttan ÖNCE eski kalemler — kayıttan sonra kalem değiştiyse ve taslak fatura
+    // varsa uyarı gösterilir (taslak teslimde kopyalanır, siparişle senkron değildir).
+    const itemSig = (rows: { name?: string | null; quantity?: number | null; price?: number | null; currency?: string | null }[], withCur: boolean) =>
+      rows.map(r => `${r.name ?? ''}|${Number(r.quantity) || 1}|${Number(r.price) || 0}${withCur ? `|${r.currency ?? ''}` : ''}`).sort().join('#');
+    let oldItems: { name: string | null; quantity: number | null; price: number | null; currency: string | null }[] = [];
+    if (adminEdit) {
+      const { data: oi } = await supabase.from('order_items').select('name, quantity, price, currency').eq('work_order_id', editOrderId);
+      oldItems = (oi as any[]) ?? [];
+    }
+
     setLoading(true);
     const { error } = adminEdit
       ? await updateOrderAdmin(editOrderId, fields, items)
@@ -2676,6 +2690,16 @@ export function NewOrderScreen({
           : 'Sipariş güncellendi ✓'
     );
     onSaved?.();
+
+    if (adminEdit) {
+      const allHaveCur = items.every(i => !!i.currency);
+      const changed = itemSig(oldItems, allHaveCur) !== itemSig(items as any[], allHaveCur);
+      if (changed) {
+        const { data: drafts } = await supabase.from('invoices')
+          .select('id, invoice_number').eq('work_order_id', editOrderId).eq('status', 'taslak');
+        if (drafts && drafts.length > 0) { setDraftNotice(drafts as DraftInvoiceRef[]); return; }
+      }
+    }
     onClose?.();
   };
 
@@ -3666,6 +3690,8 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
 
   return (
     <SafeAreaView edges={[]} style={[styles.safe, { backgroundColor: pageBg }]}>
+      {/* (d) Kalem değişti + taslak fatura var → uyarı; kapanınca düzenleme kapanır */}
+      <DraftInvoiceNoticeModal invoices={draftNotice} onClose={() => { setDraftNotice(null); onClose?.(); }} />
       {/* ── Submit sonrası başarı ekranı ── */}
       {/* Submit-time upload progress overlay — her dosya için ayrı progress satırı */}
       <Modal

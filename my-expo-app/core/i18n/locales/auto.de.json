@@ -10398,5 +10398,14 @@
   "teknisyen daha": "weitere Techniker",
   "Canlı üretim": "Live-Produktion",
   "aktif sipariş": "aktive Aufträge",
-  "En eski açık sipariş": "Ältester offener Auftrag"
+  "En eski açık sipariş": "Ältester offener Auftrag",
+  "Faturayı düzenle": "Rechnung bearbeiten",
+  "Adet, fiyat, para birimi ve KDV — ekstreden ayrılmadan": "Menge, Preis, Währung und MwSt. — ohne die Abrechnung zu verlassen",
+  "Ön ekstreye dön": "Zurück zur Vorabrechnung",
+  "Uyarıya dön": "Zurück zum Hinweis",
+  "Taslak fatura güncellenmedi": "Rechnungsentwurf wurde nicht aktualisiert",
+  "Uyarıyı kapat": "Hinweis schließen",
+  "Siparişin kalemleri değişti, ama taslak faturası eski tutarla duruyor. Fatura otomatik güncellenmez; kliniğe gitmeden önce faturayı da düzeltin.": "Die Positionen des Auftrags wurden geändert, aber der Rechnungsentwurf zeigt noch den alten Betrag. Die Rechnung wird nicht automatisch aktualisiert; korrigieren Sie sie, bevor sie an die Klinik geht.",
+  "Taslak hizmet bedeli": "Entwurfs-Leistungsabrechnung",
+  "Daha sonra": "Später"
 }
