@@ -12,6 +12,8 @@ import { addDays, addMonths, labLocalParts, labLocalToIso } from '../../modules/
 import type { ScanAppointmentRow } from '../../modules/scans/types';
 import { ApptCard } from '../../modules/scans/components/ScanApptCard';
 import { LabMobileDashboard } from '../../modules/dashboard/components/LabMobileDashboard';
+import { DoctorMobileDashboard } from '../../modules/dashboard/components/DoctorMobileDashboard';
+import { ClinicMobileDashboard } from '../../modules/dashboard/components/ClinicMobileDashboard';
 import { WhiteHero } from '../../core/ui/WhiteHero';
 import { DrawerCard } from '../../modules/cash/components/DrawerCard';
 import { DrawerMovementList } from '../../modules/cash/components/DrawerMovementList';
@@ -164,9 +166,36 @@ export default function ScanWidgetDemo() {
       <LabMobileDashboard
         liveActive={3} liveTotal={63} liveDelivered={60} livePercent={95}
         liveStages={{ alindi: 1, uretim: 2, kk: 0, hazir: 0 }}
-        activeOrders={3} todayCompleted={1} weekCompleted={4} overdueCount={1} pendingApprovalsCount={0}
+        overdueCount={1} pendingApprovalsCount={0} liveDueToday={2}
         orderTrend={[{ label: 'May', count: 0 }, { label: 'Haz', count: 36 }, { label: 'Tem', count: 59 }, { label: 'Ağu', count: 91 }, { label: 'Eyl', count: 148 }, { label: 'Eki', count: 86, teeth: 212 }]}
-        delayed={[]} recentOrders={[]}
+        recentOrders={[]}
+      />
+    );
+  }
+
+  if (q.view === 'doctormobile') {
+    // Hekim mobil Özet (sahte veri) — admin düzeni, zümrüt
+    return (
+      <DoctorMobileDashboard
+        liveActive={4} liveTotal={22} liveDelivered={18} livePercent={82}
+        liveStages={{ alindi: 1, uretim: 2, kk: 0, hazir: 1 }}
+        overdueCount={1} pendingApprovalsCount={1} liveDueToday={2}
+        orderTrend={[{ label: 'Haz', count: 3 }, { label: 'Tem', count: 5 }, { label: 'Ağu', count: 4 }, { label: 'Eyl', count: 7 }, { label: 'Eki', count: 6 }, { label: 'Kas', count: 4 }]}
+        recentOrders={[]}
+      />
+    );
+  }
+
+  if (q.view === 'clinicmobile') {
+    // Klinik mobil Özet (sahte veri) — admin düzeni, zümrüt
+    return (
+      <ClinicMobileDashboard
+        clinicName="Yıldız Klinik"
+        liveActive={9} liveTotal={40} liveDelivered={31} livePercent={78}
+        liveStages={{ alindi: 2, uretim: 5, kk: 1, hazir: 1 }}
+        overdueCount={0} pendingApprovalsCount={2} liveDueToday={3}
+        orderTrend={[{ label: 'Haz', count: 12 }, { label: 'Tem', count: 20 }, { label: 'Ağu', count: 15 }, { label: 'Eyl', count: 28 }, { label: 'Eki', count: 22 }, { label: 'Kas', count: 9 }]}
+        recentOrders={[]}
       />
     );
   }

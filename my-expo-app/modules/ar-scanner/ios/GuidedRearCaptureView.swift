@@ -24,18 +24,125 @@ final class RearGuidedModel: ObservableObject {
     @Published var photoCount: Int = 0
     @Published var currentZone: Int = 7
     @Published var faceVisible: Bool = false
-    @Published var maxMP: Int = 12          // cihazın desteklediği en yüksek foto MP
+    @Published var maxMP: Int = 12          // "yüksek" seçeneğinin gerçek MP değeri
+
+    /// Kameradaki yüz: konumu + bakış açısı. Rehber noktaları bununla yüze "yapışır".
+    struct FaceTrack: Equatable {
+        var rect: CGRect        // dik görüntüde 0…1, sol-üst köşe kökenli
+        var yaw: Double
+        var pitch: Double
+        var aspect: CGFloat     // dik görüntünün en/boy oranı
+    }
+    @Published var face: FaceTrack?
+
+    /// Bölge ızgarasının açı sınırları (radyan) ve her bölgenin merkez açısı.
+    static let maxYaw = 0.85
+    static let maxPitch = 0.5
+    static func zoneYaw(_ zone: Int) -> Double {
+        -maxYaw + 2 * maxYaw * Double(zoneCols - 1 - zone % zoneCols) / Double(zoneCols - 1)
+    }
+    static func zonePitch(_ zone: Int) -> Double {
+        -maxPitch + 2 * maxPitch * Double(zoneRows - 1 - zone / zoneCols) / Double(zoneRows - 1)
+    }
 
     static let zoneCols = 5
     static let zoneRows = 3
     static let zoneCount = 15          // 5 sütun (yaw) × 3 satır (pitch)
     var minShots: Int { 30 }
-    var enoughForFinish: Bool { doneZones.count >= 9 && photoCount >= minShots }
+    var enoughForFinish: Bool { doneZones.count >= Self.minZones && photoCount >= minShots }
+
+    enum Notice { case none, tooClose, tooFar, tooFast }
+    enum Move { case left, right, up, down, hold }
+    @Published var notice: Notice = .none
+    @Published var limitReached = false      // kare sınırı doldu → yeni kare çekilmez
+    /// Kameranın yüze yaklaşık uzaklığı (cm, 5'lik adımlarla). Yüz görünmüyorsa nil.
+    @Published var distanceCM: Int?
+    /// İyi çekim aralığı (cm): yakında yüz kadraja sığmaz ve netlik bozulur, uzakta ayrıntı düşer.
+    static let distanceRange = 30...70
+
+    static let minZones = 9
+    /// Bitirme koşuluna ne kadar yaklaşıldı (0…1): bölge ve kare sayısından geride olan.
+    var progress: Double {
+        min(1, min(Double(doneZones.count) / Double(Self.minZones), Double(photoCount) / Double(minShots)))
+    }
+    var allZonesDone: Bool { doneZones.count >= Self.zoneCount }
+
+    /// Operatörün bulunduğu bölgeye en yakın eksik bölge (kafa göstergesinde vurgulanır).
+    static let frontZone = 7
+    var frontDone: Bool { doneZones.contains(Self.frontZone) }
+    var targetZone: Int? {
+        // Önce gülüş: hasta gülüşünü uzun süre tutamaz → dişlerin en iyi göründüğü
+        // tam karşı açı, tarama başlar başlamaz çekilir.
+        if !frontDone { return Self.frontZone }
+        let cols = Self.zoneCols
+        let cr = currentZone / cols, cc = currentZone % cols
+        func cost(_ z: Int) -> Int { abs(z % cols - cc) * 2 + abs(z / cols - cr) * 3 }
+        return (0..<Self.zoneCount).filter { !doneZones.contains($0) }.min { cost($0) < cost($1) }
+    }
+    /// Hedefe gitmek için yön — gösterge ile aynı taraf (sütun 0 = ekranda sol, satır 0 = üst).
+    var move: Move? {
+        guard let t = targetZone else { return nil }
+        let cols = Self.zoneCols
+        let dc = t % cols - currentZone % cols, dr = t / cols - currentZone / cols
+        if dc == 0 && dr == 0 { return .hold }
+        if dc != 0 && abs(dc) >= abs(dr) { return dc < 0 ? .left : .right }
+        return dr < 0 ? .up : .down
+    }
+
+    func reset() {
+        doneZones = []; photoCount = 0; currentZone = 7; faceVisible = false
+        notice = .none; limitReached = false; face = nil; distanceCM = nil
+    }
+}
+
+/// Tarama ekranının vurgu rengi: uygulamadaki panel rengi (JS'ten hex gelir).
+/// Ekran siyah olduğu için çok koyu bir renk okunmaz → o durumda varsayılan turkuaza düşer.
+struct ScanAccent {
+    let color: Color
+    let onColor: Color
+
+    init(hex: String?) {
+        var r = 0.20, g = 0.82, b = 0.74
+        if let hex {
+            let h = hex.trimmingCharacters(in: CharacterSet(charactersIn: "# ")).prefix(6)
+            if h.count == 6, let v = UInt32(h, radix: 16) {
+                let pr = Double((v >> 16) & 0xFF) / 255, pg = Double((v >> 8) & 0xFF) / 255, pb = Double(v & 0xFF) / 255
+                if 0.2126 * pr + 0.7152 * pg + 0.0722 * pb >= 0.22 { r = pr; g = pg; b = pb }
+            }
+        }
+        color = Color(red: r, green: g, blue: b)
+        onColor = (0.2126 * r + 0.7152 * g + 0.0722 * b) > 0.55 ? .black : .white
+    }
+}
+
+/// Mesafe göstergesinin renkleri (beyaz yazı ikisinde de okunur).
+enum ScanDistanceColor {
+    static let good = Color(red: 0.13, green: 0.62, blue: 0.29)
+    static let bad = Color(red: 0.84, green: 0.20, blue: 0.18)
+}
+
+/// Düğme, parmak değdiği anda tepki verir (bırakılınca değil) ve yayla geri döner.
+struct PressScaleStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 1), value: configuration.isPressed)
+    }
+}
+
+/// Sistemin "büyük yazı" ayarına uyan yazı tipi. Sabit ölçülü düğmeler taşmasın diye
+/// büyüme %35 ile sınırlı.
+func scanFont(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
+    .system(size: min(UIFontMetrics.default.scaledValue(for: size), size * 1.35), weight: weight)
 }
 
 @available(iOS 17.0, *)
 struct GuidedRearCaptureView: View {
     enum Stage: Equatable {
+        case preparing              // kamera izni soruluyor
+        case permissionDenied
+        case intro                  // hazırlık: ipuçları + çözünürlük seçimi
         case capturing
         case reconstructing(Double)
         case preview(URL)
@@ -43,123 +150,311 @@ struct GuidedRearCaptureView: View {
     }
 
     @StateObject private var model = RearGuidedModel()
-    @State private var stage: Stage = .capturing
-    @State private var reconstructStarted = false
-    @State private var hiRes = true          // true = en yüksek çözünürlük, false = 12MP
+    @State private var stage: Stage = .preparing
+    // true = yüksek çözünürlük (en çok ~24 MP), false = 12 MP. Cihazda 12 MP'den büyük uygun
+    // seçenek yoksa hep 12 MP.
+    @State private var hiRes = RearCaptureController.highMP != nil
+    @State private var dirs: ObjectCaptureDirs
+    @State private var captureID = UUID()    // değişince kamera denetleyicisi baştan kurulur
+    @State private var runID = 0             // eski model-oluşturma görevlerini geçersiz kılar
+    @State private var photoSession: PhotogrammetrySession?
+    @State private var introSeen = false     // "Tekrar tara" hazırlık ekranını yeniden göstermez
+    @State private var previewColor = true   // önizlemede doku açık mı
+    @State private var confirmExit = false
+    @State private var confirmCancelBuild = false
 
-    let dirs: ObjectCaptureDirs
+    let text: GuidedRearText
     let onFinish: (Result<URL, Error>?) -> Void
 
-    private let accent = Color(red: 0.20, green: 0.82, blue: 0.74)
+    private let accent: Color
+    private let onAccent: Color          // accent zeminli düğmelerin metni
+
+    init(dirs: ObjectCaptureDirs, text: GuidedRearText, accentHex: String? = nil,
+         onFinish: @escaping (Result<URL, Error>?) -> Void) {
+        let tone = ScanAccent(hex: accentHex)
+        accent = tone.color
+        onAccent = tone.onColor
+        _dirs = State(initialValue: dirs)
+        self.text = text
+        self.onFinish = onFinish
+    }
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             switch stage {
-            case .capturing:           captureView
+            case .preparing:            EmptyView()
+            case .permissionDenied:     permissionView
+            case .intro:                introView
+            case .capturing:            captureView
             case .reconstructing(let p): reconstructingView(progress: p)
             case .preview(let url):     previewView(usdz: url)
             case .failed(let msg):      failedView(message: msg)
             }
         }
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
+        .buttonStyle(PressScaleStyle())
+        .environment(\.colorScheme, .dark)   // ekran hep koyu: cam yüzeyler de koyu olsun
+        .environment(\.layoutDirection, text.isRTL ? .rightToLeft : .leftToRight)
+        .onAppear {
+            UIApplication.shared.isIdleTimerDisabled = true
+            if stage == .preparing { beginCapture() }
+        }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .alert(text.exitTitle, isPresented: $confirmExit) {
+            Button(text.exit, role: .destructive) { close() }
+            Button(text.stay, role: .cancel) {}
+        } message: { Text(text.discardNote) }
+        .alert(text.cancelBuildTitle, isPresented: $confirmCancelBuild) {
+            Button(text.rescan) { restart() }
+            Button(text.exit, role: .destructive) { close() }
+            Button(text.stay, role: .cancel) {}
+        } message: { Text(text.discardNote) }
     }
 
     private var captureView: some View {
         ZStack {
-            RearCaptureARView(model: model, imagesDir: dirs.images, hiRes: hiRes, onError: { msg in
-                stage = .failed(msg)
-                onFinish(.failure(NSError(domain: "ArScanner", code: -1,
-                    userInfo: [NSLocalizedDescriptionKey: msg])))
+            RearCaptureARView(model: model, imagesDir: dirs.images, hiRes: hiRes, onError: { _ in
+                stage = .failed(text.cameraFailed)
             })
+            .id(captureID)
             .ignoresSafeArea()
+
+            // Rehber yüzün üstünde: noktalar başa bağlıdır, operatör döndükçe yüzeyle birlikte
+            // kayar ve çekilen açıların noktası yeşile döner.
+            FaceGuideOverlay(face: model.face, doneZones: model.doneZones, target: model.targetZone)
+                .ignoresSafeArea()
+                .environment(\.layoutDirection, .leftToRight)
+                .accessibilityHidden(true)   // aynı bilgi talimatta ve düğmedeki yüzdede okunur
+                .allowsHitTesting(false)
 
             VStack(spacing: 0) {
                 HStack {
-                    Button(action: { onFinish(nil) }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .bold)).foregroundColor(.white)
-                            .frame(width: 38, height: 38)
-                            .background(.ultraThinMaterial, in: Circle())
+                    closeButton { if model.photoCount > 0 { confirmExit = true } else { close() } }
+                    Spacer()
+                    // Yaklaşık mesafe: ideal aralıkta (40–55 cm) yeşil, dışında kırmızı
+                    if let cm = model.distanceCM {
+                        let good = HeadScanGeometry.idealDistanceCM.contains(cm)
+                        HStack(spacing: 6) {
+                            Image(systemName: "ruler").font(scanFont(12))
+                            Text("≈ \(cm) cm").font(scanFont(15, .semibold)).monospacedDigit()
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .background(good ? ScanDistanceColor.good : ScanDistanceColor.bad, in: Capsule())
+                        .environment(\.layoutDirection, .leftToRight)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(text.distance(cm))
+                        .transition(.opacity)
+                        .animation(.spring(response: 0.3, dampingFraction: 1), value: good)
                     }
                     Spacer()
                     HStack(spacing: 6) {
-                        Image(systemName: "camera.fill").font(.system(size: 12))
-                        Text("\(model.photoCount)").font(.system(size: 15, weight: .semibold))
+                        Image(systemName: "camera.fill").font(scanFont(12))
+                        Text("\(model.photoCount)").font(scanFont(15, .semibold))
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 14).padding(.vertical, 9)
                     .background(.ultraThinMaterial, in: Capsule())
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(text.shots(model.photoCount))
                 }
                 .padding(.horizontal, 16).padding(.top, 14)
 
-                Spacer()
+                Spacer(minLength: 8)
 
-                VStack(spacing: 16) {
-                    Text(model.faceVisible
-                         ? "Hastanın yüzü etrafında YAVAŞÇA gezin — sol · ön · sağ · üst · alt"
-                         : "Arka kamerayı hastanın yüzüne çevirin")
-                        .font(.system(size: 14, weight: .medium)).foregroundColor(.white)
-                        .multilineTextAlignment(.center).padding(.horizontal, 24)
-
-                    // Çözünürlük seçimi (operatör) — yalnız tarama başlamadan değiştir
-                    HStack(spacing: 0) {
-                        qualityButton(title: "12 MP", selected: !hiRes) { hiRes = false }
-                        qualityButton(title: "Yüksek (\(model.maxMP) MP)", selected: hiRes) { hiRes = true }
+                VStack(spacing: 14) {
+                    // Kısa talimat düğmenin hemen üstünde; yüzün önü açık kalır, yön yüzdeki noktadan okunur.
+                    ZStack {
+                        Text(hint.text)
+                            .font(scanFont(17, .semibold))
+                            .tracking(-0.2)
+                            .foregroundColor(hint.warning ? .black : .white)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20).padding(.vertical, 11)
+                            .background(hint.warning ? AnyShapeStyle(warn) : AnyShapeStyle(.ultraThinMaterial),
+                                        in: Capsule())
+                            .id(hint.text)
+                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
                     }
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
-                    .opacity(model.photoCount == 0 ? 1 : 0.4)
-                    .disabled(model.photoCount > 0)
+                    .animation(.spring(response: 0.3, dampingFraction: 1), value: hint.text)
+                    .accessibilityAddTraits(.updatesFrequently)
 
-                    CoverageHead3D(doneZones: model.doneZones, current: model.currentZone, accent: accent)
-                        .frame(width: 190, height: 220)
-                        .background(
-                            RoundedRectangle(cornerRadius: 24)
-                                .fill(Color.black.opacity(0.35))
-                        )
+                        VStack(spacing: 10) {
+                            // Hazır olana kadar düğme ilerleme çubuğu gibi dolar; dolunca "Bitir" olur.
+                            Button(action: finish) {
+                                Text(model.enoughForFinish ? text.finish : text.keepGoing(Int(model.progress * 100)))
+                                    .font(scanFont(16, .semibold))
+                                    .monospacedDigit()
+                                    .lineLimit(1).minimumScaleFactor(0.75)
+                                    .foregroundColor(model.enoughForFinish ? onAccent : .white.opacity(0.85))
+                                    .frame(width: finishWidth, height: 52)
+                                    .background(alignment: .leading) {
+                                        accent.opacity(model.enoughForFinish ? 1 : 0.45)
+                                            .frame(width: finishWidth * (model.enoughForFinish ? 1 : model.progress))
+                                            .animation(.spring(response: 0.35, dampingFraction: 1), value: model.progress)
+                                    }
+                                    .background(Color.white.opacity(0.16))   // dolmamış kısım koyu camda da seçilsin
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Capsule())
+                            }
+                            .disabled(!model.enoughForFinish)
+                            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: model.enoughForFinish)
 
-                    Text("\(model.doneZones.count)/\(RearGuidedModel.zoneCount) bölge")
-                        .font(.system(size: 12, weight: .semibold)).foregroundColor(.white.opacity(0.7))
-
-                    Button(action: finish) {
-                        Text(model.enoughForFinish ? "Bitir ✓" : "Devam edin…")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(model.enoughForFinish ? .black : .white.opacity(0.55))
-                            .frame(width: 220, height: 52)
-                            .background(model.enoughForFinish ? AnyShapeStyle(accent) : AnyShapeStyle(.ultraThinMaterial))
-                            .clipShape(Capsule())
-                    }
-                    .disabled(!model.enoughForFinish)
+                            // Sınır doldu ama kapsama yetmedi → çıkmaz kalmasın, baştan başlat
+                            if model.limitReached && !model.enoughForFinish {
+                                Button(action: restart) {
+                                    Text(text.rescan).font(scanFont(14, .semibold)).foregroundColor(.white)
+                                        .padding(.horizontal, 18).padding(.vertical, 9)
+                                        .background(.ultraThinMaterial, in: Capsule())
+                                }
+                            }
+                        }
                 }
+                .padding(.horizontal, 16)
                 .padding(.bottom, 30)
+                .onChange(of: hint.text) { _, spoken in
+                    if UIAccessibility.isVoiceOverRunning {
+                        UIAccessibility.post(notification: .announcement, argument: spoken)
+                    }
+                }
+                .onChange(of: model.enoughForFinish) { _, ready in
+                    if ready { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+                }
             }
+        }
+    }
+
+    private let finishWidth: CGFloat = 220
+
+    private func closeButton(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(scanFont(16, .bold)).foregroundColor(.white)
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .accessibilityLabel(text.close)
+    }
+
+    // Hazırlık: kamera açılmadan önce ne yapılacağını anlatır; çözünürlük burada seçilir.
+    private var introView: some View {
+        VStack(spacing: 0) {
+            HStack { closeButton(action: close); Spacer() }
+                .padding(.horizontal, 16).padding(.top, 14)
+            Spacer()
+            VStack(alignment: .leading, spacing: 26) {
+                Text(text.introTitle)
+                    .font(scanFont(28, .light)).foregroundColor(.white)
+                VStack(alignment: .leading, spacing: 16) {
+                    tip("sun.max", text.tipLight)
+                    tip("arrow.left.and.right", text.tipDistance)
+                    tip("face.smiling", text.tipSmile)
+                    tip("arrow.triangle.2.circlepath", text.tipMove)
+                    tip("mouth", text.tipRetractor)
+                }
+                if let mp = RearCaptureController.highMP {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(text.qualityLabel.uppercased())
+                            .font(scanFont(11, .bold)).tracking(1.2)
+                            .foregroundColor(.white.opacity(0.5))
+                        HStack(spacing: 0) {
+                            qualityButton(title: text.qualityStandard, selected: !hiRes) { hiRes = false }
+                            qualityButton(title: text.qualityHigh(mp), selected: hiRes) { hiRes = true }
+                        }
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                        Text(text.qualityNote)
+                            .font(scanFont(12)).foregroundColor(.white.opacity(0.55))
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 28)
+            Spacer()
+            Button(action: { introSeen = true; stage = .capturing }) {
+                Text(text.start).font(scanFont(16, .semibold)).foregroundColor(onAccent)
+                    .frame(width: 220, height: 52).background(accent, in: Capsule())
+            }
+            .padding(.bottom, 30)
+        }
+    }
+
+    private func tip(_ symbol: String, _ label: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: symbol)
+                .font(scanFont(17, .regular)).foregroundColor(accent)
+                .frame(width: 26, height: 22)
+            Text(label)
+                .font(scanFont(15)).foregroundColor(.white.opacity(0.88))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private let warn = Color(red: 0.96, green: 0.74, blue: 0.26)
+
+    /// O anki duruma göre tek cümlelik talimat. Öncelik: yüz yok → sınır → mesafe/hız → kapsama.
+    private var hint: (text: String, warning: Bool) {
+        guard model.faceVisible else { return (text.aimAtFace, false) }
+        if model.limitReached {
+            return model.enoughForFinish ? (text.limitReached, false) : (text.limitTooFew, true)
+        }
+        switch model.notice {
+        case .tooClose: return (text.tooClose, true)
+        case .tooFar:   return (text.tooFar, true)
+        case .tooFast:  return (text.tooFast, true)
+        case .none:     break
+        }
+        if model.allZonesDone { return (text.perfect, false) }
+        if model.enoughForFinish { return (text.ready, false) }
+        if !model.frontDone { return (text.frontFirst, false) }
+        // Yön, yüzün üstündeki beyaz hedef noktasıyla gösterilir; metin onu anlatır.
+        switch model.move {
+        case .hold?:  return (text.holdSteady, false)
+        case nil:     return (text.moveHint, false)
+        default:      return (text.chaseDot, false)
         }
     }
 
     private func reconstructingView(progress: Double) -> some View {
         VStack(spacing: 18) {
             ProgressView(value: progress).progressViewStyle(.linear).tint(accent).frame(width: 220)
-            Text("3D model oluşturuluyor… %\(Int(progress * 100))")
-                .font(.system(size: 15, weight: .medium)).foregroundColor(.white)
-            Text("Birkaç dakika sürebilir").font(.system(size: 12)).foregroundColor(.white.opacity(0.6))
+            Text(text.building(Int(progress * 100)))
+                .font(scanFont(15, .medium)).foregroundColor(.white)
+            Text(text.buildingNote).font(scanFont(12)).foregroundColor(.white.opacity(0.6))
+                .multilineTextAlignment(.center).padding(.horizontal, 32)
+            Button(action: { confirmCancelBuild = true }) {
+                Text(text.cancel).font(scanFont(15, .semibold)).foregroundColor(.white)
+                    .frame(width: 160, height: 48).background(.ultraThinMaterial, in: Capsule())
+            }
+            .padding(.top, 14)
         }
     }
 
     private func previewView(usdz: URL) -> some View {
         ZStack {
             Color(red: 0.05, green: 0.06, blue: 0.08).ignoresSafeArea()
-            ModelGridPreview(url: usdz).ignoresSafeArea()
-            VStack {
+            ModelGridPreview(url: usdz, showColor: previewColor).ignoresSafeArea()
+            VStack(spacing: 10) {
+                // Renk kapatılınca diş bölgesinin gerçek ağı görünür: ağız içi taramayla
+                // hizalama buna bağlı, renkli görüntü kusuru gizler.
+                HStack(spacing: 0) {
+                    qualityButton(title: text.colorOn, selected: previewColor) { previewColor = true }
+                    qualityButton(title: text.colorOff, selected: !previewColor) { previewColor = false }
+                }
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                .padding(.top, 14)
+                Text(text.previewHint)
+                    .font(scanFont(12)).foregroundColor(.white.opacity(0.6))
+                    .multilineTextAlignment(.center).padding(.horizontal, 32)
                 Spacer()
                 HStack(spacing: 12) {
-                    Button(action: { onFinish(nil) }) {
-                        Text("Tekrar Tara").font(.system(size: 16, weight: .semibold)).foregroundColor(.white)
+                    Button(action: restart) {
+                        Text(text.rescan).font(scanFont(16, .semibold)).foregroundColor(.white)
                             .frame(width: 150, height: 52).background(.ultraThinMaterial, in: Capsule())
                     }
                     Button(action: { onFinish(.success(dirs.outputDir)) }) {
-                        Text("Kaydet ✓").font(.system(size: 16, weight: .semibold)).foregroundColor(.black)
+                        Text(text.save).font(scanFont(16, .semibold)).foregroundColor(onAccent)
                             .frame(width: 150, height: 52).background(accent, in: Capsule())
                     }
                 }
@@ -168,14 +463,40 @@ struct GuidedRearCaptureView: View {
         }
     }
 
+    // Hata ekranda kalır: operatör nedenini okur, aynı yerden tekrar dener ya da kapatır.
     private func failedView(message: String) -> some View {
         VStack(spacing: 16) {
-            Text("Tarama başarısız").font(.system(size: 18, weight: .semibold)).foregroundColor(.white)
-            Text(message).font(.system(size: 13)).foregroundColor(.white.opacity(0.7))
+            Text(text.failedTitle).font(scanFont(18, .semibold)).foregroundColor(.white)
+            Text(message).font(scanFont(13)).foregroundColor(.white.opacity(0.7))
                 .multilineTextAlignment(.center).padding(.horizontal, 32)
-            Button(action: { onFinish(nil) }) {
-                Text("Kapat").font(.system(size: 16, weight: .semibold)).foregroundColor(.black)
-                    .frame(width: 180, height: 50).background(accent, in: Capsule())
+            Button(action: restart) {
+                Text(text.retry).font(scanFont(16, .semibold)).foregroundColor(onAccent)
+                    .frame(width: 200, height: 50).background(accent, in: Capsule())
+            }
+            .padding(.top, 6)
+            Button(action: close) {
+                Text(text.close).font(scanFont(16, .semibold)).foregroundColor(.white)
+                    .frame(width: 200, height: 50).background(.ultraThinMaterial, in: Capsule())
+            }
+        }
+    }
+
+    private var permissionView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "camera").font(scanFont(34, .light)).foregroundColor(.white.opacity(0.8))
+            Text(text.permissionTitle).font(scanFont(18, .semibold)).foregroundColor(.white)
+            Text(text.permissionBody).font(scanFont(13)).foregroundColor(.white.opacity(0.7))
+                .multilineTextAlignment(.center).padding(.horizontal, 32)
+            Button(action: {
+                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+            }) {
+                Text(text.openSettings).font(scanFont(16, .semibold)).foregroundColor(onAccent)
+                    .frame(width: 200, height: 50).background(accent, in: Capsule())
+            }
+            .padding(.top, 6)
+            Button(action: close) {
+                Text(text.close).font(scanFont(16, .semibold)).foregroundColor(.white)
+                    .frame(width: 200, height: 50).background(.ultraThinMaterial, in: Capsule())
             }
         }
     }
@@ -183,8 +504,8 @@ struct GuidedRearCaptureView: View {
     private func qualityButton(title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(selected ? .black : .white)
+                .font(scanFont(13, .semibold))
+                .foregroundColor(selected ? onAccent : .white)
                 .padding(.horizontal, 18).padding(.vertical, 10)
                 .background(selected ? AnyShapeStyle(accent) : AnyShapeStyle(Color.clear))
                 .clipShape(Capsule())
@@ -196,48 +517,129 @@ struct GuidedRearCaptureView: View {
         return items.first { $0.pathExtension.lowercased() == ext.lowercased() }
     }
 
+    // MARK: Akış
+
+    /// Kamera iznine göre çekimi başlatır ya da izin ekranını gösterir.
+    private func beginCapture() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            stage = introSeen ? .capturing : .intro
+        case .notDetermined:
+            stage = .preparing
+            AVCaptureDevice.requestAccess(for: .video) { ok in
+                DispatchQueue.main.async { stage = ok ? (introSeen ? .capturing : .intro) : .permissionDenied }
+            }
+        default:
+            stage = .permissionDenied
+        }
+    }
+
+    /// Ekranı kapatmadan baştan başlar: süren işi durdurur, eski kareleri siler,
+    /// temiz bir klasörle kamerayı yeniden kurar.
+    private func restart() {
+        runID += 1
+        photoSession?.cancel()
+        photoSession = nil
+        let oldBase = dirs.images.deletingLastPathComponent()
+        dirs = ObjectCaptureDirs.make()
+        try? FileManager.default.removeItem(at: oldBase)
+        model.reset()
+        previewColor = true
+        captureID = UUID()
+        beginCapture()
+    }
+
+    private func close() {
+        runID += 1
+        photoSession?.cancel()
+        photoSession = nil
+        onFinish(nil)
+    }
+
     private func finish() {
-        guard model.enoughForFinish, !reconstructStarted else { return }
-        reconstructStarted = true
+        guard model.enoughForFinish, stage == .capturing else { return }
+        runID += 1
+        let run = runID
         stage = .reconstructing(0)
-        let imagesDir = dirs.images
-        let outputDir = dirs.outputDir
-        let outputUSDZ = dirs.outputUSDZ
+        let imagesDir = dirs.images, outputDir = dirs.outputDir, outputUSDZ = dirs.outputUSDZ
+        let checkpoint = dirs.checkpoint
+        var info: [String: Any] = ["mode": "rearGuided", "shots": model.photoCount, "hiRes": hiRes]
         Task { @MainActor in
-            do {
-                var config = PhotogrammetrySession.Configuration()
+            let alive = { run == runID }
+            func makeSession() throws -> PhotogrammetrySession {
+                var config = PhotogrammetrySession.Configuration(checkpointDirectory: checkpoint)
                 // Cilt gibi pürüzsüz/az dokulu yüzeyler için yüksek hassasiyet kritik.
                 config.featureSensitivity = .high
                 // Rehberli süpürme kareleri sıralı çekildi → hem hız hem kalite artar.
                 config.sampleOrdering = .sequential
                 let session = try PhotogrammetrySession(input: imagesDir, configuration: config)
-                let requests: [PhotogrammetrySession.Request] = [
-                    .modelFile(url: outputDir, detail: .reduced),
-                    .modelFile(url: outputUSDZ, detail: .reduced),
-                ]
-                try session.process(requests: requests)
-                for try await output in session.outputs {
-                    switch output {
-                    case .requestProgress(_, fractionComplete: let f):
-                        stage = .reconstructing(f)
-                    case .processingComplete:
-                        // Boyun altından kes (sadece kafa) → OBJ'yi yerinde güncelle,
-                        // USDZ'i kesilmiş OBJ'den yeniden üret (preview + indirme kafa olsun)
-                        if let objURL = Self.firstFile(in: outputDir, ext: "obj") {
-                            OBJCropper.cropBelowNeck(objURL: objURL)
-                            try? USDZExporter.export(objURL: objURL, to: outputUSDZ)
-                        }
-                        if FileManager.default.fileExists(atPath: outputUSDZ.path) {
-                            stage = .preview(outputUSDZ)
-                        } else { onFinish(.success(outputDir)) }
-                        return
-                    case .requestError(_, let err):
-                        stage = .failed(err.localizedDescription); onFinish(.failure(err)); return
-                    default: break
-                    }
+                photoSession = session
+                return session
+            }
+            func modelExists() -> Bool { Self.firstFile(in: outputDir, ext: "obj") != nil }
+            func requests(_ g: PhotogrammetrySession.Request.Geometry?) -> [PhotogrammetrySession.Request] {
+                [.modelFile(url: outputDir, detail: .reduced, geometry: g),
+                 .modelFile(url: outputUSDZ, detail: .reduced, geometry: g)]
+            }
+            do {
+                var session = try makeSession()
+
+                // 1) Yalnız kamera konumları. Kameraların baktığı ortak nokta = hastanın başı.
+                let first = await ScanRecon.run(session, [.poses], alive: alive) { _, f in
+                    stage = .reconstructing(f * 0.15)
                 }
+                guard alive() else { return }
+                info["poses"] = first.poses?.posesBySample.count ?? 0
+                var geometry: PhotogrammetrySession.Request.Geometry?
+                if let focus = ScanRecon.focus(first.poses) {
+                    // Küpün yarı kenarı = kamera uzaklığının %62'si: 45 cm'den çekimde ~28 cm →
+                    // baş ve boyun girer, masa ve arka plan dışarıda kalır.
+                    geometry = ScanRecon.box(center: focus.center, half: focus.meanDistance * 0.5)
+                    info["focusDistance"] = Double(focus.meanDistance)
+                }
+                info["boxed"] = geometry != nil
+
+                // 2) Model, yalnız o kutu için. Aynı oturum ikinci isteği kabul etmezse yeni
+                //    oturumla (aynı ara kayıtlarla) denenir; kutu sonuç vermezse kutusuz kurulur.
+                var attempt = "same-session"
+                let onModel: (ScanRecon.Kind, Double) -> Void = { kind, f in
+                    if kind == .model { stage = .reconstructing(0.15 + f * 0.85) }
+                }
+                _ = await ScanRecon.run(session, requests(geometry), alive: alive, progress: onModel)
+                guard alive() else { return }
+                if !modelExists() {
+                    attempt = "new-session"
+                    session = try makeSession()
+                    _ = await ScanRecon.run(session, requests(geometry), alive: alive, progress: onModel)
+                    guard alive() else { return }
+                }
+                if !modelExists(), geometry != nil {
+                    attempt = "new-session-no-box"
+                    info["boxed"] = false
+                    session = try makeSession()
+                    _ = await ScanRecon.run(session, requests(nil), alive: alive, progress: onModel)
+                    guard alive() else { return }
+                }
+                photoSession = nil
+                info["attempt"] = attempt
+
+                guard let objURL = Self.firstFile(in: outputDir, ext: "obj") else {
+                    stage = .failed(text.noModel)
+                    return
+                }
+                // Boyun altından kes (yalnız omuz varsa çalışır) → OBJ'yi yerinde güncelle,
+                // USDZ'i kesilmiş OBJ'den yeniden üret (önizleme + indirme aynı olsun)
+                info["neckCrop"] = OBJCropper.cropBelowNeck(objURL: objURL)
+                try? USDZExporter.export(objURL: objURL, to: outputUSDZ)
+                info["model"] = ScanRecon.objStats(objURL)
+                ScanRecon.writeInfo(info, to: outputDir)
+                if FileManager.default.fileExists(atPath: outputUSDZ.path) {
+                    stage = .preview(outputUSDZ)
+                } else { onFinish(.success(outputDir)) }
             } catch {
-                stage = .failed(error.localizedDescription); onFinish(.failure(error))
+                guard alive() else { return }
+                photoSession = nil
+                stage = .failed(text.noModel)
             }
         }
     }
@@ -287,7 +689,34 @@ final class RearCaptureController: UIViewController,
     private var runningMaxSharp: CGFloat = 0
     private var maxDims = CMVideoDimensions(width: 4032, height: 3024)
     private let stdDims = CMVideoDimensions(width: 4032, height: 3024)   // ~12MP
+
+    /// "Yüksek" seçeneğinin üst sınırı. 48 MP × 48 kare, model oluşturulurken telefonun
+    /// bellek sınırını aşıp uygulamayı kapatıyordu (12 MP × 90 kare sorunsuz). 24 MP × 48 kare
+    /// toplam piksel olarak 12 MP × 90 kareyle aynı yükte kalır.
+    static let highCapMP = 25.5
+    private static func megapixels(_ d: CMVideoDimensions) -> Double { Double(d.width) * Double(d.height) / 1_000_000 }
+
+    /// Cihazın arka kamerasında 12 MP'den büyük, sınırın altında bir foto boyutu varsa MP değeri.
+    static let highMP: Int? = {
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else { return nil }
+        let best = device.formats.flatMap { $0.supportedMaxPhotoDimensions }
+            .map(megapixels).filter { $0 <= highCapMP }.max() ?? 0
+        return best > 13 ? Int(best.rounded()) : nil
+    }()
     private var captureIndexByID: [Int64: Int] = [:]
+    private var tanHalfFOV: Double = 0.69    // yatay görüş açısının yarısının tanjantı (cihazdan okunur)
+    private var lastDistance: Int?
+    private var lastNotice: RearGuidedModel.Notice = .none
+    private var fastUntil: TimeInterval = 0     // "daha yavaş" uyarısı titremesin diye kısa süre tutulur
+    private var limitSent = false
+    private let shotHaptic = UIImpactFeedbackGenerator(style: .light)
+    private let zoneHaptic = UIImpactFeedbackGenerator(style: .medium)
+
+    private func setNotice(_ n: RearGuidedModel.Notice) {
+        guard n != lastNotice else { return }
+        lastNotice = n
+        DispatchQueue.main.async { self.model.notice = n }
+    }
 
     // Mod'a göre limitler (48MP ağır → daha az kare + daha geniş aralık)
     private var maxPhotos: Int { hiRes ? 48 : 90 }
@@ -327,11 +756,14 @@ final class RearCaptureController: UIViewController,
             return
         }
         session.addInput(input)
+        let fov = Double(device.activeFormat.videoFieldOfView)
+        if fov > 20, fov < 140 { tanHalfFOV = tan(fov * .pi / 360) }
 
         if session.canAddOutput(photoOutput) { session.addOutput(photoOutput) }
         photoOutput.maxPhotoQualityPrioritization = .quality
         if let best = device.activeFormat.supportedMaxPhotoDimensions
-            .max(by: { Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height) }) {
+            .filter({ Self.megapixels($0) <= Self.highCapMP })
+            .max(by: { Self.megapixels($0) < Self.megapixels($1) }) {
             maxDims = best
         }
         photoOutput.maxPhotoDimensions = maxDims
@@ -353,7 +785,7 @@ final class RearCaptureController: UIViewController,
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         frameTick += 1
-        guard frameTick % 4 == 0,
+        guard frameTick % 3 == 0,   // ~10 Hz: rehber yüzü akıcı izlesin
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let ts = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
 
@@ -363,15 +795,48 @@ final class RearCaptureController: UIViewController,
         try? handler.perform([req])
 
         guard let face = (req.results)?.first else {
-            DispatchQueue.main.async { if self.model.faceVisible { self.model.faceVisible = false } }
+            lastDistance = nil
+            DispatchQueue.main.async {
+                if self.model.faceVisible { self.model.faceVisible = false }
+                if self.model.face != nil { self.model.face = nil }
+                if self.model.distanceCM != nil { self.model.distanceCM = nil }
+            }
             return
         }
         DispatchQueue.main.async { if !self.model.faceVisible { self.model.faceVisible = true } }
 
+        // Mesafe: yüz kutusunun gerçek yüksekliği (~20 cm) ve kameranın görüş açısından hesaplanır.
+        // Dik görüntünün yüksekliği sensörün uzun kenarıdır → yatay görüş açısı ona karşılık gelir.
+        // Yaklaşık değerdir (±%10–15): yüz boyu kişiden kişiye değişir.
+        let faceH = max(Double(face.boundingBox.height), 0.02)
+        let cm = Int((0.20 / (2 * faceH * tanHalfFOV) * 100 / 5).rounded()) * 5
+        if cm != lastDistance {
+            lastDistance = cm
+            DispatchQueue.main.async { self.model.distanceCM = cm }
+        }
+        let distance: RearGuidedModel.Notice = cm < RearGuidedModel.distanceRange.lowerBound ? .tooClose
+            : (cm > RearGuidedModel.distanceRange.upperBound ? .tooFar : .none)
+        if distance == .tooClose, lastNotice != .tooClose {
+            // Fazla yaklaşınca ekrana bakmadan da fark edilsin
+            DispatchQueue.main.async { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
+        }
+        setNotice(distance != .none ? distance : (ts < fastUntil ? .tooFast : .none))
+        if photoIndex >= maxPhotos, !limitSent {
+            limitSent = true
+            DispatchQueue.main.async { self.model.limitReached = true }
+        }
+
         let yaw = face.yaw?.doubleValue ?? 0
         let pitch = face.pitch?.doubleValue ?? 0
+        // Rehber için yüzün ekrandaki yeri (Vision kökeni sol-alt → sol-üste çevrilir)
+        let bb = face.boundingBox
+        let track = RearGuidedModel.FaceTrack(
+            rect: CGRect(x: bb.minX, y: 1 - bb.maxY, width: bb.width, height: bb.height),
+            yaw: yaw, pitch: pitch,
+            aspect: CGFloat(CVPixelBufferGetHeight(pixelBuffer)) / CGFloat(max(CVPixelBufferGetWidth(pixelBuffer), 1)))
+        DispatchQueue.main.async { self.model.face = track }
         let cols = RearGuidedModel.zoneCols, rows = RearGuidedModel.zoneRows
-        let maxYaw = 0.85, maxPitch = 0.5
+        let maxYaw = RearGuidedModel.maxYaw, maxPitch = RearGuidedModel.maxPitch
         let ny = min(max((yaw + maxYaw) / (2 * maxYaw), 0), 1)
         var col = Int((ny * Double(cols - 1)).rounded())
         col = (cols - 1) - col
@@ -394,6 +859,9 @@ final class RearCaptureController: UIViewController,
         let ok = sharp >= bar || runningMaxSharp < 1
         if sharp > runningMaxSharp { runningMaxSharp = sharp }
         guard ok else {
+            // Bulanık kare → operatör hızlı hareket ediyor
+            fastUntil = ts + 1.2
+            if distance == .none { setNotice(.tooFast) }
             DispatchQueue.main.async { self.model.currentZone = zone }
             return
         }
@@ -405,6 +873,8 @@ final class RearCaptureController: UIViewController,
             self.model.currentZone = zone
             self.model.doneZones.insert(zone)
             self.model.photoCount = self.photoIndex
+            // Her çekimde hafif, yeni bölgede belirgin titreşim → ekrana bakmadan ilerleme hissedilir
+            (isNewZone ? self.zoneHaptic : self.shotHaptic).impactOccurred()
         }
         triggerPhotoCapture(index: idx)
     }
@@ -441,166 +911,141 @@ final class RearCaptureController: UIViewController,
     }
 }
 
-// MARK: - B.2: 3D Yeşil Kafa Rehberi (Qlone tarzı kapsama göstergesi)
+// MARK: - Yüz rehberi (kamera görüntüsünde, yüzün üstünde tel kafes)
 //
-// Dairesel halka yerine 3B kafa proxy'si: 9 bölge kafanın ön yüzeyinde işaretli.
-// Taranan bölge → yeşil + parlama; hedef (current) → beyaz + nabız; bekleyen → soluk.
+// Rehber ekranın altında durunca operatör gözünü hastadan ayırıyor ve kamerayı kaydırıyordu.
+// Bu yüzden rehber yüzün kendisine çizilir: başın yüzeyine oturan, düğümlü bir üçgen ağ
+// (yüz taramalarındaki nokta-üçgen ağını anımsatır).
+//   • Kafes 15 yamadan oluşur; her yama, o açıdan bakınca kameraya dönük olan yüzeydir.
+//   • Operatör hastanın etrafında döndükçe kafes başla birlikte döner.
+//   • Çekilen yama yeşile döner; sıradaki hedef yama beyaz nefes alır.
+// Ortadaki yama her zaman o an çekilen açıdır: "beyaz yamayı yüzün ortasına getir".
+
+/// Ağın tek yaması: baş elipsoidi üzerinde üçgenlenmiş bir düğüm kümesi, kameranın o anki
+/// bakış açısına göre izdüşümü alınmış. Konum ve açı canlandırılabilir → kafes yüzü akıcı izler.
+struct FaceMeshPatch: Shape {
+    var cx: CGFloat, cy: CGFloat, rx: CGFloat, ry: CGFloat
+    var yaw: CGFloat, pitch: CGFloat      // kameranın yüze göre açısı (radyan)
+    let zoneYaw: CGFloat, zonePitch: CGFloat
+    let spanYaw: CGFloat, spanPitch: CGFloat
+    let gridI: Int, gridJ: Int            // yamanın ilk düğümünün ağdaki genel sırası
+    static let cells = 2                  // yama başına hücre (her hücre iki üçgen)
+
+    typealias Pair = AnimatablePair<CGFloat, CGFloat>
+    var animatableData: AnimatablePair<Pair, AnimatablePair<Pair, Pair>> {
+        get { .init(.init(cx, cy), .init(.init(rx, ry), .init(yaw, pitch))) }
+        set {
+            cx = newValue.first.first; cy = newValue.first.second
+            rx = newValue.second.first.first; ry = newValue.second.first.second
+            yaw = newValue.second.second.first; pitch = newValue.second.second.second
+        }
+    }
+
+    /// Yüzey noktası (a = yatay açı, b = dikey açı) → ekran noktası; arkaya dönükse nil.
+    private func point(_ a: CGFloat, _ b: CGFloat) -> CGPoint? {
+        // Dikey açı görselde genişletilir: üç satır alından çeneye tüm başı sarsın (düz kesik kalmasın)
+        let dy = yaw - a, dp = (pitch - b) * 1.35
+        guard cos(dy) * cos(dp) > 0.12 else { return nil }
+        return CGPoint(x: cx + rx * sin(dy) * cos(dp), y: cy + ry * sin(dp))
+    }
+
+    /// Ağ düğümünün düzgün ızgaradan sapması (hücre oranı). Düğümün ağdaki genel sırasına
+    /// bağlıdır → komşu yamalar ortak kenarda aynı düğümü çizer, ağ tek parça görünür.
+    private static func jitter(_ i: Int, _ j: Int) -> (CGFloat, CGFloat) {
+        func h(_ n: Int) -> CGFloat {
+            let x = sin(Double(n) * 12.9898) * 43758.5453
+            return CGFloat(x - x.rounded(.down)) - 0.5
+        }
+        return (h(i * 31 + j * 17 + 3) * 0.5, h(i * 13 + j * 29 + 7) * 0.5)
+    }
+
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let n = Self.cells
+        let stepA = spanYaw / CGFloat(n), stepB = spanPitch / CGFloat(n)
+        let a0 = zoneYaw - spanYaw / 2, b0 = zonePitch - spanPitch / 2
+        // Yamanın düğümleri (yüz taramasındaki nokta bulutu gibi hafif düzensiz)
+        var v = [[CGPoint?]](repeating: [CGPoint?](repeating: nil, count: n + 1), count: n + 1)
+        for i in 0...n {
+            for j in 0...n {
+                let (ja, jb) = Self.jitter(gridI + i, gridJ + j)
+                v[i][j] = point(a0 + stepA * (CGFloat(i) + ja), b0 + stepB * (CGFloat(j) + jb))
+            }
+        }
+        func edge(_ a: CGPoint?, _ b: CGPoint?) {
+            guard let a, let b else { return }
+            p.move(to: a); p.addLine(to: b)
+        }
+        // Her hücre iki üçgen: dört kenar + bir köşegen (yönü dönüşümlü → düzensiz üçgen ağı)
+        for i in 0..<n {
+            for j in 0..<n {
+                edge(v[i][j], v[i + 1][j]); edge(v[i][j], v[i][j + 1])
+                if i == n - 1 { edge(v[i + 1][j], v[i + 1][j + 1]) }
+                if j == n - 1 { edge(v[i][j + 1], v[i + 1][j + 1]) }
+                if (gridI + i + gridJ + j) % 2 == 0 { edge(v[i][j], v[i + 1][j + 1]) }
+                else { edge(v[i + 1][j], v[i][j + 1]) }
+            }
+        }
+        // Düğüm noktaları
+        for row in v {
+            for q in row {
+                if let q { p.addEllipse(in: CGRect(x: q.x - 1.3, y: q.y - 1.3, width: 2.6, height: 2.6)) }
+            }
+        }
+        return p
+    }
+}
 
 @available(iOS 17.0, *)
-struct CoverageHead3D: UIViewRepresentable {
+struct FaceGuideOverlay: View {
+    let face: RearGuidedModel.FaceTrack?
     let doneZones: Set<Int>
-    let current: Int
-    let accent: Color
+    let target: Int?
 
-    final class Coord { var markers: [Int: SCNNode] = [:] }
-    func makeCoordinator() -> Coord { Coord() }
+    @State private var pulse = false
+    private let green = Color(red: 0.19, green: 0.82, blue: 0.35)   // sistem yeşili
+    private let reduceMotion = UIAccessibility.isReduceMotionEnabled
+    private let spanYaw = CGFloat(2 * RearGuidedModel.maxYaw / Double(RearGuidedModel.zoneCols - 1))
+    private let spanPitch = CGFloat(2 * RearGuidedModel.maxPitch / Double(RearGuidedModel.zoneRows - 1))
 
-    func makeUIView(context: Context) -> SCNView {
-        let v = SCNView()
-        v.backgroundColor = .clear
-        v.isUserInteractionEnabled = false
-        v.antialiasingMode = .multisampling4X
-        v.rendersContinuously = true
-        let scene = SCNScene()
-        v.scene = scene
+    var body: some View {
+        GeometryReader { geo in
+            if let f = face {
+                // Kamera görüntüsü ekranı doldurur (aspect fill) → dik görüntünün ekrandaki boyutu
+                let ih = max(geo.size.height, geo.size.width / max(f.aspect, 0.01)), iw = ih * f.aspect
+                let ox = (iw - geo.size.width) / 2, oy = (ih - geo.size.height) / 2
+                let cx = f.rect.midX * iw - ox, cy = f.rect.midY * ih - oy
+                let rx = f.rect.width * iw * 0.62, ry = f.rect.height * ih * 0.80
 
-        // Hafif sürekli dönüş ile 3B hissi
-        let rig = SCNNode()
-        scene.rootNode.addChildNode(rig)
-        rig.runAction(.repeatForever(.sequence([
-            .rotateBy(x: 0, y: 0.35, z: 0, duration: 2.2),
-            .rotateBy(x: 0, y: -0.35, z: 0, duration: 2.2),
-        ])))
-
-        // Gerçek 3D kafa modeli (WaltHead.obj) — resource bundle'dan yükle
-        if let headNode = Self.loadHeadModel() {
-            rig.addChildNode(headNode)
-        } else {
-            // Yedek: model bulunamazsa basit elipsoid
-            let hm = SCNMaterial()
-            hm.lightingModel = .physicallyBased
-            hm.diffuse.contents = UIColor(white: 0.78, alpha: 1)
-            let head = SCNSphere(radius: 1.0); head.segmentCount = 64
-            head.materials = [hm]
-            let hn = SCNNode(geometry: head)
-            hn.scale = SCNVector3(0.82, 1.05, 0.9)
-            rig.addChildNode(hn)
-        }
-
-        // 15 bölge markeri (5 sütun × 3 satır), kafanın ön yüzeyinde
-        let cols = RearGuidedModel.zoneCols, rows = RearGuidedModel.zoneRows
-        let maxYaw: Float = 0.95, maxPitch: Float = 0.6
-        for zone in 0..<RearGuidedModel.zoneCount {
-            let col = zone % cols, row = zone / cols
-            let yaw = -maxYaw + Float(col) / Float(cols - 1) * 2 * maxYaw
-            let pitch = maxPitch - Float(row) / Float(rows - 1) * 2 * maxPitch  // row0 = üst
-            let dir = SCNVector3(cos(pitch) * sin(yaw), sin(pitch), cos(pitch) * cos(yaw))
-            let m = SCNSphere(radius: 0.11)
-            m.segmentCount = 20
-            let mm = SCNMaterial()
-            mm.lightingModel = .constant
-            mm.diffuse.contents = UIColor(white: 0.5, alpha: 0.85)
-            m.materials = [mm]
-            let node = SCNNode(geometry: m)
-            node.position = SCNVector3(dir.x * 0.85, dir.y * 1.05, dir.z * 0.95)
-            rig.addChildNode(node)
-            context.coordinator.markers[zone] = node
-        }
-
-        // Aydınlatma
-        let amb = SCNNode(); amb.light = SCNLight()
-        amb.light?.type = .ambient; amb.light?.intensity = 700
-        scene.rootNode.addChildNode(amb)
-        let key = SCNNode(); key.light = SCNLight()
-        key.light?.type = .directional; key.light?.intensity = 750
-        key.eulerAngles = SCNVector3(-0.5, 0.5, 0)
-        scene.rootNode.addChildNode(key)
-
-        // Önden kamera
-        let cam = SCNNode(); cam.camera = SCNCamera()
-        cam.camera?.fieldOfView = 34
-        cam.position = SCNVector3(0, 0, 6)
-        cam.look(at: SCNVector3(0, 0, 0))
-        scene.rootNode.addChildNode(cam)
-        v.pointOfView = cam
-
-        applyColors(context: context)
-        return v
-    }
-
-    func updateUIView(_ uiView: SCNView, context: Context) {
-        applyColors(context: context)
-    }
-
-    // Resource bundle'dan kafa OBJ URL'ini bul
-    private static func headModelURL() -> URL? {
-        let bundles: [Bundle] = [Bundle(for: ArScannerModule.self), Bundle.main]
-        for b in bundles {
-            if let u = b.url(forResource: "head_guide", withExtension: "obj") { return u }
-            if let bp = b.url(forResource: "ArScannerAssets", withExtension: "bundle"),
-               let ab = Bundle(url: bp),
-               let u = ab.url(forResource: "head_guide", withExtension: "obj") { return u }
-        }
-        return nil
-    }
-
-    // Kafa modelini yükle → normalize + ortala + yarı saydam gri materyal
-    private static func loadHeadModel() -> SCNNode? {
-        guard let url = headModelURL() else { return nil }
-        // OBJ'yi ModelIO ile yükle (SCNScene(url:) OBJ'de boş sahne dönebiliyor)
-        let asset = MDLAsset(url: url)
-        guard asset.count > 0 else { return nil }
-        let scene = SCNScene(mdlAsset: asset)
-
-        let node = scene.rootNode.flattenedClone()
-        let m = SCNMaterial()
-        m.lightingModel = .physicallyBased
-        m.diffuse.contents = UIColor(white: 0.80, alpha: 1)
-        m.roughness.contents = 0.55
-        m.metalness.contents = 0.0
-        m.transparency = 0.5            // yarı saydam → noktalar/iç hatlar okunur
-        m.isDoubleSided = true
-        node.geometry?.materials = [m]
-        node.enumerateChildNodes { c, _ in c.geometry?.materials = [m] }
-
-        // Normalize: ~2.4 birim, merkezde.
-        // MDLAsset.boundingBox güvenilir (SCNNode.boundingBox MDL import'ta 0 dönebiliyor → dev model).
-        let bb = asset.boundingBox
-        let mn = bb.minBounds, mx = bb.maxBounds
-        let center = SCNVector3((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, (mn.z + mx.z) / 2)
-        let size = SCNVector3(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z)
-        let maxDim = max(size.x, max(size.y, size.z))
-        let s: Float = maxDim > 0.0001 ? 2.4 / maxDim : 1
-        node.position = SCNVector3(-center.x, -center.y, -center.z)
-        let scaler = SCNNode()
-        scaler.scale = SCNVector3(s, s, s)
-        scaler.addChildNode(node)
-        return scaler
-    }
-
-    private func applyColors(context: Context) {
-        let green = UIColor(red: 0.10, green: 0.92, blue: 0.45, alpha: 1)  // canlı yeşil
-        let pulse = SCNAction.repeatForever(.sequence([
-            .scale(to: 1.55, duration: 0.5),
-            .scale(to: 1.15, duration: 0.5),
-        ]))
-        for (zone, node) in context.coordinator.markers {
-            guard let mat = node.geometry?.firstMaterial else { continue }
-            node.removeAllActions()
-            if doneZones.contains(zone) {
-                mat.diffuse.contents = green
-                mat.emission.contents = green   // parlama → parlak yeşil
-                node.scale = SCNVector3(1.3, 1.3, 1.3)
-            } else if zone == current {
-                mat.diffuse.contents = UIColor.white
-                mat.emission.contents = UIColor.white
-                node.scale = SCNVector3(1.4, 1.4, 1.4)
-                node.runAction(pulse)
-            } else {
-                mat.diffuse.contents = UIColor(white: 0.30, alpha: 0.7)  // belirgin sönük
-                mat.emission.contents = UIColor.black
-                node.scale = SCNVector3(0.8, 0.8, 0.8)
+                ZStack {
+                    ForEach(0..<RearGuidedModel.zoneCount, id: \.self) { z in
+                        let done = doneZones.contains(z)
+                        let isTarget = z == target && !done
+                        FaceMeshPatch(cx: cx, cy: cy, rx: rx, ry: ry,
+                                      yaw: CGFloat(f.yaw), pitch: CGFloat(f.pitch),
+                                      zoneYaw: CGFloat(RearGuidedModel.zoneYaw(z)),
+                                      zonePitch: CGFloat(RearGuidedModel.zonePitch(z)),
+                                      spanYaw: spanYaw, spanPitch: spanPitch,
+                                      // sütun/satır açıyla ters sıralı → ortak kenarlar aynı düğüme denk gelsin
+                                      gridI: (RearGuidedModel.zoneCols - 1 - z % RearGuidedModel.zoneCols) * FaceMeshPatch.cells,
+                                      gridJ: (RearGuidedModel.zoneRows - 1 - z / RearGuidedModel.zoneCols) * FaceMeshPatch.cells)
+                            .stroke(done ? green : Color.white,
+                                    style: StrokeStyle(lineWidth: done ? 1.6 : (isTarget ? 1.6 : 1), lineCap: .round, lineJoin: .round))
+                            .opacity(done ? 0.95 : (isTarget ? (pulse ? 1 : 0.45) : 0.32))
+                            .zIndex(done ? 2 : (isTarget ? 1 : 0))     // yeşil teller ortak kenarda üstte kalır
+                            .animation(.spring(response: 0.35, dampingFraction: 1), value: done)
+                    }
+                }
+                .shadow(color: .black.opacity(0.4), radius: 1.5)   // açık ten ve açık zeminde de seçilsin
+                .animation(.spring(response: 0.22, dampingFraction: 1), value: f)   // yüzü akıcı, kesintisiz izler
+                .transition(.opacity)
             }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 1), value: face == nil)
+        .onAppear {
+            // "Hareketi azalt" açıksa hedef nefes almaz, sabit kalır
+            if reduceMotion { pulse = true }
+            else { withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { pulse = true } }
         }
     }
 }
@@ -610,6 +1055,25 @@ struct CoverageHead3D: UIViewRepresentable {
 @available(iOS 17.0, *)
 struct ModelGridPreview: UIViewRepresentable {
     let url: URL   // USDZ (texture gömülü)
+    var showColor: Bool = true
+
+    final class Coord {
+        var originals: [(SCNGeometry, [SCNMaterial])] = []   // geometri + özgün (dokulu) malzemeleri
+        var ambient: SCNLight?
+        var key: SCNNode?
+        var color = true
+        /// Ön kamera önizlemesindeki "Yüzey" malzemesiyle birebir aynı: dokusuz, mat açık gri.
+        lazy var surface: SCNMaterial = {
+            let m = SCNMaterial()
+            m.lightingModel = .physicallyBased
+            m.diffuse.contents = UIColor(white: 0.82, alpha: 1)
+            m.roughness.contents = 0.6
+            m.metalness.contents = 0.0
+            m.isDoubleSided = true
+            return m
+        }()
+    }
+    func makeCoordinator() -> Coord { Coord() }
 
     func makeUIView(context: Context) -> SCNView {
         let v = SCNView()
@@ -623,7 +1087,16 @@ struct ModelGridPreview: UIViewRepresentable {
         v.autoenablesDefaultLighting = false
         v.backgroundColor = UIColor(red: 0.05, green: 0.06, blue: 0.08, alpha: 1)
 
-        let scene = (try? SCNScene(url: url, options: nil)) ?? SCNScene()
+        // USDZ doğrudan açılır. OBJ (USDZ üretilemediyse) ModelIO ile, dokusu yüklenerek açılır;
+        // SCNScene(url:) OBJ'yi eksik/boş okuyabiliyor (önizlemede ince bir dilim görünüyordu).
+        let scene: SCNScene
+        if url.pathExtension.lowercased() == "obj" {
+            let asset = MDLAsset(url: url)
+            asset.loadTextures()
+            scene = SCNScene(mdlAsset: asset)
+        } else {
+            scene = (try? SCNScene(url: url, options: nil)) ?? SCNScene()
+        }
         v.scene = scene
 
         // Modeli tek bir "content" düğümüne sar
@@ -633,6 +1106,14 @@ struct ModelGridPreview: UIViewRepresentable {
 
         // Ölç + NORMALİZE et (sabit ~2 birim) → kamera dolly aralığı makul olur,
         // böylece zoom-out da çalışır (eskiden model çok küçüktü, geri gidemiyordu).
+        // Renksiz görünüm için geometrileri ve özgün malzemelerini sakla
+        var seen = Set<ObjectIdentifier>()
+        content.enumerateHierarchy { node, _ in
+            if let g = node.geometry, seen.insert(ObjectIdentifier(g)).inserted {
+                context.coordinator.originals.append((g, g.materials))
+            }
+        }
+
         let measure = content.flattenedClone()
         let (lo, hi) = measure.boundingBox
         let center = SCNVector3((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2)
@@ -666,6 +1147,8 @@ struct ModelGridPreview: UIViewRepresentable {
         dir.light?.type = .directional; dir.light?.intensity = 550
         dir.eulerAngles = SCNVector3(-Float.pi / 3, Float.pi / 5, 0)
         scene.rootNode.addChildNode(dir)
+        context.coordinator.ambient = amb.light
+        context.coordinator.key = dir
 
         // Kamera — sabit mesafe (model normalize, ~2 birim)
         let cam = SCNNode(); cam.camera = SCNCamera()
@@ -678,7 +1161,23 @@ struct ModelGridPreview: UIViewRepresentable {
         return v
     }
 
-    func updateUIView(_ uiView: SCNView, context: Context) {}
+    func updateUIView(_ uiView: SCNView, context: Context) {
+        let c = context.coordinator
+        guard c.color != showColor else { return }
+        c.color = showColor
+        SCNTransaction.begin()
+        SCNTransaction.animationDuration = 0.2
+        // Renksiz: dokulu malzemenin tamamı (renk + normal + AO haritaları) çıkar, yerine ön kamera
+        // önizlemesindeki düz yüzey malzemesi gelir → yalnız ağın gerçek şekli görünür.
+        for (g, original) in c.originals {
+            g.materials = showColor ? original : Array(repeating: c.surface, count: max(original.count, 1))
+        }
+        // Işık da ön kameradaki gibi: renklide düz (doku rengi için), renksizde yandan (kabartı için)
+        c.ambient?.intensity = showColor ? 950 : 350
+        c.key?.light?.intensity = showColor ? 550 : 900
+        c.key?.eulerAngles = showColor ? SCNVector3(-Float.pi / 3, Float.pi / 5, 0) : SCNVector3(-0.35, 0.35, 0)
+        SCNTransaction.commit()
+    }
 
     private static func gridTexture() -> UIImage {
         let s = CGSize(width: 512, height: 512)

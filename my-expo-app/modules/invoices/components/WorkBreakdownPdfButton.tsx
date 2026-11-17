@@ -68,7 +68,7 @@ export function WorkBreakdownPdfButton({ invoiceId, invoiceNumber, invoiceStatus
 
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-      <GlassTooltip title={autoT('İş dökümü PDF')} text={autoT('Faturadaki işleri kalem kalem, fatura numarasıyla PDF olarak indirir')}>
+      <GlassTooltip title={autoT('İş dökümü PDF')} text={autoT('Hizmet bedelindeki işleri kalem kalem, belge numarasıyla PDF olarak indirir')}>
         <Pressable
           disabled={busy}
           onPress={run}

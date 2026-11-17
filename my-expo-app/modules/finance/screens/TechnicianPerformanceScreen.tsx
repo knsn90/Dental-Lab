@@ -3,6 +3,8 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { weekdayOffset } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { toast } from '../../../core/ui/Toast';
 import {
   View, Text, ScrollView, Pressable,
   Platform, useWindowDimensions,
@@ -79,7 +81,8 @@ const RANGE_OPTIONS: { key: Range; label: string }[] = [
   { key: 'all',       label: 'Tümü'     },
 ];
 
-const MATERIAL_TYPES = ['all', 'zirconia', 'emax', 'pmma', 'metal', 'glaze'];
+// Materyal seçenekleri lab'ın kendi stok kategorilerinden gelir (serbest metin:
+// "Zirkonyum", "Seramik"…). Sabit İngilizce anahtarlar hiçbir kayıtla eşleşmiyordu.
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'efficiency', label: 'En düşük verim'  },
@@ -92,7 +95,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 const fmt = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 });
 const fmt1 = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
 
-function getRange(r: Range): { from: string | null; to: string | null } {
+function getRange(r: Range): { from: string; to: string } {
   const now = new Date();
   const yyyy = now.getFullYear();
   const mm   = now.getMonth();
@@ -105,7 +108,8 @@ function getRange(r: Range): { from: string | null; to: string | null } {
   }
   if (r === 'thisMonth') return { from: ymd(new Date(yyyy, mm, 1)), to: ymd(new Date(yyyy, mm + 1, 0)) };
   if (r === 'thisYear')  return { from: `${yyyy}-01-01`,            to: `${yyyy}-12-31` };
-  return { from: null, to: null };
+  // RPC tarihleri BETWEEN ile süzer; null aralık hiçbir satır döndürmez.
+  return { from: '2000-01-01', to: ymd(now) };
 }
 
 export function TechnicianPerformanceScreen() {
@@ -128,6 +132,19 @@ export function TechnicianPerformanceScreen() {
   const [sortKey, setSortKey]   = useState<SortKey>('efficiency');
   const [rows, setRows]         = useState<PerfRow[]>([]);
   const [loading, setLoading]   = useState(true);
+  const [materialTypes, setMaterialTypes] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!labId) return;
+    let cancelled = false;
+    supabase.from('stock_items').select('category').not('category', 'is', null).then(({ data }) => {
+      if (cancelled) return;
+      const set = new Set<string>();
+      (data ?? []).forEach((r: { category: string | null }) => { const c = (r.category ?? '').trim(); if (c) set.add(c); });
+      setMaterialTypes([...set].sort((a, b) => a.localeCompare(b, 'tr')));
+    });
+    return () => { cancelled = true; };
+  }, [labId]);
 
   useEffect(() => {
     if (!labId) return;
@@ -139,8 +156,9 @@ export function TechnicianPerformanceScreen() {
       p_from:          from,
       p_to:            to,
       p_material_type: matType === 'all' ? null : matType,
-    }).then(({ data }) => {
+    }).then(({ data, error }) => {
       if (cancelled) return;
+      if (error) toast.error(autoT('Personel verimi yüklenemedi'));
       setRows((data ?? []) as PerfRow[]);
       setLoading(false);
     });
@@ -188,7 +206,7 @@ export function TechnicianPerformanceScreen() {
         <FilterMenu
           size="sm"
           label="Materyal"
-          items={MATERIAL_TYPES.map(t => ({ key: t, label: t === 'all' ? 'Tümü' : t }))}
+          items={[{ key: 'all', label: 'Tümü' }, ...materialTypes.map(t => ({ key: t, label: t }))]}
           active={matType}
           onChange={setMatType}
         />

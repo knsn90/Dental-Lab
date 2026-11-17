@@ -6,12 +6,12 @@
  * Düğme ayar kapalıyken ya da taslak yokken çizilmez (çağıran enabled/invoices'a bakar; burada da korunur).
  */
 import React, { useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, Modal, ScrollView, Platform } from 'react-native';
+import { View, Text, Pressable, Modal, ScrollView, Platform, Dimensions } from 'react-native';
 import { Download } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
-import { exportHtmlPdf } from '../../../core/print/exportHtmlPdf';
+import { exportHtmlPdf, pdfExportMode } from '../../../core/print/exportHtmlPdf';
 import { buildPreStatementSummaryHtml, buildPreStatementDetailHtml, type PreStatementPdfInput } from '../buildPreStatementHtml';
 import { scopeToDoctor, NO_DOCTOR, pdfCurrencies, pickCurrency } from '../lib/preStatementPdf';
 import type { PreStatement } from '../types';
@@ -78,10 +78,13 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
         clinicName, lab: letter, data: scoped, currency: ccy,
         // Hekimli PDF'te karekod/onay yok (R7)
         approve: doctor ? undefined : approve,
+        // Masaüstü sekmede genel ekstreyle aynı görünüm; dar ekranda kâğıt (görüntüden PDF).
+        paper: pdfExportMode(Platform.OS, Dimensions.get('window').width) !== 'tab',
       };
       return format === 'ayrintili' ? buildPreStatementDetailHtml(input) : buildPreStatementSummaryHtml(input);
     })();
-    exportHtmlPdf(html, fileName)
+    // Genel ekstre PDF'iyle aynı açılış: sekme açılır, yazdırma diyaloğu kendiliğinden gelmez.
+    exportHtmlPdf(html, fileName, { autoPrint: false })
       .catch((e: any) => {
         const m = String(e?.message ?? e);
         setError(m === 'POPUP_BLOCKED'

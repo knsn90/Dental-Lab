@@ -188,7 +188,7 @@ export function PaymentHistoryScreen({ clinicId }: Props) {
           >
             {payments.map((p, i) => {
               const cfg = METHOD_LABEL[p.payment_method] ?? METHOD_LABEL.diger;
-              const title = [autoT(cfg.label), p.invoice_no ? `${autoT('Fatura')} ${p.invoice_no}` : null, p.patient_name || null].filter(Boolean).join(' · ');
+              const title = [autoT(cfg.label), p.invoice_no ? `${autoT('Hizmet bedeli')} ${p.invoice_no}` : null, p.patient_name || null].filter(Boolean).join(' · ');
               return (
                 <MobileTableRowX key={p.id} isLast={i === payments.length - 1}>
                   <MobileTableIconX icon={cfg.icon} tone={{ bg: cfg.color + '18', fg: cfg.color }} />
@@ -228,7 +228,7 @@ function SubmissionRow({
   const MT = useMobileTableText();
   const cfg    = METHOD_LABEL[s.payment_method] ?? METHOD_LABEL.diger;
   const status = STATUS_CFG[s.status];
-  const title = [autoT(cfg.label), s.invoice_no ? `${autoT('Fatura')} ${s.invoice_no}` : null, s.patient_name || null].filter(Boolean).join(' · ');
+  const title = [autoT(cfg.label), s.invoice_no ? `${autoT('Hizmet bedeli')} ${s.invoice_no}` : null, s.patient_name || null].filter(Boolean).join(' · ');
   return (
     <MobileTableRowX isLast={isLast} align="flex-start">
       <MobileTableIconX icon={cfg.icon} tone={{ bg: cfg.color + '18', fg: cfg.color }} />

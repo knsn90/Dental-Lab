@@ -101,7 +101,15 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
         individual_bonus: 0, pool_share: 0, rejects: 0,
       });
     }
+    // Yalnız geçerli koşular sayılır: taslak / iptal edilen koşu prim değildir.
+    // Aynı politika + dönem için birden çok koşu varsa yalnız en sonuncusu
+    // (runs calculated_at'e göre yeniden eskiye sıralı) hesaba girer.
+    const seenRun = new Set<string>();
     runs.forEach(run => {
+      if (run.status !== 'approved' && run.status !== 'posted') return;
+      const dedupeKey = `${run.policy_id}:${run.period_year}-${run.period_month}`;
+      if (seenRun.has(dedupeKey)) return;
+      seenRun.add(dedupeKey);
       const key = `${run.period_year}-${String(run.period_month).padStart(2, '0')}`;
       const bucket = buckets.get(key);
       if (!bucket) return;

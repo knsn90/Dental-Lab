@@ -11,7 +11,7 @@ import { localeTag, isRTL } from '../../../core/i18n';
 import React, { useEffect, useMemo, useState, useCallback, useContext, useRef } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  Platform, useWindowDimensions,
+  Platform, useWindowDimensions, Modal, Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useSegments, useFocusEffect } from 'expo-router';
@@ -19,7 +19,7 @@ import {
   ArrowLeft, ArrowRight, Printer, Download, FileSpreadsheet, Wallet,
   Calendar, Search, X, Filter, SlidersHorizontal, ArrowUpRight, ArrowDownLeft,
   Minus, Banknote, CreditCard, Landmark, FileText,
-  Inbox, Building2, ChevronDown, FileClock, ChevronRight, ChevronLeft, LayoutList, Percent, FileEdit,
+  Inbox, Building2, ChevronDown, FileClock, ChevronRight, ChevronLeft, LayoutList, Percent, FileEdit, MoreHorizontal,
 } from '../../../core/ui/icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -30,6 +30,12 @@ import { buildStatementLines, buildStatementHtml } from '../buildStatementHtml';
 import { statementVatSummary } from '../lib/statementVat';
 import { StatementVatSummary } from '../components/StatementVatSummary';
 import { StatementPrefsModal } from '../components/StatementPrefsModal';
+import { buildPendingAppendixHtml, appendBeforeBody, type PendingAppendixRow } from '../lib/pendingAppendixHtml';
+import { buildPreStatementSummaryHtml, buildPreStatementDetailHtml } from '../buildPreStatementHtml';
+import { scopeToDoctor } from '../lib/preStatementPdf';
+import { doctorNamesOf } from '../components/PreStatementPdfButton';
+import { exportHtmlPdf, pdfExportMode } from '../../../core/print/exportHtmlPdf';
+import { usePreStatementPdfFormat } from '../../../core/store/labSettingsStore';
 import { useStatementPrefs } from '../hooks/useStatementPrefs';
 import { applyStatementPrefs } from '../lib/statementPrefs';
 import { statementPeriodTotals, lineDelta } from '../lib/statementTotals';
@@ -43,7 +49,7 @@ import {
   discountStatementLines, discountCellValue, hasAnyDiscount, discountTotal,
   type DiscountMode,
 } from '../lib/statementDiscount';
-import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { WhiteHero, useWhiteHeroInk, WHITE_HERO_DISPLAY } from '../../../core/ui/WhiteHero';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import type { StatementLine } from '../buildStatementHtml';
@@ -61,7 +67,6 @@ import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { useBaseCurrency } from '../../../core/money/baseCurrency';
 import { CURRENCY_META, formatMoney, type Currency } from '../../../core/money/currency';
 import { useInkUI, type InkUI } from '../../../core/theme/inkScale';
-import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { HubContext } from '../../../core/ui/HubContext';
 import { navBarMetrics } from '../../../core/ui/mobile/navGlass';
 import { useLabToday } from '../../../core/metrics/useLabToday';
@@ -243,7 +248,7 @@ function exportExcel(
   const openingRow = ['', '', 'Devreden bakiye', '', ...blankVat, ...blankDisc, '', Math.abs(opening).toFixed(2), ba(opening), ...tail];
   const vatRows = showVat && vat.total > 0 ? [
     [''],
-    ['', '', 'Faturaların KDV dökümü'],
+    ['', '', 'Hizmet bedellerinin KDV dökümü'],
     ['', '', 'Ara Toplam (KDV hariç)', vat.net.toFixed(2)],
     ['', '', 'KDV Toplamı', vat.tax.toFixed(2)],
     ['', '', 'Genel Toplam (KDV dahil)', vat.total.toFixed(2)],
@@ -271,9 +276,6 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   selfView?: boolean;
 } = {}) {
   const U = useInkUI();
-  // Tablo kartı başlığı düz panel accent'i (uygulama genelinde aynı dil).
-  const tblAccent = usePanelTheme().primary;
-  const tblInk = onAccentInk(tblAccent);
   const STATUS_CHIP = statusChip(U);
   useBaseCurrency();
   const router = useRouter();
@@ -312,6 +314,13 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
 
   // Export state
   const [exporting, setExporting] = useState(false);
+  /** Genel ekstre PDF seçenek penceresi (ön ekstre PDF'iyle aynı tarz). */
+  const [pdfOpen, setPdfOpen] = useState(false);
+  /** 'statement' yalnız ekstre · 'with' ekstre + onay bekleyenler · 'pending' yalnız onay bekleyenler (ön ekstre PDF'i). */
+  const [pdfMode, setPdfMode] = useState<PdfMode>('with');
+  const preFmtSetting = usePreStatementPdfFormat();
+  const [preFmt, setPreFmt] = useState<'ozet' | 'ayrintili' | null>(null);
+  const [preDoctor, setPreDoctor] = useState<string | null>(null);
   // Liste ayarı — kullanıcıya özel, cihazda (ekran + PDF + Excel)
   const [prefsOpen, setPrefsOpen] = useState(false);
   const { prefs, setPref, reset: resetPrefs } = useStatementPrefs();
@@ -432,6 +441,18 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
     return m;
   }, [invoices]);
 
+  /** Para birimi başına taslak (henüz kesilmemiş / onay bekleyen) fatura sayısı —
+   *  rozet yalnız kesilmişi sayınca taslağı olan döviz "0" görünüp atlanıyordu. */
+  const draftCountByCcy = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const i of invoices) {
+      if (i.status !== 'taslak') continue;
+      const c = i.currency || 'TRY';
+      m[c] = (m[c] ?? 0) + 1;
+    }
+    return m;
+  }, [invoices]);
+
   // ── Akıllı varsayılan sekme ────────────────────────────────────────────────
   //
   // Eskiden körlemesine `currencies[0]` (TRY→EUR→USD sırasının ilki) seçiliyordu.
@@ -495,7 +516,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
       key: `inv:${inv.id}`,
       kind: 'draft' as const,
       invoiceId: inv.id,
-      title: inv.work_order?.patient_name || inv.doctor?.full_name || 'Taslak fatura',
+      title: inv.work_order?.patient_name || inv.doctor?.full_name || 'Taslak hizmet bedeli',
       ref: inv.invoice_number || 'Taslak',
       subtitle: [inv.work_order?.order_number, inv.doctor?.full_name].filter(Boolean).join(' · '),
       date: inv.issue_date ?? null,
@@ -514,6 +535,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   // Satıra basınca: taslak varsa aç, yoksa taslağı üret ve aç.
   // create_invoice_from_order idempotent — açık fatura varsa onu döner.
   const [openingKey, setOpeningKey] = useState<string | null>(null);
+  const [pendTab, setPendTab] = useState<'onay' | 'faturasiz' | null>(null);
   const openPendingRow = useCallback(async (row: PendingRow) => {
     if (openingKey) return;
     if (row.kind === 'draft') {
@@ -524,12 +546,12 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
     try {
       const { data, error } = await createInvoiceFromOrder(row.workOrderId!);
       if (error || !data) {
-        toast.error((error as any)?.message ?? 'Fatura taslağı oluşturulamadı');
+        toast.error((error as any)?.message ?? 'Hizmet bedeli taslağı oluşturulamadı');
         return;
       }
       router.push(`/${panelBase}/invoice/${(data as Invoice).id}` as any);
     } catch (e: any) {
-      toast.error(e?.message ?? 'Fatura taslağı oluşturulamadı');
+      toast.error(e?.message ?? 'Hizmet bedeli taslağı oluşturulamadı');
     } finally {
       setOpeningKey(null);
     }
@@ -550,7 +572,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
       const ask = (error: string | null): ConfirmState => ({
         title: autoT('İndirimi sil'),
         highlight: line.invoiceNo,
-        message: autoT('Bu indirim silinsin mi? Kliniğin bakiyesi indirim kadar artar ve faturalardaki indirim payları geri alınır.'),
+        message: autoT('Bu indirim silinsin mi? Kliniğin bakiyesi indirim kadar artar ve hizmet bedellerindeki indirim payları geri alınır.'),
         label: autoT('Evet, sil'),
         cancelLabel: autoT('Vazgeç'),
         variant: 'danger',
@@ -708,11 +730,36 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   }, [dateFrom, dateTo, labToday]);
 
   // ── Print / PDF ────────────────────────────────────────
-  const handlePrint = useCallback(async () => {
+  /** PDF'in sonuna eklenecek kesinleşmemiş kalemler (seçili dövizde): ön ekstre + taslak/faturasız işler. */
+  const pdfPendingRows = useMemo<PendingAppendixRow[]>(() => {
+    if (selfView) return [];
+    const out: PendingAppendixRow[] = [];
+    if (preSt.data?.enabled) {
+      for (const inv of preSt.data.invoices ?? []) {
+        if ((inv.currency || 'TRY') !== selectedCcy) continue;
+        const items = inv.items ?? [];
+        const first = items[0];
+        const desc = [first?.description, first?.patient_initials, first?.order_no].filter(Boolean).join(' · ');
+        out.push({
+          ref: inv.invoice_number ?? '',
+          date: inv.issue_date ?? inv.created_at,
+          description: items.length > 1 ? `${desc} (+${items.length - 1} ${autoT('kalem')})` : desc,
+          status: 'awaiting',
+          amount: Number(inv.total) || 0,
+        });
+      }
+    }
+    for (const r of pendingRows) {
+      out.push({ ref: r.ref, date: r.date, description: [r.title, r.subtitle].filter(Boolean).join(' · '), status: 'draft', amount: r.amount });
+    }
+    return out;
+  }, [selfView, preSt.data, selectedCcy, pendingRows]);
+
+  const handlePrint = useCallback(async (withPending: boolean = false) => {
     setExporting(true);
     try {
       const lab = selfView ? await fetchSelfViewLetterhead() : await fetchLabLetterhead();
-      const html = buildStatementHtml(
+      const baseHtml = buildStatementHtml(
         clinicInfo?.clinic_name ?? 'Klinik',
         shown,
         lab,
@@ -722,6 +769,10 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
         // Liste ayarı: KDV kapalıysa sütun/döküm yok; tahsilat gizliyse de toplamlar tüm hareketten
         { vat: prefs.vat, sums: { debit: totals.debit, credit: totals.credit }, discountMode: discMode },
       );
+      // Onay bekleyenler: kesinleşmiş ekstrenin ALTINA ayrı, "bakiyeye dahil değil" etiketli bölüm.
+      const html = withPending
+        ? appendBeforeBody(baseHtml, buildPendingAppendixHtml(pdfPendingRows, selectedCcy, kpis.balance))
+        : baseHtml;
 
       if (Platform.OS === 'web') {
         const w = window.open('', '_blank');
@@ -745,7 +796,38 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
     } finally {
       setExporting(false);
     }
-  }, [clinicInfo, shown, dateFrom, dateTo, selectedCcy, selfView, periodTotals, prefs.vat, totals, discMode]);
+  }, [clinicInfo, shown, dateFrom, dateTo, selectedCcy, selfView, periodTotals, prefs.vat, totals, discMode, pdfPendingRows, kpis.balance]);
+
+  /** Yalnız onay bekleyenler: ön ekstre PDF'i (özet/ayrıntılı, hekim süzgeci), genel ekstreyle aynı açılış. */
+  const preStatementCount = !selfView && preSt.data?.enabled
+    ? (preSt.data.invoices ?? []).filter(i => (i.currency || 'TRY') === selectedCcy).length : 0;
+  const preDoctors = useMemo(() => doctorNamesOf(preSt.data), [preSt.data]);
+  const handlePendingPdf = useCallback(() => {
+    const data = preSt.data;
+    if (!data) return;
+    const fmt = preFmt ?? preFmtSetting;
+    const scoped = preDoctor ? scopeToDoctor(data, preDoctor) : data;
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const safe = (x: string) => x.replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'Klinik';
+    const name = clinicInfo?.clinic_name ?? 'Klinik';
+    const fileName = `${fmt === 'ayrintili' ? 'On-Ekstre-Ayrintili' : 'On-Ekstre'}-${safe(name)}${preDoctor ? `-${safe(preDoctor)}` : ''}-${selectedCcy}-${ym}.pdf`;
+    // await YOK: masaüstünde sekme tıklama jesti içinde açılmalı.
+    const html = (async () => {
+      const lab = await fetchLabLetterhead();
+      // Masaüstü sekmede genel ekstreyle aynı görünüm (kâğıt modu yalnız görüntüden-PDF yolunda).
+      const paper = pdfExportMode(Platform.OS, Dimensions.get('window').width) !== 'tab';
+      const input = { clinicName: name, lab, data: scoped, currency: selectedCcy, paper };
+      return fmt === 'ayrintili' ? buildPreStatementDetailHtml(input) : buildPreStatementSummaryHtml(input);
+    })();
+    setExporting(true);
+    exportHtmlPdf(html, fileName, { autoPrint: false })
+      .catch((e: any) => {
+        const m = String(e?.message ?? e);
+        toast.error(m === 'POPUP_BLOCKED' ? autoT('Açılır pencere engellendi — bu siteye izin verip tekrar deneyin.') : `${autoT('PDF oluşturulamadı')}: ${m}`);
+      })
+      .finally(() => setExporting(false));
+  }, [preSt.data, preFmt, preFmtSetting, preDoctor, clinicInfo, selectedCcy]);
 
   // ── Excel ──────────────────────────────────────────────
   /** Tahsilat makbuzu (PDF) — ekstre yazdırmayla aynı yol. */
@@ -799,6 +881,28 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   const overdue = kpis.overdue;
   const pct = totalBilled > 0 ? Math.min(100, (totalPaid / totalBilled) * 100) : 0;
 
+  // Hero dökümü (lab tarafı): kesinleşmiş bakiye + klinik onayı bekleyen ön ekstre +
+  // taslak/faturasız işler. Yalnız EKRAN özeti — ekstre tablosu, PDF ve Excel yine
+  // yalnız kesinleşmiş tutarla yürür.
+  const psRow = !selfView && preSt.data?.enabled
+    ? (preSt.data.summary ?? []).find(r => r.currency === selectedCcy)
+    : undefined;
+  const awaitingTotal = Number(psRow?.pending) || 0;
+  const awaitingCount = !selfView && preSt.data?.enabled
+    ? (preSt.data.invoices ?? []).filter(i => (i.currency || 'TRY') === selectedCcy).length
+    : 0;
+  const draftTotal = selfView ? 0 : pendingTotal;
+  const draftCount = selfView ? 0 : pendingRows.length;
+  // Kesinleşmemiş kalemler kartı: sekme seçilmediyse dolu olan sekme açılır.
+  const preOn = preSt.data?.enabled === true;
+  const pendTabEff: 'onay' | 'faturasiz' = !preOn ? 'faturasiz'
+    : (pendTab ?? (awaitingCount > 0 || pendingRows.length === 0 ? 'onay' : 'faturasiz'));
+  const openFinal = Math.max(0, balance);
+  const grandTotal = balance + awaitingTotal + draftTotal;
+  const barTotal = Math.max(0, totalPaid) + openFinal + awaitingTotal + draftTotal;
+  const barPct = (n: number) => (barTotal > 0 ? (Math.max(0, n) / barTotal) * 100 : 0);
+  const collectPct = barTotal > 0 ? (Math.max(0, totalPaid) / barTotal) * 100 : 0;
+
   if (loading) {
     return <CenteredLoader color={U.ink[400]} label="Ekstre yükleniyor..." />;
   }
@@ -826,6 +930,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
               // anlaşılsın. Kullanıcı "hesap görünmüyor" derken aslında yanlış
               // sekmedeydi ve bunu ekranda gösteren hiçbir işaret yoktu.
               const n = postedCountByCcy[cur] ?? 0;
+              const nDraft = selfView ? 0 : (draftCountByCcy[cur] ?? 0);
               return (
                 <Pressable
                   key={cur}
@@ -835,7 +940,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5,
                     borderColor: active ? U.ink[900] : U.plainBtn.border,
                     backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
-                    opacity: !active && n === 0 ? 0.55 : 1,
+                    opacity: !active && n === 0 && nDraft === 0 ? 0.55 : 1,
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                   }}
                 >
@@ -850,6 +955,13 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                       color: active ? U.onDarkPill : (n === 0 ? U.ink[400] : U.ink[700]),
                     }}>{n}</Text>
                   </View>
+                  {nDraft > 0 ? (
+                    <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: U.chipTones.warning.bg }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: U.chipTones.warning.fg }}>
+                        {`${nDraft} ${autoT('taslak')}`}
+                      </Text>
+                    </View>
+                  ) : null}
                 </Pressable>
               );
             })}
@@ -875,11 +987,15 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
             />
           ) : null}
           title={clinicName || autoT('Sağlık Kurumu')}
-          description={`${allLines.length} ${autoT('hareket')}${overdue > 0 ? ` · ${fmtMoney(overdue, selectedCcy)} ${autoT('gecikmiş')}` : ''}`}
-          stats={[
+          description={selfView
+            ? `${allLines.length} ${autoT('hareket')}${overdue > 0 ? ` · ${fmtMoney(overdue, selectedCcy)} ${autoT('gecikmiş')}` : ''}`
+            : `${allLines.length} ${autoT('hareket')}${awaitingCount > 0 ? ` · ${awaitingCount} ${autoT('hizmet bedeli onay bekliyor')}` : ''}`}
+          stats={selfView ? [
             { value: fmtMoney(balance, selectedCcy),     label: autoT('Bakiye') },
-            { value: fmtMoney(totalBilled, selectedCcy), label: autoT('Kesilen') },
+            { value: fmtMoney(totalBilled, selectedCcy), label: autoT('Kesinleşen') },
             { value: fmtMoney(totalPaid, selectedCcy),   label: autoT('Tahsil edilen') },
+          ] : [
+            { value: fmtMoney(grandTotal, selectedCcy), label: autoT('Toplam bakiye') },
           ]}
           actionsAlign="end"
           actions={<>
@@ -887,75 +1003,125 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                 (selfView) gosterilmez: tahsilati lab girer. */}
             {!selfView && (
               <GlassTooltip title={autoT('Tahsilat ekle')}
-                            text={autoT('Fatura seçmeden, birden çok para biriminde tahsilat gir')}>
+                            text={autoT('Hizmet bedeli seçmeden, birden çok para biriminde tahsilat gir')}>
                 <PillBtn icon={Wallet} label={isDesktop ? "Tahsilat ekle" : ""} onPress={() => { setEditingReceipt(null); setReceiptOpen(true); }} />
               </GlassTooltip>
             )}
-            {/* Dönem indirimi — faturalar aynı kalır, borçtan ayrı kayıt olarak düşer. Lab girer. */}
-            {!selfView && (
-              <GlassTooltip title={autoT('İndirim ekle')}
-                            text={autoT('Seçili dönemin faturalarına yüzde ya da tutar indirim uygula')}>
-                <PillBtn icon={Percent} label={isDesktop ? "İndirim ekle" : ""} onPress={() => setDiscountOpen(true)} variant="ghost" />
-              </GlassTooltip>
-            )}
-            <GlassTooltip title={autoT('Liste ayarı')} text={autoT('Ekstrede görünecek alanları seç; PDF ve Excel de buna göre çıkar')}>
-              <PillBtn icon={LayoutList} label={isDesktop ? "Liste ayarı" : ""} onPress={() => setPrefsOpen(true)} variant="ghost" />
-            </GlassTooltip>
             <GlassTooltip title={autoT('Yazdır / PDF')} text={autoT('Ekstreyi yazdır veya PDF olarak kaydet')}>
-              <PillBtn icon={Printer} label={isDesktop ? "Yazdır / PDF" : ""} onPress={handlePrint} busy={exporting} variant="ghost" />
+              <PillBtn icon={Printer} label={isDesktop ? "Yazdır / PDF" : ""} onPress={() => { if (selfView) { void handlePrint(false); } else { setPdfMode(pdfPendingRows.length > 0 ? 'with' : 'statement'); setPdfOpen(true); } }} busy={exporting} variant="ghost" />
             </GlassTooltip>
-            {Platform.OS === 'web' && (
-              <GlassTooltip title={autoT('Excel')} text={autoT('Ekstreyi Excel dosyası olarak indir')}>
-                <PillBtn icon={FileSpreadsheet} label={isDesktop ? "Excel" : ""} onPress={handleExcel} variant="ghost" />
-              </GlassTooltip>
-            )}
+            {/* İkincil eylemler tek menüde: İndirim (lab), Liste ayarı, Excel (web) */}
+            <HeroMoreMenu items={[
+              ...(!selfView ? [{ key: 'disc', icon: Percent, label: autoT('İndirim ekle'), hint: autoT('Seçili dönemin hizmet bedellerine yüzde ya da tutar indirim uygula'), onPress: () => setDiscountOpen(true) }] : []),
+              { key: 'prefs', icon: LayoutList, label: autoT('Liste ayarı'), hint: autoT('Ekstrede görünecek alanları seç; PDF ve Excel de buna göre çıkar'), onPress: () => setPrefsOpen(true) },
+              ...(Platform.OS === 'web' ? [{ key: 'xls', icon: FileSpreadsheet, label: autoT('Excel'), hint: autoT('Ekstreyi Excel dosyası olarak indir'), onPress: handleExcel }] : []),
+            ]} />
           </>}
         >
-          {/* Tahsilat orani — hero icinde tam genislikte ray */}
-          <View style={{ marginTop: 16, gap: 6 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.7,
-                             textTransform: 'uppercase', color: heroInk.inkSoft }}>
-                Tahsilat oranı
-              </Text>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: heroInk.ink }}>{pct.toFixed(0)}%</Text>
+          {selfView ? (
+            /* Tahsilat orani — hero icinde tam genislikte ray (klinik portalı: değişmedi) */
+            <View style={{ marginTop: 16, gap: 6 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.7,
+                               textTransform: 'uppercase', color: heroInk.inkSoft }}>
+                  Tahsilat oranı
+                </Text>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: heroInk.ink }}>{pct.toFixed(0)}%</Text>
+              </View>
+              <View style={{ height: 6, borderRadius: 3, backgroundColor: heroInk.tileBg, overflow: 'hidden' }}>
+                <View style={{ width: `${pct}%` as any, height: '100%', borderRadius: 3, backgroundColor: '#2D9A6B' }} />
+              </View>
             </View>
-            <View style={{ height: 6, borderRadius: 3, backgroundColor: heroInk.tileBg, overflow: 'hidden' }}>
-              <View style={{ width: `${pct}%` as any, height: '100%', borderRadius: 3, backgroundColor: '#2D9A6B' }} />
-            </View>
-          </View>
+          ) : (
+            <StatementHeroBreakdown
+              currency={selectedCcy}
+              billed={totalBilled}
+              paid={totalPaid}
+              openFinal={balance}
+              awaiting={awaitingTotal}
+              awaitingCount={awaitingCount}
+              draft={draftTotal}
+              draftCount={draftCount}
+              barTotal={barTotal}
+              segs={{ paid: barPct(totalPaid), open: barPct(openFinal), awaiting: barPct(awaitingTotal), draft: barPct(draftTotal) }}
+              collectPct={collectPct}
+              overdue={overdue}
+            />
+          )}
         </WhiteHero>
 
-        {/* ── Faturalanmamış işler ─────────────────────────────
-            Teslim edilmiş ama faturaya bağlanmamış siparişler.
-            Bakiyeye DAHİL DEĞİL — ayrı, açıkça etiketli bölüm. */}
-        {!selfView && pendingRows.length > 0 && (
-          <View style={{ ...U.tableCard, borderColor: 'rgba(232,155,42,0.35)' }}>
+        {/* ── Kesinleşmemiş kalemler: onay bekleyen ön ekstre + faturalanmamış işler tek kartta.
+            İkisi de bakiyeye henüz dahil değil. Ön ekstre ayarı kapalıysa yalnız faturasız işler. ── */}
+        {!selfView && clinicId && (preOn || pendingRows.length > 0) ? (
+          <View style={U.tableCard}>
             <View style={{
-              flexDirection: 'row', alignItems: 'center', gap: 10,
-              paddingHorizontal: 20, paddingVertical: 14,
-              backgroundColor: U.chipTones.warning.bg,
-              borderBottomWidth: 1, borderBottomColor: 'rgba(232,155,42,0.25)',
+              flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+              paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: U.hairline,
             }}>
               <FileClock size={17} color={U.chipTones.warning.fg} strokeWidth={1.8} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: U.chipTones.warning.fg }}>
-                  Faturalanmamış İşler
-                </Text>
-                <Text style={{ fontSize: 11, color: U.chipTones.warning.fg, opacity: 0.85, marginTop: 1 }}>
-                  Faturasını görmek ve kesmek için satıra dokun · bakiyeye dahil değil
-                </Text>
+              <View style={{ flex: 1, minWidth: 160 }}>
+                <Text style={{ fontSize: 14.5, fontWeight: '700', color: U.ink[900] }}>{autoT('Kesinleşmemiş kalemler')}</Text>
+                <Text style={{ fontSize: 11.5, color: U.ink[500], marginTop: 1 }}>{autoT('Bakiyeye henüz dahil değil')}</Text>
               </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: U.chipTones.warning.fg }}>
-                  {fmtMoney(pendingTotal, selectedCcy)}
-                </Text>
-                <Text style={{ fontSize: 10, color: U.chipTones.warning.fg, opacity: 0.85 }}>
-                  {pendingRows.length} iş
-                </Text>
-              </View>
+              {preOn ? (
+                <View style={{ flexDirection: 'row', padding: 3, borderRadius: 999, backgroundColor: U.ink[100] }}>
+                  {([
+                    { key: 'onay' as const, label: `${autoT('Onayda')} · ${awaitingCount}` },
+                    { key: 'faturasiz' as const, label: `${autoT('Hizmet bedeli bekleyen')} · ${pendingRows.length}` },
+                  ]).map(opt => {
+                    const active = pendTabEff === opt.key;
+                    return (
+                      <Pressable
+                        key={opt.key}
+                        onPress={() => setPendTab(opt.key)}
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: active }}
+                        style={{
+                          paddingHorizontal: active ? 18 : 12, paddingVertical: 8, borderRadius: 999,
+                          backgroundColor: active ? U.segActive : 'transparent',
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer', outlineStyle: 'none' } as any : {}),
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? U.ink[900] : U.ink[500] }}>{opt.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
             </View>
 
+            {/* Onayda: ön ekstre bölümü (menü, bağlantı, onay modalleri) gömülü — DOM'da kalır */}
+            <View style={pendTabEff === 'onay' ? undefined : { display: 'none' }}>
+              <LabPreStatementSection
+                embedded
+                st={preSt}
+                clinicId={clinicId}
+                clinicName={clinicName}
+                currency={selectedCcy}
+                onApproved={() => setReloadTick(t => t + 1)}
+              />
+            </View>
+
+            {/* Faturasız: teslim edilmiş, faturaya bağlanmamış siparişler (ayar kapalıyken taslaklar da) */}
+            {pendTabEff === 'faturasiz' ? (
+              pendingRows.length === 0 ? (
+                <Text style={{ paddingHorizontal: 18, paddingVertical: 16, fontSize: 12.5, color: U.ink[400] }}>
+                  {autoT('Hizmet bedeli bekleyen iş yok')}
+                </Text>
+              ) : (
+                <>
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                    paddingHorizontal: 18, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: U.hairline,
+                  }}>
+                    <Text style={{ flex: 1, minWidth: 180, fontSize: 12, color: U.ink[500] }}>
+                      {autoT('Hizmet bedelini görmek ve kesinleştirmek için satıra dokun')}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: U.ink[500] }}>
+                      <Text style={{ fontWeight: '700', color: U.chipTones.warning.fg }}>{fmtMoney(pendingTotal, selectedCcy)}</Text>
+                      {` · ${pendingRows.length} ${autoT('iş')}`}
+                    </Text>
+                  </View>
             {pendingRows.map((row, i) => {
               const busy = openingKey === row.key;
               return (
@@ -1003,153 +1169,169 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                 </Pressable>
               );
             })}
+                </>
+              )
+            ) : null}
           </View>
-        )}
+        ) : null}
 
-        {/* ── Filters ──────────────────────────────────────── */}
-        <View style={{ gap: 10 }}>
-          {/* Search + toggle */}
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{
-              flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
-              height: 44, paddingHorizontal: 14, borderRadius: 9999,
-              borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
-            }}>
-              <Search size={15} color={U.ink[400]} strokeWidth={1.8} />
-              <TextInput
-                style={{ flex: 1, fontSize: 14, color: U.ink[900], outline: 'none' as any }}
-                placeholder="Fatura no veya açıklama ara..."
-                placeholderTextColor={U.ink[400]}
-                value={searchTerm}
-                onChangeText={setSearchTerm}
-              />
-              {searchTerm.length > 0 && (
-                <Pressable onPress={() => setSearchTerm('')} style={{ cursor: 'pointer' as any }}>
-                  <X size={14} color={U.ink[400]} strokeWidth={2} />
-                </Pressable>
-              )}
+        {/* ── Ekstre: sade başlık (arama + filtre kartın içinde) ── */}
+        <View style={U.tableCard}>
+          <View style={{
+            paddingHorizontal: isDesktop ? 20 : 16, paddingTop: isDesktop ? 18 : 14, paddingBottom: 14, gap: 12,
+            borderBottomWidth: 1, borderBottomColor: U.hairline,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+              <Text style={{ ...DISPLAY, fontSize: isDesktop ? 22 : 18, letterSpacing: isDesktop ? -0.4 : -0.3, color: U.ink[900] }}>
+                Ekstre
+              </Text>
+              <Text style={{ fontSize: 12, color: U.ink[500] }}>
+                {shown.length} hareket
+                {(dateFrom || dateTo) ? ` · ${dateFrom || '...'} → ${dateTo || '...'}` : ''}
+              </Text>
             </View>
-            {/* Site geneli filtre dugmesi: SlidersHorizontal + "Filtrele" +
-                aktif filtre sayaci (Klinikler/Stok ile ayni kalip). */}
-            <GlassTooltip title={autoT('Filtrele')} text={autoT('Hareketleri tarihe ve türe göre süz')}>
-              <Pressable
-                onPress={() => setShowFilters(v => !v)}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
+            <View style={{ gap: 10 }}>
+              {/* Search + toggle */}
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{
+                  flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
                   height: 44, paddingHorizontal: 14, borderRadius: 9999,
-                  borderWidth: 1,
-                  borderColor: activeFilterCount > 0 ? U.ink[900] : U.plainBtn.border,
-                  backgroundColor: activeFilterCount > 0 ? U.ink[50] : U.plainBtn.bg,
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                }}
-              >
-                <SlidersHorizontal size={14} color={activeFilterCount > 0 ? U.ink[900] : U.ink[400]} strokeWidth={1.8} />
-                {isDesktop && (
-                  <Text style={{ fontSize: 13, fontWeight: activeFilterCount > 0 ? '600' : '500',
-                                 color: activeFilterCount > 0 ? U.ink[900] : U.ink[500] }}>
-                    Filtrele{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-                  </Text>
-                )}
-                {!isDesktop && activeFilterCount > 0 && (
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[900] }}>{activeFilterCount}</Text>
-                )}
-              </Pressable>
-            </GlassTooltip>
-          </View>
-
-          {/* Extended filters */}
-          {showFilters && (
-            <View style={{
-              ...U.cardSolid, padding: 16, gap: 12,
-              flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'flex-end' : 'stretch',
-            }}>
-              {/* Date from */}
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400] }}>
-                  Başlangıç
-                </Text>
-                <TextInput
-                  style={{
-                    height: 44, paddingHorizontal: 14, borderRadius: 14,
-                    borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
-                    fontSize: 14, color: U.ink[900], outline: 'none' as any,
-                  }}
-                  placeholder="YYYY-AA-GG"
-                  placeholderTextColor={U.ink[300]}
-                  value={dateFrom}
-                  onChangeText={setDateFrom}
-                />
-              </View>
-
-              {/* Date to */}
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400] }}>
-                  Bitiş
-                </Text>
-                <TextInput
-                  style={{
-                    height: 44, paddingHorizontal: 14, borderRadius: 14,
-                    borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
-                    fontSize: 14, color: U.ink[900], outline: 'none' as any,
-                  }}
-                  placeholder="YYYY-AA-GG"
-                  placeholderTextColor={U.ink[300]}
-                  value={dateTo}
-                  onChangeText={setDateTo}
-                />
-              </View>
-
-              {/* Type filter */}
-              <View style={{ gap: 4 }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400] }}>
-                  Tip
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 4, padding: 3, backgroundColor: U.ink[100], borderRadius: 14 }}>
-                  {([
-                    { key: 'all', label: 'Tümü' },
-                    { key: 'invoice', label: 'Fatura' },
-                    { key: 'payment', label: 'Tahsilat' },
-                  ] as const).map(opt => {
-                    const active = typeFilter === opt.key;
-                    return (
-                      <Pressable
-                        key={opt.key}
-                        onPress={() => setTypeFilter(opt.key)}
-                        style={{
-                          paddingHorizontal: 14, paddingVertical: 10, borderRadius: 11,
-                          backgroundColor: active ? U.segActive : 'transparent',
-                          cursor: 'pointer' as any,
-                        }}
-                      >
-                        <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? U.ink[900] : U.ink[500] }}>
-                          {opt.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+                  borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
+                }}>
+                  <Search size={15} color={U.ink[400]} strokeWidth={1.8} />
+                  <TextInput
+                    style={{ flex: 1, fontSize: 14, color: U.ink[900], outline: 'none' as any }}
+                    placeholder="Belge no veya açıklama ara..."
+                    placeholderTextColor={U.ink[400]}
+                    value={searchTerm}
+                    onChangeText={setSearchTerm}
+                  />
+                  {searchTerm.length > 0 && (
+                    <Pressable onPress={() => setSearchTerm('')} style={{ cursor: 'pointer' as any }}>
+                      <X size={14} color={U.ink[400]} strokeWidth={2} />
+                    </Pressable>
+                  )}
                 </View>
+                {/* Site geneli filtre dugmesi: SlidersHorizontal + "Filtrele" +
+                    aktif filtre sayaci (Klinikler/Stok ile ayni kalip). */}
+                <GlassTooltip title={autoT('Filtrele')} text={autoT('Hareketleri tarihe ve türe göre süz')}>
+                  <Pressable
+                    onPress={() => setShowFilters(v => !v)}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 6,
+                      height: 44, paddingHorizontal: 14, borderRadius: 9999,
+                      borderWidth: 1,
+                      borderColor: activeFilterCount > 0 ? U.ink[900] : U.plainBtn.border,
+                      backgroundColor: activeFilterCount > 0 ? U.ink[50] : U.plainBtn.bg,
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    }}
+                  >
+                    <SlidersHorizontal size={14} color={activeFilterCount > 0 ? U.ink[900] : U.ink[400]} strokeWidth={1.8} />
+                    {isDesktop && (
+                      <Text style={{ fontSize: 13, fontWeight: activeFilterCount > 0 ? '600' : '500',
+                                     color: activeFilterCount > 0 ? U.ink[900] : U.ink[500] }}>
+                        Filtrele{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+                      </Text>
+                    )}
+                    {!isDesktop && activeFilterCount > 0 && (
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[900] }}>{activeFilterCount}</Text>
+                    )}
+                  </Pressable>
+                </GlassTooltip>
               </View>
 
-              {/* Clear */}
-              {(dateFrom || dateTo || typeFilter !== 'all') && (
-                <Pressable
-                  onPress={() => { setDateFrom(''); setDateTo(''); setTypeFilter('all'); }}
-                  style={{
-                    paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999,
-                    backgroundColor: U.ink[100], cursor: 'pointer' as any,
-                    alignSelf: 'flex-end',
-                  }}
-                >
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[700] }}>Temizle</Text>
-                </Pressable>
+              {/* Extended filters */}
+              {showFilters && (
+                <View style={{
+                  backgroundColor: U.surfaceSoft, borderRadius: 16, padding: 14, gap: 12,
+                  flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'flex-end' : 'stretch',
+                }}>
+                  {/* Date from */}
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400] }}>
+                      Başlangıç
+                    </Text>
+                    <TextInput
+                      style={{
+                        height: 44, paddingHorizontal: 14, borderRadius: 14,
+                        borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
+                        fontSize: 14, color: U.ink[900], outline: 'none' as any,
+                      }}
+                      placeholder="YYYY-AA-GG"
+                      placeholderTextColor={U.ink[300]}
+                      value={dateFrom}
+                      onChangeText={setDateFrom}
+                    />
+                  </View>
+
+                  {/* Date to */}
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400] }}>
+                      Bitiş
+                    </Text>
+                    <TextInput
+                      style={{
+                        height: 44, paddingHorizontal: 14, borderRadius: 14,
+                        borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
+                        fontSize: 14, color: U.ink[900], outline: 'none' as any,
+                      }}
+                      placeholder="YYYY-AA-GG"
+                      placeholderTextColor={U.ink[300]}
+                      value={dateTo}
+                      onChangeText={setDateTo}
+                    />
+                  </View>
+
+                  {/* Type filter */}
+                  <View style={{ gap: 4 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400] }}>
+                      Tip
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 4, padding: 3, backgroundColor: U.ink[100], borderRadius: 14 }}>
+                      {([
+                        { key: 'all', label: 'Tümü' },
+                        { key: 'invoice', label: 'Hizmet bedeli' },
+                        { key: 'payment', label: 'Tahsilat' },
+                      ] as const).map(opt => {
+                        const active = typeFilter === opt.key;
+                        return (
+                          <Pressable
+                            key={opt.key}
+                            onPress={() => setTypeFilter(opt.key)}
+                            style={{
+                              paddingHorizontal: 14, paddingVertical: 10, borderRadius: 11,
+                              backgroundColor: active ? U.segActive : 'transparent',
+                              cursor: 'pointer' as any,
+                            }}
+                          >
+                            <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? U.ink[900] : U.ink[500] }}>
+                              {opt.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  {/* Clear */}
+                  {(dateFrom || dateTo || typeFilter !== 'all') && (
+                    <Pressable
+                      onPress={() => { setDateFrom(''); setDateTo(''); setTypeFilter('all'); }}
+                      style={{
+                        paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999,
+                        backgroundColor: U.ink[100], cursor: 'pointer' as any,
+                        alignSelf: 'flex-end',
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[700] }}>Temizle</Text>
+                    </Pressable>
+                  )}
+                </View>
               )}
             </View>
-          )}
-        </View>
-
-        {/* ── Statement table ──────────────────────────────── */}
+          </View>
         {filtered.length === 0 ? (
-          <View style={{ ...U.cardSolid, alignItems: 'center', paddingVertical: 48, gap: 10 }}>
+          <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
             <Inbox size={32} color={U.ink[300]} strokeWidth={1.4} />
             <Text style={{ fontSize: 14, fontWeight: '500', color: U.ink[400] }}>
               {searchTerm || dateFrom || dateTo || typeFilter !== 'all'
@@ -1159,19 +1341,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
           </View>
         ) : isDesktop ? (
           /* ── Desktop table ─────────────────────────────────── */
-          <View style={U.tableCard}>
-            {/* Toolbar */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, backgroundColor: tblAccent }}>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: tblInk }}>
-                Ekstre
-              </Text>
-              <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, color: tblInk, opacity: 0.75 }}>
-                {shown.length} hareket
-                {(dateFrom || dateTo) ? ` · ${dateFrom || '...'} → ${dateTo || '...'}` : ''}
-              </Text>
-            </View>
-
+          <>
             {/* Header */}
             <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: U.surfaceSoft, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
               {[
@@ -1185,11 +1355,11 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                 // Yalnız indirim varken; ipucu: faturadaki indirim tutara yansımış, ekstre indirimi kendi satırında
                 ...(showDiscount ? [{ label: 'İNDİRİM', flex: 1, align: 'end' as const, tip: true }] : []),
                 { label: 'ALACAK',    flex: 1.2, align: 'end' as const },
-                { label: 'BAKİYE',    flex: 1.2, align: 'end' as const },
+                { label: selfView ? 'BAKİYE' : 'KESİNLEŞMİŞ BAKİYE', flex: 1.2, align: 'end' as const },
               ].map((h: { label: string; flex: number; align?: 'end'; tip?: boolean }, i) => h.tip ? (
                 <View key={i} style={{ flex: h.flex, alignItems: 'flex-end' }}>
                   <GlassTooltip title={autoT('İndirim')}
-                    text={autoT('Faturadaki indirim tutara zaten yansımıştır; bakiyeden ayrıca düşülmez. Ekstre indirimleri kendi satırında bakiyeyi düşürür.')}>
+                    text={autoT('Hizmet bedelindeki indirim tutara zaten yansımıştır; bakiyeden ayrıca düşülmez. Ekstre indirimleri kendi satırında bakiyeyi düşürür.')}>
                     <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: U.ink[500], textAlign: 'end' as any }}>
                       {h.label}
                     </Text>
@@ -1250,22 +1420,14 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                 {fmtMoney(totals.balance, selectedCcy)}
               </Text>
             </View>
+            {!selfView ? <PendingReconcileRow finalBalance={totals.balance} pending={awaitingTotal + draftTotal} currency={selectedCcy} padH={20} /> : null}
             {showVat && (
               <StatementVatSummary summary={vatSummary} fmt={(n) => fmtMoney(n, selectedCcy)} padH={20} />
             )}
-          </View>
+          </>
         ) : (
           /* ���─ Mobile list ────────────────────────────────────── */
-          <View style={U.tableCard}>
-            {/* Başlık şeridi masaüstüyle aynı: panel accent (lacivert) zemin + üstünde okunur mürekkep */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: tblAccent }}>
-              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: tblInk }}>Ekstre</Text>
-              <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, color: tblInk, opacity: 0.75 }}>
-                {shown.length} hareket
-              </Text>
-            </View>
-
+          <>
             {shown.map((line, i) => {
               const isInvoice = line.type === 'invoice';
               const isDisc = line.type === 'discount';
@@ -1386,24 +1548,37 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                   </Text>
                 ) : null}
                 <Text style={{ fontSize: 13, fontWeight: '700', color: totals.balance > 0 ? U.ink[900] : U.chipTones.success.fg }}>
-                  Bakiye: {fmtMoney(totals.balance, selectedCcy)}
+                  {selfView ? autoT('Bakiye') : autoT('Kesinleşmiş bakiye')}: {fmtMoney(totals.balance, selectedCcy)}
                 </Text>
               </View>
             </View>
-          </View>
+            {!selfView ? <PendingReconcileRow finalBalance={totals.balance} pending={awaitingTotal + draftTotal} currency={selectedCcy} padH={16} /> : null}
+          </>
         )}
+        </View>
 
-        {/* ── Ön ekstre — onay bekliyor (yalnız ayar açıkken, en altta) ── */}
-        {!selfView && clinicId ? (
-          <LabPreStatementSection
-            st={preSt}
-            clinicId={clinicId}
-            clinicName={clinicName}
-            currency={selectedCcy}
-            onApproved={() => setReloadTick(t => t + 1)}
-          />
-        ) : null}
       </ScrollView>
+
+      <StatementPdfModal
+        open={pdfOpen}
+        pendingCount={pdfPendingRows.length}
+        pendingTotal={pdfPendingRows.reduce((t, r) => t + r.amount, 0)}
+        currency={selectedCcy}
+        mode={pdfMode}
+        onMode={setPdfMode}
+        preCount={preStatementCount}
+        preFormat={preFmt ?? preFmtSetting}
+        onPreFormat={setPreFmt}
+        doctors={preDoctors}
+        doctor={preDoctor}
+        onDoctor={setPreDoctor}
+        onClose={() => setPdfOpen(false)}
+        onRun={() => {
+          setPdfOpen(false);
+          if (pdfMode === 'pending' && preStatementCount > 0) handlePendingPdf();
+          else void handlePrint(pdfMode === 'with' && pdfPendingRows.length > 0);
+        }}
+      />
 
       <StatementPrefsModal
         visible={prefsOpen}
@@ -1447,7 +1622,7 @@ function RevisionChip() {
   const U = useInkUI();
   const t = U.chipTones.warning;
   return (
-    <GlassTooltip title={autoT('Revizyon')} text={autoT('Bu fatura bir revizyon siparişine ait')}>
+    <GlassTooltip title={autoT('Revizyon')} text={autoT('Bu hizmet bedeli bir revizyon siparişine ait')}>
       <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: t.bg }}>
         <Text style={{ fontSize: 10.5, fontWeight: '700', color: t.fg }}>{autoT('Revizyon')}</Text>
       </View>
@@ -1596,6 +1771,231 @@ function StatementRow({ line, last, currency, onOpen, showVat = true, discountMo
 }
 
 // ─── Mini KPI ────────────────────────────────────────────────────────
+/**
+ * Hero dökümü (lab ekstresi): Toplam bakiye = onaylanan açık + onay bekleyen + taslak.
+ * Parçalı çubuk tahsil edileni, onaylı açığı, onay bekleyeni ve taslağı ayrı gösterir —
+ * tek renkli "%100" çubuğu bekleyen tutar varken hesabı kapanmış gibi gösteriyordu.
+ */
+function StatementHeroBreakdown({ currency, billed, paid, openFinal, awaiting, awaitingCount, draft, draftCount, barTotal, segs, collectPct, overdue = 0 }: {
+  /** Vadesi geçen (kesinleşmiş) tutar — Onaylanan kutucuğunun alt satırında kırmızı */
+  overdue?: number;
+  currency: string; billed: number; paid: number; openFinal: number;
+  awaiting: number; awaitingCount: number; draft: number; draftCount: number;
+  barTotal: number;
+  segs: { paid: number; open: number; awaiting: number; draft: number };
+  collectPct: number;
+}) {
+  const U = useInkUI();
+  const heroInk = useWhiteHeroInk();
+  const { width } = useWindowDimensions();
+  const narrow = width < 640;
+  const C = {
+    paid: '#2D9A6B',
+    open: heroInk.isDark ? '#93C5FD' : '#004B87',
+    awaiting: '#E89B2A',
+    draft: heroInk.isDark ? 'rgba(255,255,255,0.45)' : (U.ink[300] as string),
+  };
+  const warnInk = heroInk.isDark ? '#FAC775' : (U.chipTones.warning.fg as string);
+
+  const dangerInk = heroInk.isDark ? '#F09595' : (U.chipTones.danger.fg as string);
+  const tile = (opts: { dot: string; label: string; value: string; sub: string; warn?: boolean; danger?: boolean }) => (
+    <View key={opts.label} style={{
+      flex: 1, minWidth: narrow ? 0 : 170, ...(narrow ? { flexBasis: '100%' as any } : null),
+      paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, borderWidth: 1,
+      backgroundColor: opts.warn ? (heroInk.isDark ? 'rgba(232,155,42,0.18)' : U.chipTones.warning.bg) : heroInk.tileBg,
+      borderColor: opts.warn ? 'rgba(232,155,42,0.45)' : heroInk.tileBorder,
+    }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: opts.dot }} />
+        <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase',
+                       color: opts.warn ? warnInk : heroInk.inkSoft }}>
+          {opts.label}
+        </Text>
+      </View>
+      <Text numberOfLines={1} style={{ ...WHITE_HERO_DISPLAY, fontSize: 22, letterSpacing: -0.5, marginTop: 6,
+                                       color: opts.warn ? warnInk : heroInk.ink }}>
+        {opts.value}
+      </Text>
+      <Text numberOfLines={1} style={{ fontSize: 11, marginTop: 2, color: opts.danger ? dangerInk : opts.warn ? warnInk : heroInk.inkFaint,
+                                       fontWeight: opts.danger ? '700' : '400' }}>
+        {opts.sub}
+      </Text>
+    </View>
+  );
+
+  const legend = (color: string, label: string) => (
+    <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+      <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: color }} />
+      <Text style={{ fontSize: 11, color: heroInk.inkFaint }}>{label}</Text>
+    </View>
+  );
+
+  return (
+    <View style={{ marginTop: 18, gap: 16 }}>
+      {narrow ? (
+        /* Dar ekran: üç kutucuk yerine tek kutuda üç satır — hero kısa kalır */
+        <View style={{ borderRadius: 14, borderWidth: 1, backgroundColor: heroInk.tileBg, borderColor: heroInk.tileBorder, paddingHorizontal: 14, paddingVertical: 4 }}>
+          {[
+            { dot: C.open, label: autoT('Onaylanan (açık)'), value: openFinal, sub: overdue > 0 ? `${fmtMoney(overdue, currency)} ${autoT('vadesi geçti')}` : null, danger: overdue > 0, warn: false },
+            { dot: C.awaiting, label: autoT('Onay bekleyen'), value: awaiting, sub: awaitingCount > 0 ? `${awaitingCount} ${autoT('hizmet bedeli')}` : null, danger: false, warn: awaiting > 0 },
+            { dot: C.draft, label: autoT('Taslak'), value: draft, sub: draftCount > 0 ? `${draftCount} ${autoT('iş')}` : null, danger: false, warn: false },
+          ].filter((r, i) => i === 0 || r.value > 0).map((r, i) => (
+            <View key={r.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9,
+                                         borderTopWidth: i === 0 ? 0 : 1, borderTopColor: heroInk.tileBorder }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: r.dot }} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '600', color: r.warn ? warnInk : heroInk.ink }}>{r.label}</Text>
+                {r.sub ? <Text numberOfLines={1} style={{ fontSize: 11, color: r.danger ? dangerInk : heroInk.inkFaint, fontWeight: r.danger ? '700' : '400' }}>{r.sub}</Text> : null}
+              </View>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: r.warn ? warnInk : heroInk.ink }}>{fmtMoney(r.value, currency)}</Text>
+            </View>
+          ))}
+        </View>
+      ) : (
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+        {tile({
+          dot: C.open, label: autoT('Onaylanan (açık)'), value: fmtMoney(openFinal, currency),
+          sub: overdue > 0
+            ? `${fmtMoney(overdue, currency)} ${autoT('vadesi geçti')}`
+            : `${autoT('Onaylanan')} ${fmtMoney(billed, currency)} · ${autoT('tahsil')} ${fmtMoney(paid, currency)}`,
+          danger: overdue > 0,
+        })}
+        {tile({
+          dot: C.awaiting, label: autoT('Onay bekleyen'), value: fmtMoney(awaiting, currency),
+          sub: awaitingCount > 0 ? `${awaitingCount} ${autoT('hizmet bedeli · klinik onayında')}` : autoT('Bekleyen yok'),
+          warn: awaiting > 0,
+        })}
+        {tile({
+          dot: C.draft, label: autoT('Taslak'), value: fmtMoney(draft, currency),
+          sub: draftCount > 0 ? `${draftCount} ${autoT('iş · henüz kesilmedi')}` : autoT('Taslak yok'),
+        })}
+      </View>
+      )}
+
+      <View style={{ gap: 6 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+          <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase', color: heroInk.inkSoft }}>
+            {autoT('Tahsilat durumu')}
+          </Text>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: heroInk.ink }}>
+            {`${fmtMoney(paid, currency)} / ${fmtMoney(barTotal, currency)} · ${collectPct.toFixed(0)}%`}
+          </Text>
+        </View>
+        <View style={{ height: 8, borderRadius: 4, backgroundColor: heroInk.tileBg, overflow: 'hidden', flexDirection: 'row' }}>
+          <View style={{ width: `${segs.paid}%` as any, height: '100%', backgroundColor: C.paid }} />
+          <View style={{ width: `${segs.open}%` as any, height: '100%', backgroundColor: C.open }} />
+          <View style={{ width: `${segs.awaiting}%` as any, height: '100%', backgroundColor: C.awaiting }} />
+          <View style={{ width: `${segs.draft}%` as any, height: '100%', backgroundColor: C.draft }} />
+        </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: narrow ? 10 : 14 }}>
+          {legend(C.paid, autoT('Tahsil edildi'))}
+          {legend(C.open, autoT('Onaylı açık'))}
+          {legend(C.awaiting, autoT('Onay bekliyor'))}
+          {legend(C.draft, autoT('Taslak'))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Genel ekstre PDF penceresi — ön ekstre PDF penceresiyle (PreStatementPdfButton) aynı tarz:
+ * başlık · seçenek çipleri · Vazgeç / İndir. Seçenek: onay bekleyenleri sona ekle.
+ */
+type PdfMode = 'statement' | 'with' | 'pending';
+
+function StatementPdfModal({
+  open, pendingCount, pendingTotal, currency, mode, onMode, preCount, preFormat, onPreFormat,
+  doctors, doctor, onDoctor, onClose, onRun,
+}: {
+  open: boolean; pendingCount: number; pendingTotal: number; currency: string;
+  mode: PdfMode; onMode: (m: PdfMode) => void;
+  /** Ön ekstrede (klinik onayında) bu dövizdeki fatura sayısı — 0 ise "Yalnız onay bekleyenler" çıkmaz. */
+  preCount: number;
+  preFormat: 'ozet' | 'ayrintili'; onPreFormat: (f: 'ozet' | 'ayrintili') => void;
+  doctors: string[]; doctor: string | null; onDoctor: (d: string | null) => void;
+  onClose: () => void; onRun: () => void;
+}) {
+  const U = useInkUI();
+  const web = Platform.OS === 'web' ? ({ cursor: 'pointer', outlineStyle: 'none' } as any) : {};
+  const eff: PdfMode = mode === 'pending' && preCount === 0 ? 'statement'
+    : mode === 'with' && pendingCount === 0 ? 'statement' : mode;
+  const chip = (label: string, active: boolean, onPress: () => void, key?: string) => (
+    <Pressable
+      key={key ?? label}
+      onPress={onPress}
+      style={{
+        paddingHorizontal: active ? 18 : 12, paddingVertical: 8, borderRadius: 999,
+        backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
+        borderWidth: 1, borderColor: active ? U.ink[900] : U.plainBtn.border, ...web,
+      }}
+    >
+      <Text style={{ fontSize: 12.5, fontWeight: '600', color: active ? U.onDarkPill : U.plainBtn.fg }}>{label}</Text>
+    </Pressable>
+  );
+  const lbl = { fontSize: 10, fontWeight: '700' as const, letterSpacing: 0.8, textTransform: 'uppercase' as const, color: U.ink[400] };
+  const hint = eff === 'pending'
+    ? `${preCount} ${autoT('hizmet bedeli klinik onayında')} — ${autoT('kesinleşmiş ekstre olmadan yalnız ön ekstre')}`
+    : eff === 'with'
+      ? `${pendingCount} ${autoT('kesinleşmemiş kalem')} · ${fmtMoney(pendingTotal, currency)} — ${autoT('ekstrenin altında ayrı bölüm olarak yer alır, bakiyeye eklenmez')}`
+      : pendingCount > 0 ? autoT('Yalnız kesinleşmiş hareketler') : autoT('Onay bekleyen ya da taslak kalem yok');
+  return (
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={U.modalOverlay}>
+        <View style={[U.modalCard, { maxWidth: 460 }]}>
+          <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: U.ink[900] }}>{autoT('Ekstre PDF')}</Text>
+            <View style={{ gap: 8 }}>
+              <Text style={lbl}>{autoT('İçerik')}</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {chip(autoT('Yalnız ekstre'), eff === 'statement', () => onMode('statement'), 'm:s')}
+                {pendingCount > 0 ? chip(autoT('Ekstre + onay bekleyenler'), eff === 'with', () => onMode('with'), 'm:w') : null}
+                {preCount > 0 ? chip(autoT('Yalnız onay bekleyenler'), eff === 'pending', () => onMode('pending'), 'm:p') : null}
+              </View>
+              <Text style={{ fontSize: 11.5, color: U.ink[500] }}>{hint}</Text>
+            </View>
+            {eff === 'pending' ? (
+              <>
+                <View style={{ gap: 8 }}>
+                  <Text style={lbl}>{autoT('Biçim')}</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {chip(autoT('Özet'), preFormat === 'ozet', () => onPreFormat('ozet'), 'f:o')}
+                    {chip(autoT('Ayrıntılı'), preFormat === 'ayrintili', () => onPreFormat('ayrintili'), 'f:a')}
+                  </View>
+                </View>
+                {doctors.length > 0 ? (
+                  <View style={{ gap: 8 }}>
+                    <Text style={lbl}>{autoT('Hekim')}</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                      {chip(autoT('Tüm hekimler'), doctor === null, () => onDoctor(null), 'd:__all')}
+                      {doctors.map(d => chip(d, doctor === d, () => onDoctor(d), `d:${d}`))}
+                    </View>
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
+              <Pressable
+                onPress={onClose}
+                style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border, ...web }}
+              >
+                <Text style={{ fontSize: 12.5, fontWeight: '600', color: U.plainBtn.fg }}>{autoT('Vazgeç')}</Text>
+              </Pressable>
+              <Pressable
+                onPress={onRun}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, backgroundColor: U.ink[900], ...web }}
+              >
+                <Download size={13} color={U.onDarkPill} strokeWidth={2} />
+                <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.onDarkPill }}>{autoT('İndir')}</Text>
+              </Pressable>
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function MiniKPI({ label, value, color }: { label: string; value: string; color: string }) {
   const U = useInkUI();
   return (
@@ -1609,6 +2009,99 @@ function MiniKPI({ label, value, color }: { label: string; value: string; color:
 }
 
 // ─── Pill button ─────────────────────────────────────────────────────
+/** Tablo altı: kesinleşmiş bakiye + bekleyenler = hero'daki toplam (iki rakam neden farklı görünsün). */
+function PendingReconcileRow({ finalBalance, pending, currency, padH }: { finalBalance: number; pending: number; currency: string; padH: number }) {
+  const U = useInkUI();
+  if (!(pending > 0)) return null;
+  return (
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end',
+      paddingHorizontal: padH, paddingVertical: 10, borderTopWidth: 1, borderTopColor: U.hairline,
+    }}>
+      <Text style={{ fontSize: 12, color: U.ink[500] }}>
+        {`${autoT('Kesinleşmiş bakiye')} ${fmtMoney(finalBalance, currency)}`}
+      </Text>
+      <Text style={{ fontSize: 12, fontWeight: '600', color: U.chipTones.warning.fg }}>
+        {`+ ${autoT('onay bekleyen ve taslak')} ${fmtMoney(pending, currency)}`}
+      </Text>
+      <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.ink[900] }}>
+        {`= ${autoT('Toplam bakiye')} ${fmtMoney(finalBalance + pending, currency)}`}
+      </Text>
+    </View>
+  );
+}
+
+/** Hero "⋯" menüsü — tetikleyiciye yaslı açılır (ikincil eylemler). */
+function HeroMoreMenu({ items }: { items: { key: string; icon: React.ComponentType<any>; label: string; hint?: string; onPress: () => void }[] }) {
+  const U = useInkUI();
+  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const ref = useRef<any>(null);
+  const MENU_W = 300;
+  const openMenu = () => {
+    const node = ref.current;
+    if (node?.measureInWindow) node.measureInWindow((x: number, y: number, w: number, h: number) => { setAnchor({ x, y, w, h }); setOpen(true); });
+    else { setAnchor(null); setOpen(true); }
+  };
+  const win = Dimensions.get('window');
+  const estH = items.length * 60 + 12;
+  const right = anchor ? Math.max(8, win.width - (anchor.x + anchor.w)) : 12;
+  const below = anchor ? anchor.y + anchor.h + 6 : 72;
+  const top = anchor && below + estH > win.height - 12 ? Math.max(12, anchor.y - estH - 6) : below;
+  return (
+    <>
+      <GlassTooltip title={autoT('Diğer')} text={autoT('İndirim, liste ayarı ve Excel')}>
+        <Pressable
+          ref={ref}
+          onPress={openMenu}
+          accessibilityRole="button"
+          accessibilityLabel={autoT('Diğer')}
+          style={({ pressed }: any) => ({
+            paddingHorizontal: 12, paddingVertical: 10, borderRadius: 999,
+            borderWidth: 1, borderColor: U.ink[200], opacity: pressed ? 0.7 : 1,
+            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+          })}
+        >
+          <MoreHorizontal size={14} color={U.ink[700]} strokeWidth={1.8} />
+        </Pressable>
+      </GlassTooltip>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable onPress={() => setOpen(false)} style={{ flex: 1 }}>
+          <Pressable
+            onPress={(e: any) => e?.stopPropagation?.()}
+            style={{
+              position: 'absolute', top, right, width: MENU_W, padding: 6, borderRadius: 14,
+              backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
+              shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 10,
+            }}
+          >
+            {items.map(it => {
+              const Icon = it.icon;
+              return (
+                <Pressable
+                  key={it.key}
+                  onPress={() => { setOpen(false); it.onPress(); }}
+                  style={({ pressed, hovered }: any) => ({
+                    flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 10,
+                    borderRadius: 10, backgroundColor: hovered || pressed ? U.rowHover : 'transparent',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  })}
+                >
+                  <Icon size={15} color={U.ink[700]} strokeWidth={1.9} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{it.label}</Text>
+                    {it.hint ? <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 1 }}>{it.hint}</Text> : null}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
 function PillBtn({ icon: Icon, label, onPress, variant = 'dark', busy }: {
   icon: React.ComponentType<any>; label?: string; onPress: () => void;
   variant?: 'dark' | 'ghost'; busy?: boolean;

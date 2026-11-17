@@ -45,6 +45,29 @@ struct HeadScanText {
     var needHigh: String { pick("Şimdi tepeden çekin", "Now capture from above the head", "Jetzt von oben", "حالا از بالای سر بگیرید") }
     var ready: String { pick("Yeterli — bitirebilirsiniz", "Enough — you can finish", "Ausreichend — Sie können beenden", "کافی است — می‌توانید تمام کنید") }
     var finish: String { pick("Bitir", "Finish", "Fertig", "پایان") }
+    // Birleşik tarama (yüz + kafa tek akışta)
+    var unifiedTitle: String { pick("Yüz + kafa taraması", "Face + head scan", "Gesicht + Kopf", "اسکن صورت + سر") }
+    var finishFace: String { pick("Yüz olarak bitir", "Finish as face", "Als Gesicht beenden", "پایان به‌عنوان صورت") }
+    var faceDone: String {
+        pick("Yüz tamam. Bitirebilir ya da tam kafa için dönmeye devam edebilirsiniz.",
+             "Face is done. Finish now, or keep going around for the full head.",
+             "Gesicht fertig. Jetzt beenden oder für den ganzen Kopf weitergehen.",
+             "صورت کامل شد. تمام کنید یا برای کل سر به چرخیدن ادامه دهید.")
+    }
+    var soundOn: String { pick("Sesi aç", "Turn sound on", "Ton einschalten", "روشن کردن صدا") }
+    var soundOff: String { pick("Sesi kapat", "Turn sound off", "Ton ausschalten", "خاموش کردن صدا") }
+    var colorOn: String { pick("Renkli", "Color", "Farbe", "رنگی") }
+    var colorOff: String { pick("Renksiz", "No color", "Ohne Farbe", "بدون رنگ") }
+    var previewHint: String {
+        pick("Kaydetmeden önce diş bölgesini renksiz kontrol edin.",
+             "Check the teeth without color before saving.",
+             "Prüfen Sie die Zähne ohne Farbe, bevor Sie speichern.",
+             "پیش از ذخیره، ناحیهٔ دندان‌ها را بدون رنگ بررسی کنید.")
+    }
+    func distance(_ cm: Int) -> String {
+        pick("Yaklaşık \(cm) santimetre", "About \(cm) centimeters", "Etwa \(cm) Zentimeter", "حدود \(cm) سانتی‌متر")
+    }
+    var finishAnyway: String { pick("Bu kadarla bitir", "Finish with this", "So beenden", "با همین تمام کن") }
     var keepGoing: String { pick("Devam edin", "Keep going", "Weiter", "ادامه دهید") }
     var ringLow: String { pick("Alt", "Below", "Unten", "پایین") }
     var ringMid: String { pick("Göz hizası", "Eye level", "Augenhöhe", "هم‌سطح چشم") }

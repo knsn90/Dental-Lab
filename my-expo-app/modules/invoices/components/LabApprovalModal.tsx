@@ -52,7 +52,7 @@ export function LabApprovalModal({ open, clinicId, invoices, onClose, onDone }: 
     if (inFlight.current || result) return;
     const text = reason.trim();
     if (!text) { setError(autoT('Gerekçe zorunlu')); return; }
-    if (mode === 'undisputed' && undisputed === 0) { setError(autoT('Onaylanacak fatura seçilmedi')); return; }
+    if (mode === 'undisputed' && undisputed === 0) { setError(autoT('Onaylanacak hizmet bedeli seçilmedi')); return; }
     inFlight.current = true;
     setBusy(true); setError(null);
     try {
@@ -124,7 +124,7 @@ export function LabApprovalModal({ open, clinicId, invoices, onClose, onDone }: 
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
                 <Info size={14} color={U.ink[400]} strokeWidth={1.8} style={{ marginTop: 1 }} />
                 <Text style={{ flex: 1, fontSize: 12.5, color: U.ink[500], lineHeight: 18 }}>
-                  {autoT('Klinik onayını telefonla ya da yazılı aldıysanız kaydedin. Ekstrede "Lab tarafından kaydedildi" diye ayrıca görünür; kesinleşen fatura düzenlenemez.')}
+                  {autoT('Klinik onayını telefonla ya da yazılı aldıysanız kaydedin. Ekstrede "Lab tarafından kaydedildi" diye ayrıca görünür; kesinleşen hizmet bedeli düzenlenemez.')}
                 </Text>
               </View>
 
@@ -133,18 +133,18 @@ export function LabApprovalModal({ open, clinicId, invoices, onClose, onDone }: 
                   <Option
                     value="undisputed"
                     label={`${autoT('İtirazsız kalemleri onayla')} (${undisputed})`}
-                    hint={autoT('İtirazlı kalem içeren faturalar taslakta kalır')}
+                    hint={autoT('İtirazlı kalem içeren hizmet bedelleri taslakta kalır')}
                     disabled={undisputed === 0}
                   />
                   <Option
                     value="all"
                     label={`${autoT('Tümünü onayla')} (${total})`}
-                    hint={autoT('İtirazlılar dahil tüm taslak faturaları kesinleştirir')}
+                    hint={autoT('İtirazlılar dahil tüm taslak hizmet bedellerini kesinleştirir')}
                   />
                 </View>
               ) : (
                 <Text style={{ fontSize: 13, color: U.ink[700] }}>
-                  {`${total} ${autoT('taslak fatura kesinleşecek; bu işlem geri alınamaz.')}`}
+                  {`${total} ${autoT('taslak hizmet bedeli kesinleşecek; bu işlem geri alınamaz.')}`}
                 </Text>
               )}
 
@@ -208,15 +208,15 @@ function ApprovalResultLine({ r }: { r: Summary }) {
         {warn
           ? <AlertTriangle size={14} color={tone.fg} strokeWidth={1.8} />
           : <CheckCircle2 size={14} color={tone.fg} strokeWidth={1.8} />}
-        <Text style={{ fontSize: 13, fontWeight: '700', color: tone.fg }}>{`${r.issued} ${autoT('fatura kesinleşti')}`}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: tone.fg }}>{`${r.issued} ${autoT('hizmet bedeli kesinleşti')}`}</Text>
       </View>
       {r.changed > 0 ? (
         <Text style={{ fontSize: 12.5, color: tone.fg }}>
-          {`${r.changed} ${autoT('fatura bu arada değişti; yeniden gözden geçirin')}`}
+          {`${r.changed} ${autoT('hizmet bedeli bu arada değişti; yeniden gözden geçirin')}`}
         </Text>
       ) : null}
       {r.disputed > 0 ? (
-        <Text style={{ fontSize: 12.5, color: tone.fg }}>{`${r.disputed} ${autoT('itirazlı fatura onay bekliyor')}`}</Text>
+        <Text style={{ fontSize: 12.5, color: tone.fg }}>{`${r.disputed} ${autoT('itirazlı hizmet bedeli onay bekliyor')}`}</Text>
       ) : null}
     </View>
   );

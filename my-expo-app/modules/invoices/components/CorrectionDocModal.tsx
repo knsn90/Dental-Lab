@@ -151,7 +151,7 @@ export function CorrectionDocModal({ visible, onClose, onSaved, invoice, item, p
 
               {/* Önizleme — faturaya / alacağa */}
               <View style={{ borderRadius: 14, backgroundColor: U.surfaceSoft, borderWidth: 1, borderColor: U.hairline, padding: 14, gap: 8 }}>
-                <Row k={autoT('Bu faturaya')} val={split ? `−${fmt(split.toInvoice)}` : '—'} />
+                <Row k={autoT('Bu hizmet bedeline')} val={split ? `−${fmt(split.toInvoice)}` : '—'} />
                 <Row k={autoT('Alacağa')} val={split ? fmt(split.toCredit) : '—'} />
               </View>
 
@@ -191,7 +191,7 @@ export function CorrectionDocModal({ visible, onClose, onSaved, invoice, item, p
                 <Text style={{ fontSize: 13, fontWeight: '600', color: U.plainBtn.fg }}>{autoT('Vazgeç')}</Text>
               </Pressable>
               <GlassTooltip title={autoT('Kaydet')}
-                text={autoT('Düzeltme belgesini kaydet; tutar bu faturadan düşer, artan kısım kliniğin alacağına geçer')}
+                text={autoT('Düzeltme belgesini kaydet; tutar bu hizmet bedelinden düşer, artan kısım kliniğin alacağına geçer')}
                 enabled={!busy}>
                 <Pressable onPress={save} disabled={busy} accessibilityRole="button"
                   style={[{

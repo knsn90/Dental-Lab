@@ -71,6 +71,32 @@ final class HeadSampleStore {
         lock.lock(); metas.append(meta); lock.unlock()
     }
 
+    /// Birleşik tarama: yalnız fotoğrafı yazar (klasör, model kurucuya doğrudan girdi olur →
+    /// kareler belleğe açılmaz). Derinlik/maske saklanmaz; ölçek ve hiza poz uyumundan gelir.
+    func savePhoto(jpeg: Data, meta: HeadShotMeta) throws {
+        try jpeg.write(to: base(meta.id).appendingPathExtension("jpg"))
+        lock.lock(); metas.append(meta); lock.unlock()
+    }
+    /// Arka planı karartılmış kopyaların klasörü (aynı dosya adlarıyla). Canlı kişide baş, odaya göre
+    /// birkaç milimetre oynar; model kurucu arka planı da gördüğünde baş ile oda çelişir ve yüz çift
+    /// kurulur. Karartılmış karelerde yalnız baş kaldığı için bu çelişki oluşmaz.
+    var maskedDir: URL { dir.deletingLastPathComponent().appendingPathComponent("ImagesMasked", isDirectory: true) }
+    private var maskedSaved = 0
+    var maskedCount: Int { lock.lock(); defer { lock.unlock() }; return maskedSaved }
+
+    func saveMaskedPhoto(jpeg: Data, meta: HeadShotMeta) throws {
+        try FileManager.default.createDirectory(at: maskedDir, withIntermediateDirectories: true)
+        try jpeg.write(to: maskedDir.appendingPathComponent(String(format: "shot_%04d", meta.id)).appendingPathExtension("jpg"))
+        lock.lock(); maskedSaved += 1; lock.unlock()
+    }
+
+    /// Dosya adından çekim numarası ("shot_0012.jpg" → 12).
+    static func shotId(from url: URL) -> Int? {
+        let name = url.deletingPathExtension().lastPathComponent
+        guard name.hasPrefix("shot_") else { return nil }
+        return Int(name.dropFirst(5))
+    }
+
     /// Diskteki çekimleri yeniden okur (yarıda kalan taramayı sürdürme / test).
     func reloadFromDisk() {
         let files = ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])

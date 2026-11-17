@@ -492,7 +492,7 @@ export function ClinicReceiptModal({
             {/* Elle fatura seçimi — düzenlenen fiş dağıtılmaz, alacak kalır; seçim gizli */}
             {editing ? (
               <Text style={{ fontSize: 12, color: U.ink[500] }}>
-                {autoT('Düzenlenen tahsilat alacak olarak kalır; yeni fatura kesilince uygulanır')}
+                {autoT('Düzenlenen tahsilat alacak olarak kalır; yeni hizmet bedeli kesinleşince uygulanır')}
               </Text>
             ) : (
               <View style={{ gap: 8 }}>
@@ -515,17 +515,17 @@ export function ClinicReceiptModal({
                     }} />
                   </View>
                   <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[700], flex: 1 }}>
-                    {autoT('Faturaları elle seç')}
+                    {autoT('Hizmet bedellerini elle seç')}
                   </Text>
                 </Pressable>
                 {manual ? (
                   <View style={{ gap: 6 }}>
                     <Text style={{ fontSize: 12, color: U.ink[500] }}>
-                      {autoT('Seçilen faturalar önce kapanır, kalanı en eskiden başlar')}
+                      {autoT('Seçilen hizmet bedelleri önce kapanır, kalanı en eskiden başlar')}
                     </Text>
                     {selectable.length === 0 ? (
                       <Text style={{ fontSize: 12, color: U.ink[400] }}>
-                        {autoT('Seçilebilir açık fatura yok')}
+                        {autoT('Seçilebilir açık hizmet bedeli yok')}
                       </Text>
                     ) : selectable.map(inv => {
                       const idx = selected.indexOf(inv.invoice_id);
@@ -630,7 +630,7 @@ export function ClinicReceiptModal({
               </GlassTooltip>
             ) : (
             <GlassTooltip title={autoT('Kaydet')}
-              text={autoT('Tahsilatı kaydet ve en eski faturadan başlayarak dağıt')}
+              text={autoT('Tahsilatı kaydet ve en eski hizmet bedelinden başlayarak dağıt')}
               enabled={!busy}>
               <Pressable onPress={save} disabled={busy}
                 style={{

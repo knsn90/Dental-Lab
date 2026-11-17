@@ -19,9 +19,9 @@ import { fetchDeliveryUndoPreview, undoDelivery, type DeliveryUndoBlock, type De
 const BLOCK_TEXT: Record<DeliveryUndoBlock, string> = {
   not_found: 'Sipariş bulunamadı.',
   not_delivered: 'Bu sipariş teslim edilmiş görünmüyor; geri alınacak bir teslim yok.',
-  invoice_issued: 'Bu siparişin faturası kesilmiş. Kesilmiş fatura değiştirilemez; önce faturayı iptal edin, sonra teslimi geri alın.',
-  invoice_shared: 'Bu siparişin taslak faturası başka siparişleri de kapsıyor. Önce siparişi o faturadan çıkarın.',
-  invoice_paid: 'Bu siparişin taslak faturasına ödeme bağlanmış. Önce ödemeyi faturadan ayırın.',
+  invoice_issued: 'Bu siparişin hizmet bedeli kesinleşmiş. Kesinleşmiş hizmet bedeli değiştirilemez; önce hizmet bedelini iptal edin, sonra teslimi geri alın.',
+  invoice_shared: 'Bu siparişin taslak hizmet bedeli başka siparişleri de kapsıyor. Önce siparişi o hizmet bedelinden çıkarın.',
+  invoice_paid: 'Bu siparişin taslak hizmet bedeline ödeme bağlanmış. Önce ödemeyi hizmet bedelinden ayırın.',
   courier_delivered: 'Kurye bu siparişi kliniğe teslim etmiş (teslim kanıtı var). Kuryeyle teslim edilen iş geri alınamaz; gerekirse revizyon açın.',
   no_stage: 'Bu siparişte dönülebilecek tamamlanmış aşama yok.',
   bad_stage: 'Seçilen aşama artık uygun değil. Pencereyi kapatıp yeniden açın.',
@@ -221,7 +221,7 @@ export function DeliveryUndoModal({ visible, onClose, onDone, orderId, orderNumb
                     {drafts.map(d => (
                       <View key={d.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
                         <Text style={{ flex: 1, fontSize: 13, color: warn.fg }} numberOfLines={1}>
-                          {autoT('Taslak fatura')} {d.number}
+                          {autoT('Taslak hizmet bedeli')} {d.number}
                         </Text>
                         <Text style={{ fontSize: 13, fontWeight: '600', color: warn.fg, fontVariant: ['tabular-nums'] }}>
                           {fmtAmount(d.total, d.currency)}
@@ -232,7 +232,7 @@ export function DeliveryUndoModal({ visible, onClose, onDone, orderId, orderNumb
                       <Text style={{ fontSize: 13, color: warn.fg }}>{autoT('Sırada bekleyen değerlendirme isteği (henüz gönderilmedi)')}</Text>
                     )}
                     <Text style={{ fontSize: 12, lineHeight: 17, color: warn.fg }}>
-                      {autoT('Sipariş yeniden teslim edildiğinde taslak fatura ve değerlendirme isteği kendiliğinden yeniden oluşur.')}
+                      {autoT('Sipariş yeniden teslim edildiğinde taslak hizmet bedeli ve değerlendirme isteği kendiliğinden yeniden oluşur.')}
                     </Text>
                     <Pressable
                       onPress={() => setAck(a => !a)}

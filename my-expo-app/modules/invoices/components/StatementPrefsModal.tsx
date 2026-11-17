@@ -17,10 +17,10 @@ import type { StatementPrefs } from '../lib/statementPrefs';
 import type { DiscountMode } from '../lib/statementDiscount';
 
 const ROWS: { key: Exclude<keyof StatementPrefs, 'discountMode'>; label: string; hint: string }[] = [
-  { key: 'vat',      label: 'KDV',                     hint: 'Fatura satırındaki KDV ve sondaki KDV dökümü' },
-  { key: 'details',  label: 'Hasta, sipariş ve hekim', hint: 'Fatura satırının altındaki hasta adı, sipariş no ve hekim' },
-  { key: 'payments', label: 'Tahsilat satırları',      hint: 'Kapalıyken yalnız faturalar listelenir; bakiye yine tahsilatları içerir' },
-  { key: 'status',   label: 'Durum ve revizyon notu',  hint: 'Kesildi / Ödendi etiketi ve revizyon faturası notu' },
+  { key: 'vat',      label: 'KDV',                     hint: 'Hizmet bedeli satırındaki KDV ve sondaki KDV dökümü' },
+  { key: 'details',  label: 'Hasta, sipariş ve hekim', hint: 'Hizmet bedeli satırının altındaki hasta adı, sipariş no ve hekim' },
+  { key: 'payments', label: 'Tahsilat satırları',      hint: 'Kapalıyken yalnız hizmet bedelleri listelenir; bakiye yine tahsilatları içerir' },
+  { key: 'status',   label: 'Durum ve revizyon notu',  hint: 'Kesinleşti / Ödendi etiketi ve revizyon notu' },
 ];
 
 const DISCOUNT_MODES: { key: DiscountMode; label: string }[] = [

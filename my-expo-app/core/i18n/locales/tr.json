@@ -334,7 +334,7 @@
       "emailNotif": "E-posta bildirimi",
       "finance": "Finans",
       "stock": "Stok & Depo",
-      "invoices": "Faturalar",
+      "invoices": "Hizmet bedelleri",
       "expenses": "Giderler",
       "staff": "Personel",
       "users": "Kullanıcılar",
@@ -487,7 +487,7 @@
         "sub": "Teslimat akışı"
       },
       "finance": {
-        "sub": "Kasa · Fatura · Gider · Çek"
+        "sub": "Kasa · Hizmet bedeli · Gider · Çek"
       },
       "team": {
         "sub": "Personel · maaş · performans"
@@ -570,14 +570,14 @@
       "recentOrders": "Son Siparişler",
       "viewAll": "Tümünü Gör →",
       "noOrders": "Henüz sipariş yok",
-      "unbilledDeliveries": "Faturalanmamış teslimat var",
+      "unbilledDeliveries": "Hizmet bedeli bekleyen teslimat var",
       "orders": "sipariş · ",
       "clinicEstimated": "klinik · tahmini ",
-      "invoice": "Faturala →",
+      "invoice": "Hizmet bedeli oluştur →",
       "financialSummary": "Finansal Özet",
       "monthlyCollection": "Bu Ay Tahsilat",
       "pendingInvoice": "Alacak",
-      "paidInvoiceCount": "Ödenen Fatura Adedi",
+      "paidInvoiceCount": "Ödenen hizmet bedeli adedi",
       "statusDistribution": "Statü Dağılımı",
       "workTypeDistribution": "İş Tipi Dağılımı",
       "totalMembers": "Üye",
@@ -675,7 +675,11 @@
     "moreMenu": {
       "courierSub": "Teslimat akışı",
       "settingsSub": "Profil · Bildirim · Tema",
-      "title": "Tüm Menü"
+      "title": "Tüm Menü",
+      "approvalsSub": "Tasarım onayı bekleyenler",
+      "messagesSub": "Lab ile sipariş yazışmaları",
+      "financeSub": "Cari · hizmet bedelleri · ödemeler",
+      "supportSub": "Talepler · yardım"
     },
     "screens": {
       "home": "Anasayfa",
@@ -866,7 +870,7 @@
         "statement": "Cari Ekstre",
         "statementHint": "Tüm hareketler",
         "open": "Bekleyen",
-        "openHint": "Ödenmemiş faturalar",
+        "openHint": "Ödenmemiş hizmet bedelleri",
         "overdue": "Vadesi Geçen",
         "overdueHint": "Acil tahsilatlar",
         "pos": "Online POS",
@@ -874,7 +878,7 @@
         "payments": "Ödemeler",
         "paymentsHint": "Tahsilat geçmişi",
         "preStatement": "Ön ekstre",
-        "preStatementHint": "Onay bekleyen faturalar"
+        "preStatementHint": "Onay bekleyen hizmet bedelleri"
       },
       "error": {
         "clinicNotFound": "Klinik bilgisi bulunamadı. Profil ayarlarınızı kontrol edin."

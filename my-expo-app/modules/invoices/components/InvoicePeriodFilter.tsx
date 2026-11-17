@@ -45,7 +45,7 @@ export function InvoicePeriodFilter({ period, from, to, range, onChange }: {
 
   return (
     <>
-      <GlassTooltip title={autoT('Dönem')} text={autoT('Faturaları kesim tarihine göre süzer')}>
+      <GlassTooltip title={autoT('Dönem')} text={autoT('Hizmet bedellerini kesinleşme tarihine göre süzer')}>
         <Pressable
           onPress={() => setOpen(true)}
           accessibilityRole="button"

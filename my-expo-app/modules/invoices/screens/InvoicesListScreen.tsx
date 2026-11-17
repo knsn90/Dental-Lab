@@ -1,4 +1,4 @@
-import { localeTag, isRTL } from '../../../core/i18n';
+import { localeTag } from '../../../core/i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { navBarMetrics } from '../../../core/ui/mobile/navGlass';
 /**
@@ -14,8 +14,8 @@ import {
   TextInput, Modal, ActivityIndicator, useWindowDimensions, Platform,
 } from 'react-native';
 import {
-  FileText, Search, X, ChevronRight, ChevronLeft, ChevronDown,
-  TrendingUp, Wallet, AlertCircle, Banknote, Building2,
+  FileText, Search, X, ChevronDown, MoreHorizontal, Printer, Bell, Clock,
+  Banknote, Building2,
   Calendar, Layers, Receipt, CircleCheck, CircleX, Inbox,
   CreditCard, Landmark, File, Check, Hand,
   DollarSign, Users,
@@ -26,15 +26,18 @@ import { CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { type CurrencyTotal, groupByCurrency } from '../../../core/money/aggregations';
 
 import { HubContext } from '../../../core/ui/HubContext';
-import { InvoiceDetailScreen } from './InvoiceDetailScreen';
+import { InvoiceDetailScreen, PaymentModal } from './InvoiceDetailScreen';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { useInkUI, type InkUI } from '../../../core/theme/inkScale';
-import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
-import { SlideTabBar } from '../../../core/ui/SlideTabBar';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { AnchorMenu } from '../components/AnchorMenu';
+import { SendReminderModal } from '../../finance-clinic/components/SendReminderModal';
+import { printInvoice } from '../printInvoice';
 import { useInvoices, useInvoiceStats, useUnbilledWorkOrders } from '../hooks/useInvoices';
-import { createBulkInvoice, bulkRecordPayment } from '../api';
+import { createBulkInvoice, bulkRecordPayment, fetchInvoiceById } from '../api';
 import {
   INVOICE_STATUS_LABELS, INVOICE_STATUS_COLORS,
   type InvoiceStatus, type Invoice, type UnbilledWorkOrder,
@@ -52,7 +55,6 @@ import { useLabToday } from '../../../core/metrics/useLabToday';
 import { isInvoiceOverdue } from '../../../core/metrics/invoiceDefs';
 // Durum renkleri, biçimleyiciler, e-Fatura rozeti — mobil fatura tablosuyla ortak
 import { chipTones, statusChip, fmtMoney, fmtDate, EFaturaBadge } from '../lib/invoiceListDisplay';
-import { InvoiceMobileTable } from '../components/InvoiceMobileTable';
 import { InvoiceDiscountField } from '../components/InvoiceDiscountField';
 import {
   validateInvoiceDiscount, invoiceTotalsWithDiscount, invoiceDiscountRpcError, type InvoiceDiscountType,
@@ -68,14 +70,14 @@ function modalShadowOf(U: InkUI) {
   return U.isDark ? '0 24px 48px -12px rgba(0,0,0,0.65)' : '0 24px 48px -12px rgba(0,0,0,0.18)';
 }
 
-const STATUS_FILTERS: { value: InvoiceStatus | 'all'; label: string }[] = [
-  { value: 'all',          label: 'Tümü' },
-  { value: 'taslak',       label: 'Taslak' },
-  { value: 'kesildi',      label: 'Kesildi' },
-  { value: 'kismi_odendi', label: 'Kısmi' },
-  { value: 'odendi',       label: 'Ödendi' },
-  { value: 'iptal',        label: 'İptal' },
-];
+/** Liste sekmeleri. "Açık" = kesildi + kısmi (vadesi geçmemiş); "Gecikmiş" ayrı — ikisi örtüşmez. */
+type Seg = 'all' | 'taslak' | 'open' | 'overdue' | 'odendi' | 'iptal' | 'toplu_efatura';
+function segOf(inv: Invoice, today: string): Exclude<Seg, 'all' | 'toplu_efatura'> {
+  if (inv.status === 'taslak') return 'taslak';
+  if (inv.status === 'odendi') return 'odendi';
+  if (inv.status === 'iptal') return 'iptal';
+  return isInvoiceOverdue(inv, today) ? 'overdue' : 'open';
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────
 /** Faturalanmamış siparişin para birimi → tutar çiftleri (büyükten küçüğe).
@@ -88,12 +90,6 @@ function ccyPairs(order: any): Array<[string, number]> {
   return pairs.filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
 }
 
-function fmtShort(n: number, currency = 'TRY'): string {
-  const sym = CURRENCY_META[currency as Currency]?.symbol ?? '₺';
-  if (Math.abs(n) >= 1_000_000) return sym + (n / 1_000_000).toFixed(1) + 'M';
-  if (Math.abs(n) >= 1_000)     return sym + (n / 1_000).toFixed(1) + 'K';
-  return fmtMoney(n, currency);
-}
 
 // ═════════════════════════════════════════════════════════════════════
 // MAIN
@@ -107,11 +103,9 @@ export function InvoicesListScreen() {
   // panel teması korunur). Örn admin finans → /(admin)/invoice/...
   const segments = useSegments();
   const panelBase = String(segments?.[0] ?? '(lab)');
-  // SlideTabBar cursor'ı beyaz metin basar → koyu ink şart.
   const panelTheme = usePanelTheme();
-  // Tablo başlığı düz panel accent'i (uygulama genelinde aynı dil).
+  // Hero zemin tonu panel accent'inden (WhiteHero).
   const tblAccent = panelTheme.primary;
-  const tblInk = onAccentInk(tblAccent);
   const heroInk = useWhiteHeroInk(tblAccent);
   const invoiceHref = (id: string) => `/${panelBase}/invoice/${id}`;
   /**
@@ -121,6 +115,8 @@ export function InvoicesListScreen() {
   const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
+  // Ayrı Hasta sütunu yalnız geniş ekranda; dar masaüstünde hasta kurum satırının altına iner.
+  const wideTable = width >= 1360;
   const insets = useSafeAreaInsets();
   const isEmbedded = useContext(HubContext);
   const openInvoice = (id: string) => {
@@ -129,10 +125,9 @@ export function InvoicesListScreen() {
   };
 
   // 'toplu_efatura' = durum filtresi değil, ayrı görünüm: aynı ETTN'li fatura grupları (BulkEFaturaList).
-  const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all' | 'toplu_efatura'>('all');
+  const [statusFilter, setStatusFilter] = useState<Seg>('all');
   const bulkView = statusFilter === 'toplu_efatura';
   const [search, setSearch] = useState('');
-  const [overdueOnly, setOverdueOnly] = useState(false);
   // Dönem (kesim tarihi) — muhasebeciye ay sonu dışa aktarımı / Luca listesiyle karşılaştırma
   const [period, setPeriod] = useState<{ p: InvoicePeriod; from: string | null; to: string | null }>({ p: 'all', from: null, to: null });
   // Resmi e-faturası olmayan (kesilmesi gereken) faturalar — yalnız Luca aktifken
@@ -141,6 +136,10 @@ export function InvoicesListScreen() {
   const [bulkPayOpen, setBulkPayOpen] = useState(false);
   const [bulkEfOpen, setBulkEfOpen] = useState(false);
   const [bulkEfKey, setBulkEfKey] = useState(0);
+  // Satır "⋯" işlemleri
+  const [payTarget, setPayTarget] = useState<Invoice | null>(null);
+  const [remindTarget, setRemindTarget] = useState<Invoice | null>(null);
+  const [printBusy, setPrintBusy] = useState<string | null>(null);
   // Toplu e-Fatura yalnız Luca'da (birleştirme/bağlama sunucu işlemleri orada).
   const [lucaActive, setLucaActive] = useState(false);
   useEffect(() => { getActiveProvider().then((p) => setLucaActive(p.key === 'luca')).catch(() => {}); }, []);
@@ -151,23 +150,22 @@ export function InvoicesListScreen() {
   const { orders: unbilledOrders, refetch: refetchUnbilled } = useUnbilledWorkOrders();
   const { stats, refetch: refetchStats } = useInvoiceStats();
   // Beyaz hero başlığı: çoklu-döviz TOPLANMAZ → en büyük dilim başlıkta.
-  const outLead       = stats?.outstanding[0] ?? null;
-  const outRest       = stats?.outstanding.slice(1) ?? [];
   const overdueLead   = stats?.overdue[0] ?? null;
   const thisMonthLead = stats?.thisMonth[0] ?? null;
+  const thisMonthRest = stats?.thisMonth.slice(1) ?? [];
+  const outLead = stats?.outstanding[0] ?? null;
   const paidLead      = stats?.paid[0] ?? null;
 
   const today = useLabToday();
   const range = useMemo(() => periodRange(period.p, today, period.from, period.to), [period, today]);
 
-  const filtered = useMemo(() => {
+  // Sekme dışındaki süzgeçler (dönem, e-Faturasız, arama) — sekme sayıları bunun üstünden.
+  const base = useMemo(() => {
+    const sl = search.trim().toLowerCase();
     return invoices.filter(inv => {
-      if (statusFilter !== 'all' && inv.status !== statusFilter) return false;
       if (!inPeriod(inv.issue_date, range)) return false;
       if (noEFaturaOnly && (inv.efatura_uuid || inv.status === 'iptal' || !(Number(inv.total) > 0))) return false;
-      if (overdueOnly && !isInvoiceOverdue(inv, today)) return false;
-      if (search) {
-        const sl = search.toLowerCase();
+      if (sl) {
         const match =
           inv.invoice_number.toLowerCase().includes(sl) ||
           (inv.clinic?.name ?? '').toLowerCase().includes(sl) ||
@@ -177,7 +175,141 @@ export function InvoicesListScreen() {
       }
       return true;
     });
-  }, [invoices, statusFilter, search, overdueOnly, noEFaturaOnly, today, range]);
+  }, [invoices, search, noEFaturaOnly, range]);
+
+  const segCounts = useMemo(() => {
+    const c = { all: base.length, taslak: 0, open: 0, overdue: 0, odendi: 0, iptal: 0 };
+    for (const inv of base) c[segOf(inv, today)]++;
+    return c;
+  }, [base, today]);
+
+  const filtered = useMemo(
+    () => (statusFilter === 'all' || statusFilter === 'toplu_efatura') ? base : base.filter(inv => segOf(inv, today) === statusFilter),
+    [base, statusFilter, today],
+  );
+
+  const segItems: { key: Seg; label: string; n: number | null; tone: string | null }[] = [
+    { key: 'all',     label: autoT('Tümü'),     n: segCounts.all,     tone: null },
+    { key: 'taslak',  label: autoT('Taslak'),   n: segCounts.taslak,  tone: null },
+    { key: 'open',    label: autoT('Açık'),     n: segCounts.open,    tone: null },
+    { key: 'overdue', label: autoT('Gecikmiş'), n: segCounts.overdue, tone: segCounts.overdue > 0 ? U.chipTones.danger.fg : null },
+    { key: 'odendi',  label: autoT('Ödendi'),   n: segCounts.odendi,  tone: null },
+    { key: 'iptal',   label: autoT('İptal'),    n: segCounts.iptal,   tone: U.ink[400] },
+    ...(lucaActive ? [{ key: 'toplu_efatura' as Seg, label: autoT('e-Faturalar'), n: null, tone: null }] : []),
+  ];
+
+  // Alt satır: para birimi başına toplam + kalan (iptal hariç; dövizler toplanmaz).
+  const footTotals = useMemo(() => {
+    const acc: Record<string, { total: number; rest: number }> = {};
+    for (const inv of filtered) {
+      if (inv.status === 'iptal') continue;
+      const c = inv.currency || 'TRY';
+      const t = Number(inv.total) || 0;
+      const p = Math.min(t, Math.max(0, Number(inv.paid_amount) || 0));
+      (acc[c] ??= { total: 0, rest: 0 });
+      acc[c].total += t;
+      acc[c].rest += Math.max(0, t - p);
+    }
+    return Object.entries(acc).map(([currency, v]) => ({ currency, ...v })).sort((a, b) => b.total - a.total);
+  }, [filtered]);
+
+  // Hero: bu ay kesilenlerin tahsil / açık / gecikmiş dağılımı (başlıktaki para biriminde).
+  const monthKey = today.slice(0, 7);
+  const leadCcy = thisMonthLead?.currency ?? 'TRY';
+  const monthBar = useMemo(() => {
+    let paid = 0, open = 0, late = 0, n = 0;
+    for (const inv of invoices) {
+      if (inv.status === 'taslak' || inv.status === 'iptal') continue;
+      if (!String(inv.issue_date ?? '').startsWith(monthKey)) continue;
+      n++;
+      if ((inv.currency || 'TRY') !== leadCcy) continue;
+      const t = Number(inv.total) || 0;
+      const p = Math.min(t, Math.max(0, Number(inv.paid_amount) || 0));
+      paid += p;
+      if (isInvoiceOverdue(inv, today)) late += t - p; else open += t - p;
+    }
+    return { paid, open, late, n, sum: paid + open + late };
+  }, [invoices, monthKey, leadCcy, today]);
+  const monthLabel = useMemo(() => {
+    const d = new Date(`${monthKey}-01T00:00:00`);
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(localeTag(), { month: 'long' });
+  }, [monthKey]);
+
+  // Faturalanmayı bekleyen siparişlerin en büyük para birimi dilimi.
+  const unbilledLead = useMemo(() => {
+    const acc: Record<string, number> = {};
+    unbilledOrders.forEach(o => ccyPairs(o).forEach(([c, v]) => { acc[c] = (acc[c] ?? 0) + v; }));
+    const pairs = Object.entries(acc).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    return pairs[0] ?? null;
+  }, [unbilledOrders]);
+
+  const exportCsv = async () => {
+    // Dosya adı dönemi taşır (muhasebeciye ay sonu); sütunlar Luca listesiyle karşılaştırılabilir
+    const span = range.from || range.to ? `${range.from ?? ''}_${range.to ?? ''}` : today;
+    const res = await downloadCsv(
+      `Faturalar-${span}`,
+      filtered,
+      [
+        { header: 'Fatura No',     value: r => r.invoice_number },
+        { header: 'e-Fatura No',   value: r => r.efatura_number ?? '' },
+        { header: 'ETTN',          value: r => r.efatura_uuid ?? '' },
+        { header: 'Tarih',         value: r => csvDate(r.issue_date) },
+        { header: 'Vade',          value: r => csvDate(r.due_date) },
+        { header: 'Klinik',        value: r => r.clinic?.name ?? '' },
+        { header: 'VKN',           value: r => r.clinic?.vkn ?? '' },
+        { header: 'Vergi Dairesi', value: r => r.clinic?.tax_office ?? '' },
+        { header: 'Hekim',         value: r => r.doctor?.full_name ?? '' },
+        { header: 'Para Birimi',   value: r => r.currency ?? '' },
+        { header: 'KDV Matrahı',   value: r => csvMoney(r.subtotal) },
+        { header: 'KDV %',         value: r => String(Number(r.tax_rate) || 0) },
+        { header: 'KDV',           value: r => csvMoney(r.tax_amount) },
+        { header: 'Tutar',         value: r => csvMoney(r.total) },
+        { header: 'Tahsil Edilen', value: r => csvMoney(r.paid_amount) },
+        { header: 'Bakiye',        value: r => csvMoney(Number(r.total) - Number(r.paid_amount)) },
+        { header: 'Durum',         value: r => INVOICE_STATUS_LABELS[r.status] ?? r.status },
+      ],
+    );
+    if (!res.ok && res.error) toast.error(res.error);
+    else toast.success(autoT('CSV indirildi'));
+  };
+
+  const heroMenuItems = [
+    { key: 'pay', label: autoT('Toplu tahsilat'), icon: Banknote, onPress: () => setBulkPayOpen(true) },
+    ...(lucaActive ? [{ key: 'ef', label: autoT('Toplu e-Fatura'), icon: Receipt, onPress: () => setBulkEfOpen(true) }] : []),
+    ...(Platform.OS === 'web' ? [{ key: 'csv', label: autoT("Excel'e aktar"), icon: FileText, onPress: () => { void exportCsv(); } }] : []),
+  ];
+
+  // PDF: liste satırında kalem yok → faturanın tamamı çekilip yazdırılır.
+  const handlePrint = async (inv: Invoice) => {
+    if (printBusy) return;
+    setPrintBusy(inv.id);
+    try {
+      const { data, error } = await fetchInvoiceById(inv.id);
+      if (error || !data) throw new Error((error as any)?.message ?? autoT('Hizmet bedeli bulunamadı'));
+      const r = await printInvoice(data);
+      if (!r.ok && r.error) toast.error(autoT(r.error));
+    } catch (e: any) {
+      toast.error(`${autoT('PDF oluşturulamadı')}: ${e?.message ?? e}`);
+    } finally { setPrintBusy(null); }
+  };
+
+  const rowMenu = (inv: Invoice): RowMenuItem[] => {
+    const rest = (Number(inv.total) || 0) - (Number(inv.paid_amount) || 0);
+    const issued = inv.status !== 'taslak' && inv.status !== 'iptal';
+    const items: RowMenuItem[] = [];
+    if (issued && inv.status !== 'odendi' && rest > 0) {
+      items.push({ key: 'pay', label: autoT('Tahsilat ekle'), icon: Banknote, onPress: () => setPayTarget(inv) });
+    }
+    items.push({ key: 'pdf', label: autoT('PDF / Yazdır'), icon: Printer, onPress: () => { void handlePrint(inv); } });
+    if (lucaActive && issued && (!inv.efatura_uuid || inv.efatura_status === 'error')) {
+      // e-Fatura kesimi (onay / eksik bilgi denetimi) fatura detayındaki kartta yapılır.
+      items.push({ key: 'ef', label: autoT('e-Fatura gönder'), icon: Receipt, onPress: () => openInvoice(inv.invoice_number ?? inv.id) });
+    }
+    if (inv.clinic_id && isInvoiceOverdue(inv, today) && rest > 0) {
+      items.push({ key: 'remind', label: autoT('Ödeme hatırlat'), icon: Bell, onPress: () => setRemindTarget(inv) });
+    }
+    return items;
+  };
 
   const onRefresh = () => { refetch(); refetchStats(); setBulkEfKey((k) => k + 1); };
 
@@ -208,296 +340,254 @@ export function InvoicesListScreen() {
         {!isEmbedded && (
           <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 64, paddingBottom: 6 }}>
             <Text style={{ ...DISPLAY, fontSize: 24, letterSpacing: -0.5, color: U.ink[900] }}>
-              Faturalar
+              Hizmet bedelleri
             </Text>
             <Text style={{ fontSize: 13, color: U.ink[400], marginTop: 2 }}>
-              {stats ? `${stats.invoiceCount} fatura` : '...'}
+              {stats ? `${stats.invoiceCount} ${autoT('hizmet bedeli')}` : '...'}
             </Text>
           </View>
         )}
 
-        {/* ── Toolbar: Actions row ── */}
-        <View style={{
-          flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
-          gap: 8, paddingHorizontal: PAGE_PADDING, paddingTop: 10, paddingBottom: 8,
-        }}>
-          {/* Durum filtresi — uygulamanın ortak sekme çubuğu (sm).
-              Siparişler / Onaylar / Kurumlar / Karlılık ile aynı bileşen. */}
-          {/* Dar ekranda sekmeler sığmıyordu (son sekmeler kesiliyordu) → Kurumlar'daki gibi yatay kaydırma. */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ flexGrow: 0, flexShrink: 1, maxWidth: '100%' }}
-            contentContainerStyle={{ alignItems: 'center' }}
-          >
-            <SlideTabBar
-              size="sm"
-              items={[
-                ...STATUS_FILTERS.map(f => ({ key: String(f.value), label: f.label })),
-                ...(lucaActive ? [{ key: 'toplu_efatura', label: 'Toplu e-Fatura' }] : []),
-              ]}
-              activeKey={String(statusFilter)}
-              onChange={(k) => setStatusFilter(k as any)}
-              accentColor={panelTheme.accent}
-              style={{ marginStart: -3 }}
-            />
-          </ScrollView>
-
-          {/* Overdue toggle — toplu e-fatura görünümünde anlamsız */}
-          {!bulkView && (
-          <Pressable
-            onPress={() => setOverdueOnly(v => !v)}
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 5,
-              paddingHorizontal: 12, paddingVertical: 6,
-              borderRadius: 9999,
-              backgroundColor: overdueOnly ? CHIP_TONES.danger.bg : 'transparent',
-              // @ts-ignore web
-              cursor: 'pointer',
-            }}
-          >
-            <AlertCircle size={12} strokeWidth={1.8} color={overdueOnly ? CHIP_TONES.danger.text : U.ink[400]} />
-            <Text style={{
-              fontSize: 12, fontWeight: overdueOnly ? '600' : '500',
-              color: overdueOnly ? CHIP_TONES.danger.text : U.ink[500],
-            }}>
-              Vadesi Geçen
-            </Text>
-          </Pressable>
-          )}
-
-          {/* Dönem — kesim tarihine göre; dışa aktarım da bu listeyi alır */}
-          {!bulkView && (
-            <InvoicePeriodFilter
-              period={period.p} from={period.from} to={period.to} range={range}
-              onChange={(p, from, to) => setPeriod({ p, from, to })}
-            />
-          )}
-
-          {/* e-Faturasız: iç durumu "Kesildi" olsa da resmi e-faturası olmayanlar */}
-          {lucaActive && !bulkView && (
-            <Pressable
-              onPress={() => setNoEFaturaOnly(v => !v)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: noEFaturaOnly }}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 5,
-                paddingHorizontal: 12, paddingVertical: 6,
-                borderRadius: 9999,
-                backgroundColor: noEFaturaOnly ? CHIP_TONES.info.bg : 'transparent',
-                // @ts-ignore web
-                cursor: 'pointer',
-              }}
-            >
-              <Receipt size={12} strokeWidth={1.8} color={noEFaturaOnly ? CHIP_TONES.info.text : U.ink[400]} />
-              <Text style={{
-                fontSize: 12, fontWeight: noEFaturaOnly ? '600' : '500',
-                color: noEFaturaOnly ? CHIP_TONES.info.text : U.ink[500],
-              }}>
-                e-Faturasız
-              </Text>
-            </Pressable>
-          )}
-
-          <View style={{ flex: 1 }} />
-
-          {/* Action buttons */}
-          {isDesktop && (
-            <>
-              <ActionBtn icon={Banknote} label="Toplu Tahsilat" color="#059669" onPress={() => setBulkPayOpen(true)} />
-              <ActionBtn
-                icon={FileText}
-                label="Excel'e Aktar"
-                onPress={async () => {
-                  // Dosya adı dönemi taşır (muhasebeciye ay sonu); sütunlar Luca listesiyle karşılaştırılabilir
-                  const span = range.from || range.to
-                    ? `${range.from ?? ''}_${range.to ?? ''}`
-                    : today;
-                  const res = await downloadCsv(
-                    `Faturalar-${span}`,
-                    filtered,
-                    [
-                      { header: 'Fatura No',     value: r => r.invoice_number },
-                      { header: 'e-Fatura No',   value: r => r.efatura_number ?? '' },
-                      { header: 'ETTN',          value: r => r.efatura_uuid ?? '' },
-                      { header: 'Tarih',         value: r => csvDate(r.issue_date) },
-                      { header: 'Vade',          value: r => csvDate(r.due_date) },
-                      { header: 'Klinik',        value: r => r.clinic?.name ?? '' },
-                      { header: 'VKN',           value: r => r.clinic?.vkn ?? '' },
-                      { header: 'Vergi Dairesi', value: r => r.clinic?.tax_office ?? '' },
-                      { header: 'Hekim',         value: r => r.doctor?.full_name ?? '' },
-                      { header: 'Para Birimi',   value: r => r.currency ?? '' },
-                      { header: 'KDV Matrahı',   value: r => csvMoney(r.subtotal) },
-                      { header: 'KDV %',         value: r => String(Number(r.tax_rate) || 0) },
-                      { header: 'KDV',           value: r => csvMoney(r.tax_amount) },
-                      { header: 'Tutar',         value: r => csvMoney(r.total) },
-                      { header: 'Tahsil Edilen', value: r => csvMoney(r.paid_amount) },
-                      { header: 'Bakiye',        value: r => csvMoney(Number(r.total) - Number(r.paid_amount)) },
-                      { header: 'Durum',         value: r => INVOICE_STATUS_LABELS[r.status] ?? r.status },
-                    ],
-                  );
-                  if (!res.ok && res.error) toast.error(res.error);
-                  else toast.success('CSV indirildi');
-                }}
-              />
-            </>
-          )}
-          {lucaActive && (
-            <ActionBtn icon={Receipt} label="Toplu e-Fatura" onPress={() => setBulkEfOpen(true)} />
-          )}
-          {unbilledOrders.length > 0 && (
-          <Pressable
-            onPress={() => setBulkOpen(true)}
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 6,
-              paddingHorizontal: 14, paddingVertical: 8,
-              borderRadius: 9999, backgroundColor: U.ink[900],
-              // @ts-ignore web
-              cursor: 'pointer',
-            }}
-          >
-            <Layers size={13} strokeWidth={2} color={U.onDarkPill} />
-            <Text style={{ fontSize: 12, fontWeight: '600', color: U.onDarkPill }}>{`${autoT('Siparişlerden fatura')} · ${unbilledOrders.length}`}</Text>
-          </Pressable>
-          )}
-        </View>
-
-        {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
-            Dört eşit ağırlıklı KPI kartı yerine Prim Motoru hiyerarşisi: kicker →
-            44px tek büyük rakam (toplam bakiye) → bağlam cümlesi → sağda 40px
-            stat'lar → altta kırılım şeridi. Rakam TOPLANMAZ; başlık en büyük
-            para birimi dilimini gösterir, kalanlar chip şeridinde. */}
-        {stats && (
-          <View style={{ paddingHorizontal: PAGE_PADDING, paddingVertical: 8 }}>
-            <WhiteHero
-              kicker="Faturalar"
-              accent={tblAccent}
-              title={
-                outLead ? (
-                  <>Toplam alacak <Text style={{ color: heroInk.accentInk }}>{fmtMoney(outLead.total, outLead.currency)}</Text></>
-                ) : '—'
-              }
-              description={
-                `${stats.invoiceCount} fatura` +
-                (overdueLead ? ` · vadesi geçen ${fmtMoney(overdueLead.total, overdueLead.currency)}` : ' · vadesi geçen yok')
-              }
-              stats={[
-                { value: String(stats.invoiceCount), label: 'Fatura' },
-                ...(thisMonthLead ? [{ value: fmtMoney(thisMonthLead.total, thisMonthLead.currency), label: 'Bu Ay Kesilen' }] : []),
-                ...(paidLead ? [{ value: fmtMoney(paidLead.total, paidLead.currency), label: 'Bu Ay Tahsilat' }] : []),
-              ]}
-            >
-              {outRest.length > 0 && (
-                <View style={{ marginTop: 10 }}>
-                  <MoneyMultiX slices={outRest} variant="inline" onAccent={heroInk.moneyOnAccent} />
-                </View>
-              )}
-
-              {/* Kırılım şeridi — büyük rakamı "nereden geldi"ye açar. */}
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-                {([
-                  { label: 'Bu Ay Kesilen',       slices: stats.thisMonth },
-                  { label: 'Vadesi Geçen',        slices: stats.overdue },
-                  { label: 'Bu Ay Tahsilat',      slices: stats.paid },
-                  // Taslaklar ciro ve alacaktan çıktı; kaybolmasın diye ayrı karo (eklemeli).
-                  { label: 'Kesilmeyi Bekleyen',  slices: stats.drafts },
-                ]).map(t => (
-                  <View key={t.label} style={{
-                    flex: 1, minWidth: 110,
-                    paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
-                    backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
-                  }}>
-                    <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }} numberOfLines={1}>
-                      {t.label}
-                    </Text>
-                    {t.slices.length === 0 ? (
-                      <Text style={{ fontSize: 15, color: heroInk.inkFaint, marginTop: 3 }}>—</Text>
-                    ) : (
-                      <View style={{ marginTop: 3, gap: 1 }}>
-                        {t.slices.map(sl => (
-                          <Text key={sl.currency} numberOfLines={1} style={{ fontSize: 15, fontWeight: '300', letterSpacing: -0.3, lineHeight: 19, color: heroInk.ink }}>
-                            {fmtMoney(sl.total, sl.currency)}
-                          </Text>
-                        ))}
-                      </View>
-                    )}
-                  </View>
+        {/* ── BEYAZ HERO (çerçeve ortak; içi bu sayfaya özel) ─────────────
+            Bu ay kesilen büyük rakam → sağda tahsil edilen / vadesi geçen →
+            bu ay kesilenlerin durum çubuğu → faturalanmayı bekleyen sipariş şeridi.
+            Toplu işlemler hero altındaki düğme şeridinde. Para birimleri TOPLANMAZ. */}
+        <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 10, paddingBottom: 12 }}>
+          <WhiteHero
+            kicker={`${autoT('Hizmet bedelleri')} · ${monthLabel}`}
+            accent={tblAccent}
+            title={thisMonthLead ? (
+              <>{autoT('Bu ay kesinleşen')} <Text style={{ color: heroInk.accentInk }}>{fmtMoney(thisMonthLead.total, thisMonthLead.currency)}</Text></>
+            ) : outLead ? (
+              <>{autoT('Toplam alacak')} <Text style={{ color: heroInk.accentInk }}>{fmtMoney(outLead.total, outLead.currency)}</Text></>
+            ) : autoT('Bu ay henüz hizmet bedeli kesinleşmedi')}
+            description={thisMonthLead
+              ? `${monthBar.n} ${autoT('hizmet bedeli')}`
+              : `${autoT('Bu ay henüz hizmet bedeli kesinleşmedi')}${stats?.draftCount ? ` · ${stats.draftCount} ${autoT('taslak onay bekliyor')}` : ''}`}
+            stats={stats ? [
+              { value: paidLead ? fmtMoney(paidLead.total, paidLead.currency) : '—', label: autoT('Tahsil edilen'), color: heroInk.isDark ? '#6EE7B7' : '#0F6E56' },
+              { value: overdueLead ? fmtMoney(overdueLead.total, overdueLead.currency) : '—', label: autoT('Vadesi geçen'), color: overdueLead ? (heroInk.isDark ? '#FCA5A5' : '#A32D2D') : undefined },
+            ] : undefined}
+            actions={
+              <>
+                {heroMenuItems.map((it) => (
+                  <Pressable
+                    key={it.key}
+                    onPress={it.onPress}
+                    accessibilityRole="button"
+                    accessibilityLabel={it.label}
+                    style={({ pressed, hovered }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 6,
+                      height: 36, paddingHorizontal: 14, borderRadius: 999,
+                      backgroundColor: hovered ? U.rowHover : U.plainBtn.bg,
+                      borderWidth: 1, borderColor: U.plainBtn.border, opacity: pressed ? 0.8 : 1,
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer', outlineStyle: 'none' } as any : {}),
+                    })}
+                  >
+                    <it.icon size={15} color={U.plainBtn.fg} strokeWidth={1.8} />
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.plainBtn.fg }}>{it.label}</Text>
+                  </Pressable>
                 ))}
+              </>
+            }
+          >
+            {thisMonthRest.length > 0 && (
+              <View style={{ marginTop: 10 }}>
+                <MoneyMultiX slices={thisMonthRest} variant="inline" onAccent={heroInk.moneyOnAccent} />
               </View>
-            </WhiteHero>
-          </View>
-        )}
+            )}
 
-        {/* ── Search bar ── */}
-        <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 4, paddingBottom: 8 }}>
-          <View style={{
-            flexDirection: 'row', alignItems: 'center', gap: 10,
-            height: 44, paddingHorizontal: 16,
-            backgroundColor: U.surface, borderRadius: 9999,
-            borderWidth: 1, borderColor: U.hairline,
-          }}>
-            <Search size={15} strokeWidth={1.6} color={U.ink[400]} />
-            <TextInput
-              style={{
-                flex: 1, fontSize: 14, color: U.ink[900],
-                // @ts-ignore web
-                outline: 'none',
-              }}
-              placeholder="Fatura no, klinik, hekim, hasta..."
-              placeholderTextColor={U.ink[400]}
-              value={search}
-              onChangeText={setSearch}
-            />
-            {search.length > 0 && (
-              <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
-                <X size={15} strokeWidth={1.8} color={U.ink[400]} />
-              </Pressable>
+            {/* Bu ay kesilenler: tahsil / açık / gecikmiş (başlıktaki para biriminde) */}
+            {monthBar.sum > 0 && (
+              <View style={{ marginTop: 16 }}>
+                <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: heroInk.tileBg }}>
+                  {monthBar.paid > 0 && <View style={{ flex: monthBar.paid, backgroundColor: '#2D9A6B' }} />}
+                  {monthBar.open > 0 && <View style={{ flex: monthBar.open, backgroundColor: heroInk.accentInk }} />}
+                  {monthBar.late > 0 && <View style={{ flex: monthBar.late, backgroundColor: '#D94B4B' }} />}
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 4, marginTop: 7 }}>
+                  <HeroLegend color="#2D9A6B" label={autoT('Tahsil')} value={fmtMoney(monthBar.paid, leadCcy)} />
+                  <HeroLegend color={heroInk.accentInk} label={autoT('Açık')} value={fmtMoney(monthBar.open, leadCcy)} />
+                  {monthBar.late > 0 && <HeroLegend color="#D94B4B" label={autoT('Gecikmiş')} value={fmtMoney(monthBar.late, leadCcy)} />}
+                </View>
+              </View>
             )}
-            {isDesktop && !bulkView && (
-              <Text style={{ fontSize: 12, color: U.ink[400], marginStart: 8 }}>
-                <Text style={{ fontWeight: '600', color: U.ink[900] }}>{filtered.length}</Text> fatura
-              </Text>
+
+            {/* Faturalanmayı bekleyen siparişler — yalnız varsa */}
+            {unbilledOrders.length > 0 && (
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 14,
+                paddingVertical: 10, paddingHorizontal: 14, borderRadius: 14,
+                backgroundColor: U.chipTones.warning.bg, borderWidth: 1, borderColor: 'rgba(232,155,42,0.45)',
+              }}>
+                <Clock size={15} color={U.chipTones.warning.fg} strokeWidth={1.8} />
+                <Text style={{ flex: 1, minWidth: 180, fontSize: 13, color: U.chipTones.warning.fg }}>
+                  {`${unbilledOrders.length} ${autoT('sipariş hizmet bedeli bekliyor')}`}
+                  {unbilledLead ? ` · ${fmtMoney(unbilledLead[1], unbilledLead[0])}` : ''}
+                </Text>
+                <Pressable
+                  onPress={() => setBulkOpen(true)}
+                  style={({ pressed }: any) => ({
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999,
+                    backgroundColor: U.ink[900], opacity: pressed ? 0.85 : 1,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  })}
+                >
+                  <Layers size={13} strokeWidth={2} color={U.onDarkPill} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: U.onDarkPill }}>{autoT('Siparişlerden hizmet bedeli')}</Text>
+                </Pressable>
+              </View>
             )}
-          </View>
+          </WhiteHero>
         </View>
 
-        {/* Liste — eski içerik dolgusu (padding 22 / gap 10) yalnız burada */}
-        <View style={{ padding: 22, paddingTop: 4, gap: 10 }}>
-          {bulkView ? (
-            <BulkEFaturaList search={search} refreshKey={bulkEfKey} onOpenInvoice={openInvoice} />
-          ) : loading && filtered.length === 0 ? (
-            <View style={{ paddingVertical: 64, alignItems: 'center' }}>
-              <ActivityIndicator color={U.ink[400]} />
-            </View>
-          ) : filtered.length === 0 ? (
-            <EmptyState hasFilter={!!search || overdueOnly || noEFaturaOnly || statusFilter !== 'all'} />
-          ) : isDesktop ? (
-            /* Desktop: table card */
-            <View style={{ ...U.cardSolid, padding: 0, overflow: 'hidden' }}>
-              {/* Table header */}
-              <View style={{
-                flexDirection: 'row', alignItems: 'center',
-                paddingHorizontal: 22, paddingVertical: 12,
-                backgroundColor: tblAccent,
-              }}>
-                <Text style={{ ...colHeaderOf(U), color: tblInk, width: 120 }}>Fatura No</Text>
-                <Text style={{ ...colHeaderOf(U), color: tblInk, flex: 1 }}>Klinik / Hekim</Text>
-                <Text style={{ ...colHeaderOf(U), color: tblInk, width: 100 }}>Tarih</Text>
-                <Text style={{ ...colHeaderOf(U), color: tblInk, width: 100 }}>Vade</Text>
-                <Text style={{ ...colHeaderOf(U), color: tblInk, width: 110, textAlign: 'end' as any }}>Tutar</Text>
-                <Text style={{ ...colHeaderOf(U), color: tblInk, width: 90, textAlign: 'center' }}>Durum</Text>
-                <View style={{ width: 36 }} />
+        {/* ── Faturalar kartı: başlık + durum sekmeleri + arama/dönem/e-Faturasız kartın içinde ── */}
+        <View style={{ paddingHorizontal: PAGE_PADDING, gap: 12 }}>
+          <View style={U.tableCard}>
+            <View style={{
+              paddingHorizontal: isDesktop ? 20 : 16, paddingTop: isDesktop ? 18 : 14, paddingBottom: 14, gap: 12,
+              borderBottomWidth: bulkView ? 0 : 1, borderBottomColor: U.hairline,
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 10 }}>
+                {/* Finans hub'ında sayfa başlığı zaten "Faturalar" — kartta tekrar etme. */}
+                {!isEmbedded && (
+                  <Text style={{ ...DISPLAY, fontSize: isDesktop ? 22 : 18, letterSpacing: isDesktop ? -0.4 : -0.3, color: U.ink[900] }}>
+                    Hizmet bedelleri
+                  </Text>
+                )}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 1 }}
+                            contentContainerStyle={{ flexDirection: 'row', padding: 3, borderRadius: 999, backgroundColor: U.ink[100] }}>
+                  {segItems.map(o => {
+                    const active = statusFilter === o.key;
+                    return (
+                      <Pressable
+                        key={o.key}
+                        onPress={() => setStatusFilter(o.key)}
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: active }}
+                        style={{
+                          paddingHorizontal: active ? 18 : 12, paddingVertical: 8, borderRadius: 999,
+                          backgroundColor: active ? U.segActive : 'transparent',
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer', outlineStyle: 'none' } as any : {}),
+                        }}
+                      >
+                        <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: active ? '700' : '500',
+                                                         color: active ? U.ink[900] : (o.tone ?? U.ink[500]) }}>
+                          {o.n === null ? o.label : `${o.label} · ${o.n}`}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
               </View>
-              {filtered.map((inv, i) => (
-                <InvoiceRow key={inv.id} invoice={inv} isLast={i === filtered.length - 1}
-                  onPress={() => openInvoice(inv.invoice_number ?? inv.id)} />
-              ))}
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', rowGap: 8 }}>
+                <View style={{
+                  flexGrow: 1, flexShrink: 1, flexBasis: 220, minWidth: 180,
+                  flexDirection: 'row', alignItems: 'center', gap: 8,
+                  height: 40, paddingHorizontal: 14, borderRadius: 9999,
+                  borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
+                }}>
+                  <Search size={14} color={U.ink[400]} strokeWidth={1.8} />
+                  <TextInput
+                    style={{ flex: 1, fontSize: 13.5, color: U.ink[900], outline: 'none' as any }}
+                    placeholder="Belge no, kurum, hekim, hasta"
+                    placeholderTextColor={U.ink[400]}
+                    value={search}
+                    onChangeText={setSearch}
+                  />
+                  {search.length > 0 && (
+                    <Pressable onPress={() => setSearch('')} accessibilityLabel={autoT('Aramayı temizle')} style={{ cursor: 'pointer' as any }}>
+                      <X size={13} color={U.ink[400]} strokeWidth={2} />
+                    </Pressable>
+                  )}
+                </View>
+                {!bulkView && (
+                  <InvoicePeriodFilter
+                    period={period.p} from={period.from} to={period.to} range={range}
+                    onChange={(p, from, to) => setPeriod({ p, from, to })}
+                  />
+                )}
+                {lucaActive && !bulkView && (
+                  <Pressable
+                    onPress={() => setNoEFaturaOnly(v => !v)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: noEFaturaOnly }}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: 14, borderRadius: 9999,
+                      borderWidth: 1,
+                      borderColor: noEFaturaOnly ? CHIP_TONES.info.text : U.plainBtn.border,
+                      backgroundColor: noEFaturaOnly ? CHIP_TONES.info.bg : U.plainBtn.bg,
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    }}
+                  >
+                    <Receipt size={13} strokeWidth={1.8} color={noEFaturaOnly ? CHIP_TONES.info.text : U.plainBtn.fg} />
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: noEFaturaOnly ? CHIP_TONES.info.text : U.plainBtn.fg }}>
+                      e-Faturasız
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
             </View>
-          ) : (
-            /* Mobile: tableCard — ekstre / giderler mobil tablosuyla aynı kalıp */
-            <InvoiceMobileTable invoices={filtered} accent={tblAccent}
-              onOpen={(inv) => openInvoice(inv.invoice_number ?? inv.id)} />
-          )}
+
+            {bulkView ? null : loading && filtered.length === 0 ? (
+              <View style={{ paddingVertical: 64, alignItems: 'center' }}>
+                <ActivityIndicator color={U.ink[400]} />
+              </View>
+            ) : filtered.length === 0 ? (
+              <EmptyState hasFilter={!!search || noEFaturaOnly || statusFilter !== 'all' || period.p !== 'all'} />
+            ) : (
+              <>
+                {isDesktop ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingVertical: 10,
+                                 borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+                    <Text style={{ ...colHeaderOf(U), width: COL.no }}>Hizmet bedeli</Text>
+                    <Text style={{ ...colHeaderOf(U), flex: 1 }}>Kurum / Hekim</Text>
+                    {wideTable ? <Text style={{ ...colHeaderOf(U), width: COL.patient }}>Hasta</Text> : null}
+                    <Text style={{ ...colHeaderOf(U), width: COL.date }}>Tarih / Vade</Text>
+                    <Text style={{ ...colHeaderOf(U), width: COL.money, textAlign: 'right' }}>Tutar</Text>
+                    <Text style={{ ...colHeaderOf(U), width: COL.rest, textAlign: 'right' }}>Kalan</Text>
+                    <Text style={{ ...colHeaderOf(U), width: COL.status }}>Durum</Text>
+                    <View style={{ width: COL.menu }} />
+                  </View>
+                ) : null}
+                {filtered.map((inv, i) => (
+                  <InvoiceRow
+                    key={inv.id}
+                    invoice={inv}
+                    desktop={isDesktop}
+                    patientCol={wideTable}
+                    isLast={i === filtered.length - 1}
+                    showEfMissing={lucaActive}
+                    busy={printBusy === inv.id}
+                    menu={rowMenu(inv)}
+                    onPress={() => openInvoice(inv.invoice_number ?? inv.id)}
+                  />
+                ))}
+                {/* Sade alt satır: adet + para birimi başına toplam / kalan */}
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6,
+                  paddingHorizontal: isDesktop ? 20 : 16, paddingVertical: 12,
+                  borderTopWidth: 1, borderTopColor: U.hairline, backgroundColor: U.surfaceSoft,
+                }}>
+                  <Text style={{ fontSize: 12, color: U.ink[500] }}>{`${filtered.length} ${autoT('hizmet bedeli')}`}</Text>
+                  <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                    {footTotals.map(t => (
+                      <Text key={t.currency} style={{ fontSize: 12.5, color: U.ink[700] }}>
+                        {`${autoT('Toplam')} `}
+                        <Text style={{ fontWeight: '700', color: U.ink[900] }}>{fmtMoney(t.total, t.currency)}</Text>
+                        {` · ${autoT('Kalan')} `}
+                        <Text style={{ fontWeight: '700', color: U.ink[900] }}>{fmtMoney(t.rest, t.currency)}</Text>
+                      </Text>
+                    ))}
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
+
+          {bulkView && <BulkEFaturaList search={search} refreshKey={bulkEfKey} onOpenInvoice={openInvoice} />}
         </View>
       </ScrollView>
 
@@ -520,6 +610,29 @@ export function InvoicesListScreen() {
         onClose={() => setBulkPayOpen(false)}
         onDone={() => { setBulkPayOpen(false); onRefresh(); }}
       />
+      {payTarget && (
+        <PaymentModal
+          visible={!!payTarget}
+          invoiceId={payTarget.id}
+          maxAmount={Math.max(0, (Number(payTarget.total) || 0) - (Number(payTarget.paid_amount) || 0))}
+          currency={payTarget.currency || 'TRY'}
+          onClose={() => setPayTarget(null)}
+          onDone={() => { setPayTarget(null); onRefresh(); }}
+        />
+      )}
+      {remindTarget && remindTarget.clinic_id && (
+        <SendReminderModal
+          visible={!!remindTarget}
+          clinicId={remindTarget.clinic_id}
+          clinicName={remindTarget.clinic?.name ?? '—'}
+          totalDue={Math.max(0, (Number(remindTarget.total) || 0) - (Number(remindTarget.paid_amount) || 0))}
+          overdueCount={1}
+          currency={remindTarget.currency || 'TRY'}
+          invoiceId={remindTarget.id}
+          invoiceNo={remindTarget.invoice_number}
+          onClose={() => setRemindTarget(null)}
+        />
+      )}
     </View>
   );
 }
@@ -532,155 +645,179 @@ function colHeaderOf(U: InkUI) {
   };
 }
 
-// ─── Action Button ──────────────────────────────────────────────────
-function ActionBtn({ icon: Icon, label, color, onPress }: {
-  icon: React.ComponentType<any>; label: string; color?: string; onPress: () => void;
-}) {
-  const U = useInkUI();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        flexDirection: 'row', alignItems: 'center', gap: 6,
-        paddingHorizontal: 14, paddingVertical: 8,
-        borderRadius: 9999,
-        borderWidth: 1, borderColor: U.plainBtn.border,
-        backgroundColor: U.plainBtn.bg,
-        // @ts-ignore web
-        cursor: 'pointer',
-      }}
-    >
-      <Icon size={13} strokeWidth={1.8} color={color ?? U.ink[900]} />
-      <Text style={{ fontSize: 12, fontWeight: '500', color: color ?? U.ink[900] }}>{label}</Text>
-    </Pressable>
-  );
-}
+// ─── Fatura satırı (masaüstü: sütunlu · mobil: iki kolonlu satır) ──────
+const COL = { no: 148, patient: 140, date: 120, money: 104, rest: 112, status: 92, menu: 36 };
 
-// ─── KPI Mini Card ──────────────────────────────────────────────────
-// Katı per-currency KPI — tek döviz tek büyük rakam; çok döviz alt alta.
-function KpiMini({ label, slices, icon: Icon, color, flex, rows = 1 }: {
-  label: string; slices: CurrencyTotal[]; icon: React.ComponentType<any>; color: string; flex?: boolean;
-  /** Satırdaki EN ÇOK para birimi sayısı — tüm kartlar aynı yüksekliği ayırsın diye. */
-  rows?: number;
-}) {
-  const U = useInkUI();
-  // Tek para biriminde 20px'lik tek satır, çoklu para biriminde satır başına 20px.
-  const valueBlockHeight = rows <= 1 ? 26 : rows * 20 + 2;
-  return (
-    <View style={{
-      ...U.cardSolid, padding: 14, gap: 7, borderRadius: 18,
-      // Yatay şeritte kartlar EŞİT boyda dursun: sabit genişlik + rezerve yükseklik.
-      ...(flex ? { flex: 1 } : { width: 158 }),
-    }}>
-      <View style={{
-        width: 26, height: 26, borderRadius: 8,
-        backgroundColor: color + '15',
-        alignItems: 'center', justifyContent: 'center',
-      }}>
-        <Icon size={13} strokeWidth={1.8} color={color} />
-      </View>
-      <Text numberOfLines={1} style={{
-        fontSize: 9.5, fontWeight: '600', letterSpacing: 0.7,
-        textTransform: 'uppercase', color: U.ink[500],
-      }}>
-        {label}
-      </Text>
-      <View style={{ height: valueBlockHeight, justifyContent: 'flex-start' }}>
-        {slices.length === 0 ? (
-          <Text style={{ ...DISPLAY, fontSize: 20, lineHeight: 26, letterSpacing: -0.5, color: U.ink[400] }}>—</Text>
-        ) : slices.length === 1 && rows <= 1 ? (
-          <Text numberOfLines={1} style={{ ...DISPLAY, fontSize: 20, lineHeight: 26, letterSpacing: -0.5, color: U.ink[900], fontVariant: ['tabular-nums'] }}>
-            {fmtShort(slices[0].total, slices[0].currency)}
-          </Text>
-        ) : (
-          <View style={{ gap: 2 }}>
-            {slices.map(s => (
-              <Text key={s.currency} numberOfLines={1} style={{ ...DISPLAY, fontSize: 16, letterSpacing: -0.3, lineHeight: 20, color: U.ink[900], fontVariant: ['tabular-nums'] }}>
-                {fmtShort(s.total, s.currency)}
-              </Text>
-            ))}
-          </View>
-        )}
-      </View>
-    </View>
-  );
-}
+type RowMenuItem = { key: string; label: string; icon?: React.ComponentType<any>; onPress: () => void };
 
-// ─── Desktop Invoice Row ────────────────────────────────────────────
-function InvoiceRow({ invoice, isLast, onPress }: {
-  invoice: Invoice; isLast: boolean; onPress: () => void;
+function InvoiceRow({ invoice, desktop, patientCol, isLast, showEfMissing, busy, menu, onPress }: {
+  invoice: Invoice; desktop: boolean; patientCol: boolean; isLast: boolean; showEfMissing: boolean; busy: boolean;
+  menu: RowMenuItem[]; onPress: () => void;
 }) {
   const U = useInkUI();
   const CHIP_TONES = chipTones(U);
-  const STATUS_CHIP = statusChip(U);
   const today = useLabToday();
   const isOverdue = isInvoiceOverdue(invoice, today);
-  const chip = isOverdue
-    ? CHIP_TONES.danger
-    : STATUS_CHIP[invoice.status];
+  const total = Number(invoice.total) || 0;
+  const paid = Math.min(total, Math.max(0, Number(invoice.paid_amount) || 0));
+  const rest = invoice.status === 'iptal' ? 0 : Math.max(0, total - paid);
+  const paidPct = total > 0 ? Math.round((paid / total) * 100) : 0;
+  const ccy = invoice.currency || 'TRY';
+  const st = statusDot(U, invoice, isOverdue);
+  const doctor = invoice.doctor?.full_name ? normalizeDoctorName(invoice.doctor.full_name) : null;
+  const patient = invoice.work_order?.patient_name ?? null;
+  const efMissing = showEfMissing && !invoice.efatura_uuid && invoice.status !== 'taslak' && invoice.status !== 'iptal';
+  const muted = invoice.status === 'iptal';
+
+  const efLine = invoice.efatura_uuid
+    ? <EFaturaBadge invoice={invoice} />
+    : efMissing ? <Text style={{ fontSize: 10.5, color: U.ink[400] }}>e-Fatura yok</Text> : null;
+
+  const menuBtn = menu.length > 0 ? (
+    <AnchorMenu
+      width={220}
+      items={menu}
+      renderTrigger={(open) => (
+        <Pressable
+          onPress={open}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel={autoT('Hizmet bedeli işlemleri')}
+          style={({ pressed, hovered }: any) => ({
+            width: desktop ? 32 : 44, height: desktop ? 32 : 44, borderRadius: 999,
+            alignItems: 'center', justifyContent: 'center',
+            backgroundColor: hovered || pressed ? U.rowHover : 'transparent',
+            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+          })}
+        >
+          {busy ? <ActivityIndicator size="small" color={U.ink[400]} /> : <MoreHorizontal size={16} color={U.ink[500]} strokeWidth={1.8} />}
+        </Pressable>
+      )}
+    />
+  ) : <View style={{ width: desktop ? 32 : 44 }} />;
+
+  if (!desktop) {
+    return (
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }: any) => ({
+          flexDirection: 'row', alignItems: 'center', gap: 8,
+          paddingStart: 16, paddingEnd: 6, paddingVertical: 12,
+          borderBottomWidth: isLast ? 0 : 1, borderBottomColor: U.hairline,
+          backgroundColor: pressed ? U.rowHover : 'transparent',
+          opacity: muted ? 0.6 : 1,
+        })}
+      >
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
+            {invoice.clinic?.name ?? '—'}
+          </Text>
+          <Text style={{ fontSize: 11.5, color: U.ink[500] }} numberOfLines={1}>
+            {[invoice.invoice_number, patient, doctor].filter(Boolean).join(' · ')}
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', columnGap: 8, rowGap: 3, flexWrap: 'wrap' }}>
+            {invoice.due_date ? (
+              <Text style={{ fontSize: 11.5, color: isOverdue ? CHIP_TONES.danger.text : U.ink[400], fontWeight: isOverdue ? '600' : '400' }}>
+                {`${autoT('Vade')} ${fmtDate(invoice.due_date)}`}
+              </Text>
+            ) : null}
+            {efLine}
+          </View>
+        </View>
+        <View style={{ alignItems: 'flex-end', gap: 3 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900], fontVariant: ['tabular-nums'] }}>
+            {fmtMoney(rest > 0 ? rest : total, ccy)}
+          </Text>
+          {rest > 0 && rest < total ? (
+            <Text style={{ fontSize: 10.5, color: U.ink[400] }}>{`/ ${fmtMoney(total, ccy)}`}</Text>
+          ) : null}
+          <StatusDotLabel tone={st} />
+        </View>
+        {menuBtn}
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable
       onPress={onPress}
-      style={{
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 22, paddingVertical: 14,
-        borderBottomWidth: isLast ? 0 : 1,
-        borderBottomColor: U.hairline,
-        backgroundColor: isOverdue ? 'rgba(217,75,75,0.03)' : 'transparent',
-        // @ts-ignore web
-        cursor: 'pointer',
-      }}
+      style={({ hovered }: any) => ({
+        flexDirection: 'row', alignItems: 'center', gap: 10,
+        paddingStart: 20, paddingEnd: 14, paddingVertical: 12,
+        borderBottomWidth: isLast ? 0 : 1, borderBottomColor: U.hairline,
+        backgroundColor: hovered ? U.rowHover : 'transparent',
+        opacity: muted ? 0.6 : 1,
+        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+      })}
     >
-      <View style={{ width: 120, gap: 3 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{invoice.invoice_number}</Text>
-        <EFaturaBadge invoice={invoice} />
+      <View style={{ width: COL.no, gap: 3 }}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>{invoice.invoice_number}</Text>
+        {efLine}
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900] }} numberOfLines={1}>
           {invoice.clinic?.name ?? '—'}
         </Text>
-        {/* Hekim isteği: fatura listesinde hasta adı da görünsün. Hekim +
-            hasta tek satırda — liste zaten dar, ayrı satır üçüncü kata çıkarıyordu. */}
-        {(invoice.doctor?.full_name || invoice.work_order?.patient_name) && (
+        {(patientCol ? doctor : [doctor, patient].filter(Boolean).join(' · ')) ? (
           <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }} numberOfLines={1}>
-            {[
-              invoice.doctor?.full_name ? normalizeDoctorName(invoice.doctor.full_name) : null,
-              invoice.work_order?.patient_name ?? null,
-            ].filter(Boolean).join(' · ')}
+            {patientCol ? doctor : [doctor, patient].filter(Boolean).join(' · ')}
           </Text>
-        )}
+        ) : null}
       </View>
-      <Text style={{ width: 100, fontSize: 12, color: U.ink[500] }}>{fmtDate(invoice.issue_date)}</Text>
-      <Text style={{
-        width: 100, fontSize: 12,
-        color: isOverdue ? CHIP_TONES.danger.text : U.ink[500],
-        fontWeight: isOverdue ? '600' : '400',
-      }}>
-        {fmtDate(invoice.due_date)}
+      {patientCol ? <Text style={{ width: COL.patient, fontSize: 12.5, color: U.ink[700] }} numberOfLines={1}>{patient ?? '—'}</Text> : null}
+      <View style={{ width: COL.date, gap: 2 }}>
+        <Text style={{ fontSize: 12, color: U.ink[500] }} numberOfLines={1}>{fmtDate(invoice.issue_date)}</Text>
+        <Text style={{ fontSize: 11.5, color: isOverdue ? CHIP_TONES.danger.text : U.ink[400], fontWeight: isOverdue ? '600' : '400' }} numberOfLines={1}>
+          {invoice.due_date ? `${autoT('Vade')} ${fmtDate(invoice.due_date)}` : '—'}
+        </Text>
+      </View>
+      <Text style={{ width: COL.money, textAlign: 'right', fontSize: 13, color: U.ink[700], fontVariant: ['tabular-nums'] }} numberOfLines={1}>
+        {fmtMoney(total, ccy)}
       </Text>
-      <Text style={{
-        width: 110, textAlign: 'end' as any,
-        ...DISPLAY, fontSize: 15, letterSpacing: -0.3, color: U.ink[900],
-      }}>
-        {fmtMoney(invoice.total, invoice.currency)}
-      </Text>
-      <View style={{ width: 90, alignItems: 'center' }}>
-        <View style={{
-          paddingHorizontal: 8, paddingVertical: 3,
-          borderRadius: 9999, backgroundColor: chip.bg,
-        }}>
-          <Text style={{ fontSize: 10, fontWeight: '600', color: chip.text }}>
-            {isOverdue ? autoT('Gecikmiş').toLocaleUpperCase(localeTag()) : autoT(INVOICE_STATUS_LABELS[invoice.status]).toLocaleUpperCase(localeTag())}
-          </Text>
-        </View>
+      <View style={{ width: COL.rest, alignItems: 'flex-end', gap: 4 }}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: rest > 0 ? U.ink[900] : U.ink[400], fontVariant: ['tabular-nums'] }} numberOfLines={1}>
+          {fmtMoney(rest, ccy)}
+        </Text>
+        {invoice.status !== 'taslak' && invoice.status !== 'iptal' ? (
+          <View style={{ width: 72, height: 3, borderRadius: 2, backgroundColor: U.ink[100], overflow: 'hidden' }}>
+            <View style={{ width: `${paidPct}%` as any, height: 3, borderRadius: 2, backgroundColor: '#2D9A6B' }} />
+          </View>
+        ) : null}
       </View>
-      <View style={{ width: 36, alignItems: 'center' }}>
-        {isRTL()
-          ? <ChevronLeft size={14} strokeWidth={1.6} color={U.ink[300]} />
-          : <ChevronRight size={14} strokeWidth={1.6} color={U.ink[300]} />}
-      </View>
+      <View style={{ width: COL.status }}><StatusDotLabel tone={st} /></View>
+      <View style={{ width: COL.menu, alignItems: 'center' }}>{menuBtn}</View>
     </Pressable>
+  );
+}
+
+/** Durum: küçük nokta + sade etiket (büyük harf rozet yerine). Gecikmiş, durumdan önce gelir. */
+function statusDot(U: InkUI, inv: Invoice, overdue: boolean): { label: string; color: string } {
+  if (inv.status === 'iptal')  return { label: autoT('İptal'), color: U.ink[400] };
+  if (inv.status === 'taslak') return { label: autoT('Taslak'), color: U.chipTones.warning.fg };
+  if (inv.status === 'odendi') return { label: autoT('Ödendi'), color: U.chipTones.success.fg };
+  if (overdue)                 return { label: autoT('Gecikmiş'), color: U.chipTones.danger.fg };
+  if (inv.status === 'kismi_odendi') return { label: autoT('Kısmi'), color: U.chipTones.info.fg };
+  return { label: autoT('Açık'), color: U.ink[700] };
+}
+
+function StatusDotLabel({ tone }: { tone: { label: string; color: string } }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: tone.color }} />
+      <Text style={{ fontSize: 12, fontWeight: '600', color: tone.color }} numberOfLines={1}>{tone.label}</Text>
+    </View>
+  );
+}
+
+/** Hero çubuğu açıklaması. */
+function HeroLegend({ color, label, value }: { color: string; label: string; value: string }) {
+  const heroInk = useWhiteHeroInk();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+      <View style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: color }} />
+      <Text style={{ fontSize: 11.5, color: heroInk.inkSoft }}>{label}</Text>
+      <Text style={{ fontSize: 11.5, fontWeight: '700', color: heroInk.ink }}>{value}</Text>
+    </View>
   );
 }
 
@@ -688,19 +825,19 @@ function InvoiceRow({ invoice, isLast, onPress }: {
 function EmptyState({ hasFilter }: { hasFilter: boolean }) {
   const U = useInkUI();
   return (
-    <View style={{ ...U.cardSolid, alignItems: 'center', paddingVertical: 56, gap: 12 }}>
+    <View style={{ alignItems: 'center', paddingVertical: 56, paddingHorizontal: 16, gap: 12 }}>
       {hasFilter ? (
         <Search size={36} strokeWidth={1.4} color={U.ink[300]} />
       ) : (
         <Inbox size={36} strokeWidth={1.4} color={U.ink[300]} />
       )}
       <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }}>
-        {hasFilter ? 'Sonuç bulunamadı' : 'Henüz fatura yok'}
+        {hasFilter ? 'Sonuç bulunamadı' : 'Henüz hizmet bedeli yok'}
       </Text>
       <Text style={{ fontSize: 13, color: U.ink[400], textAlign: 'center', maxWidth: 300 }}>
         {hasFilter
           ? 'Filtre kriterlerini degistirmeyi deneyin.'
-          : 'Bir is emrini teslim ettiginde "Fatura Olustur" ile fatura kesebilirsin.'}
+          : 'Bir iş emrini teslim ettiğinde "Hizmet bedeli oluştur" ile hizmet bedeli oluşturabilirsin.'}
       </Text>
     </View>
   );
@@ -829,7 +966,7 @@ function BulkInvoiceModal({
       const msg = (error as any)?.message as string | undefined;
       const dMsg = invoiceDiscountRpcError(msg, discType, discRaw);
       if (dMsg) { setDiscErr(dMsg); setCreateErr(dMsg); return; }
-      toast.error(msg ?? 'Fatura olusturulamadi.');
+      toast.error(msg ?? 'Hizmet bedeli oluşturulamadı.');
       return;
     }
     onCreated(data.id);
@@ -865,8 +1002,8 @@ function BulkInvoiceModal({
               <Layers size={18} strokeWidth={1.8} color="#2563EB" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', color: U.ink[900] }}>Siparişlerden fatura</Text>
-              <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 1 }}>Birden fazla siparisi tek faturada topla</Text>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: U.ink[900] }}>Siparişlerden hizmet bedeli</Text>
+              <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 1 }}>Birden fazla siparişi tek hizmet bedelinde topla</Text>
             </View>
             <Pressable onPress={handleClose} style={{
               width: 32, height: 32, borderRadius: 10,
@@ -963,7 +1100,7 @@ function BulkInvoiceModal({
                   <View style={{ alignItems: 'center', paddingVertical: 32, gap: 8 }}>
                     <CircleCheck size={28} strokeWidth={1.4} color={CHIP_TONES.success.text} />
                     <Text style={{ fontSize: 13, color: U.ink[400] }}>
-                      {orderSearch ? 'Sonuç yok' : 'Faturalanmamis siparis yok'}
+                      {orderSearch ? 'Sonuç yok' : 'Hizmet bedeli bekleyen sipariş yok'}
                     </Text>
                   </View>
                 ) : (
@@ -1054,11 +1191,11 @@ function BulkInvoiceModal({
                     <Text style={{ fontWeight: '700', color: U.ink[900] }}>{fmtMoney(discountedEstimate.amount, discountedEstimate.ccy)}</Text>
                   </Text>
                   <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }}>
-                    {autoT('KDV öncesi; tarama ücretleri ve acil farkı faturada eklenir.')}
+                    {autoT('KDV öncesi; tarama ücretleri ve acil farkı hizmet bedelinde eklenir.')}
                   </Text>
                   {discountedEstimate.amount <= 0 ? (
                     <Text style={{ fontSize: 12, fontWeight: '600', color: U.chipTones.warning.fg, marginTop: 2 }}>
-                      {autoT('Fatura tutarı 0 olacak.')}
+                      {autoT('Hizmet bedeli tutarı 0 olacak.')}
                     </Text>
                   ) : null}
                 </>
@@ -1085,7 +1222,7 @@ function BulkInvoiceModal({
               ) : (
                 <>
                   <Receipt size={14} strokeWidth={1.8} color={U.onDarkPill} />
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: U.onDarkPill }}>Fatura Olustur</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: U.onDarkPill }}>Hizmet bedeli oluştur</Text>
                 </>
               )}
             </Pressable>
@@ -1282,7 +1419,7 @@ function BulkPaymentModal({
     if (selected.size === 0) return;
     // Katı per-currency: tek tutar birden fazla para birimine dağıtılamaz
     if (totalBalanceByCcy.length > 1) {
-      toast.error('Seçilen faturalar farklı para birimlerinde. Toplu tahsilatı her para birimi için ayrı yapın.');
+      toast.error('Seçilen hizmet bedelleri farklı para birimlerinde. Toplu tahsilatı her para birimi için ayrı yapın.');
       return;
     }
     const amt = Number(amount.replace(',', '.'));
@@ -1334,7 +1471,7 @@ function BulkPaymentModal({
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 16, fontWeight: '600', color: U.ink[900] }}>Toplu Tahsilat</Text>
-              <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 1 }}>Birden fazla faturayi tek seferde tahsil et</Text>
+              <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 1 }}>Birden fazla hizmet bedelini tek seferde tahsil et</Text>
             </View>
             <Pressable onPress={onClose} style={{
               width: 32, height: 32, borderRadius: 10,
@@ -1378,7 +1515,7 @@ function BulkPaymentModal({
               {sortedInvoices.length === 0 ? (
                 <View style={{ alignItems: 'center', paddingVertical: 32, gap: 8 }}>
                   <CircleCheck size={28} strokeWidth={1.4} color={CHIP_TONES.success.text} />
-                  <Text style={{ fontSize: 13, color: U.ink[400] }}>Bekleyen fatura yok</Text>
+                  <Text style={{ fontSize: 13, color: U.ink[400] }}>Bekleyen hizmet bedeli yok</Text>
                 </View>
               ) : sortedInvoices.map(inv => {
                 const bal = Number(inv.total) - Number(inv.paid_amount);

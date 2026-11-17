@@ -303,19 +303,27 @@ export async function fetchAllWorkOrders(opts: { includeArchived?: boolean; limi
   // current_stage_id FK ise duruyor — onu embed ediyoruz.
   // Pasife alınmış siparişler default listede gizli; admin "Arşivi göster" toggle'ı
   // ile is_archived=TRUE olanları da çekebilir.
-  let q = supabase
-    .from('work_orders')
-    .select(LIST_SELECT)
-    .order('delivery_date', { ascending: true })
-    .limit(opts.limit ?? 300);
-  if (!opts.includeArchived) {
-    q = q.or('is_archived.is.null,is_archived.eq.false');
-  }
-  // ?doctor= (genel arama → hekimin siparişleri): süzgeç sunucuda — son 300 sınırına takılmaz
-  if (opts.doctorIds?.length) q = q.in('doctor_id', opts.doctorIds);
-  const res = await q;
-  if (res.data) (res as any).data = await attachDoctors(flattenStageName(res.data as any[]));
-  return res;
+  // İki parça (2026-11-17): eskiden tek sorgu teslim tarihine göre ARTAN + ilk 300 idi →
+  // 300'ü aşan lab'da EN YENİ siparişler listeye hiç gelmiyordu (aramada da bulunmuyordu).
+  // Artık: açık işlerin TAMAMI + kapanmış (teslim/iptal) işlerden en yeni `limit` kadarı.
+  const CLOSED = '(teslim_edildi,iptal)';
+  const base = () => {
+    let q = supabase.from('work_orders').select(LIST_SELECT);
+    if (!opts.includeArchived) q = q.or('is_archived.is.null,is_archived.eq.false');
+    // ?doctor= (genel arama → hekimin siparişleri): süzgeç sunucuda — sınıra takılmaz
+    if (opts.doctorIds?.length) q = q.in('doctor_id', opts.doctorIds);
+    return q;
+  };
+  const [openRes, closedRes] = await Promise.all([
+    base().not('status', 'in', CLOSED).order('delivery_date', { ascending: true }).limit(2000),
+    base().in('status', ['teslim_edildi', 'iptal']).order('created_at', { ascending: false }).limit(opts.limit ?? 300),
+  ]);
+  const error = openRes.error ?? closedRes.error;
+  if (error) return { ...openRes, data: null, error } as typeof openRes;
+  // Eski sıra korunur (teslim tarihi artan) — useTodayOrders vb. buna güveniyor.
+  const merged = [...((openRes.data ?? []) as any[]), ...((closedRes.data ?? []) as any[])]
+    .sort((a, b) => String(a.delivery_date ?? '').localeCompare(String(b.delivery_date ?? '')));
+  return { ...openRes, data: await attachDoctors(flattenStageName(merged)) } as typeof openRes;
 }
 
 /** ?doctor=<doctors.id>: doctor_id çok biçimli — hekim kaydı + ona bağlı hekim hesap(lar)ının

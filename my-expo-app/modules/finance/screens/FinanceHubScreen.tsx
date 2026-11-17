@@ -68,8 +68,8 @@ const ANALYSIS_TABS: TabDef[] = [
 ];
 
 const COLLECTION_TABS: TabDef[] = [
-  { key: 'invoices',          label: 'Faturalar',        icon: FileText,   accent: '#2563EB', hint: 'Fatura yönetimi' },
-  { key: 'clinic_balance',    label: 'Sağlık Kurumları', icon: Building2,  accent: '#0EA5E9', hint: 'Sağlık kurumu bakiyeleri' },
+  { key: 'invoices',          label: 'Hizmet bedelleri',        icon: FileText,   accent: '#2563EB', hint: 'Hizmet bedeli yönetimi' },
+  { key: 'clinic_balance',    label: 'Hesap Ekstreleri', icon: Building2,  accent: '#0EA5E9', hint: 'Sağlık kurumu bakiyeleri' },
   { key: 'payment_approvals', label: 'Ödeme Onayları',   icon: CheckSquare, accent: '#D97706', hint: 'Klinik bildirimleri' },
   { key: 'suppliers',         label: 'Tedarikçiler',     icon: Truck,      accent: '#7C3AED', hint: 'Firma cari hesapları' },
   { key: 'checks',            label: 'Çek / Senet',      icon: CreditCard, accent: '#D97706', hint: 'Vadeli ödemeler' },

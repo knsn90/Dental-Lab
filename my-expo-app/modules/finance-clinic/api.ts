@@ -624,6 +624,51 @@ export async function rejectSubmission(id: string, reason: string): Promise<void
   if (error) throw error;
 }
 
+/**
+ * Lab admin — sonuçlanmış bildirimler (onaylanan / reddedilen), son 90 gün.
+ * Onay ekranının "Geçmiş" sekmesi için; bekleyen listeyle aynı satır biçimi.
+ */
+export async function fetchReviewedSubmissions(): Promise<(PaymentSubmissionRow & { clinic_name?: string })[]> {
+  const since = new Date(Date.now() - 90 * 86400000).toISOString();
+  const { data, error } = await supabase
+    .from('payment_submissions')
+    .select(`
+      id, invoice_id, clinic_id, amount, payment_method, payment_date,
+      reference_no, bank_name, sender_name, receipt_url, notes,
+      status, submitted_at, reviewed_at, reject_reason, approved_payment_id,
+      invoices(invoice_no:invoice_number, currency, work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name)),
+      clinics(name)
+    `)
+    .in('status', ['approved', 'rejected'])
+    .gte('submitted_at', since)
+    .order('reviewed_at', { ascending: false, nullsFirst: false })
+    .limit(200);
+  if (error) throw error;
+  const base = getBaseCurrency();
+  return (data ?? []).map((s: any) => ({
+    id: s.id,
+    invoice_id: s.invoice_id,
+    invoice_no: s.invoices?.invoice_no ?? null,
+    amount: Number(s.amount ?? 0),
+    currency: s.invoices?.currency || base,
+    payment_method: s.payment_method,
+    payment_date: s.payment_date,
+    reference_no: s.reference_no,
+    bank_name: s.bank_name,
+    sender_name: s.sender_name,
+    receipt_url: s.receipt_url,
+    notes: s.notes,
+    status: s.status,
+    submitted_at: s.submitted_at,
+    reviewed_at: s.reviewed_at,
+    reject_reason: s.reject_reason,
+    approved_payment_id: s.approved_payment_id,
+    clinic_name: s.clinics?.name ?? undefined,
+    patient_name: s.invoices?.work_order?.patient_name ?? null,
+    order_no: s.invoices?.work_order?.order_number ?? null,
+  }));
+}
+
 export async function fetchPendingSubmissions(): Promise<PaymentSubmissionRow[]> {
   // Lab admin perspektifi — RLS lab_id = get_my_lab_id() üzerinden filtreler.
   const { data, error } = await supabase

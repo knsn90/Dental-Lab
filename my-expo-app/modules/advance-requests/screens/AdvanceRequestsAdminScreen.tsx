@@ -69,7 +69,7 @@ export function AdvanceRequestsAdminScreen() {
   const onReject = async (reason: string) => {
     if (!rejectFor || !profile?.id) return;
     const { error } = await rejectAdvanceRequest(rejectFor.id, reason, profile.id);
-    if (error) { toast.error('Reddedilemedi'); return; }
+    if (error) { toast.error(autoT('Reddedilemedi') + ': ' + autoT(String((error as any)?.message ?? ''))); load(); return; }
     toast.success('Talep reddedildi');
     setRejectFor(null);
     load();

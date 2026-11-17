@@ -20,7 +20,7 @@ const SCALE = 2;
 type HtmlSrc = string | Promise<string>;
 
 export async function exportHtmlPdf(
-  html: HtmlSrc, fileName: string, opts?: { winW?: number },
+  html: HtmlSrc, fileName: string, opts?: { winW?: number; /** Masaüstü sekmede yazdırma diyaloğunu kendiliğinden aç (varsayılan true). */ autoPrint?: boolean },
 ): Promise<void> {
   const winW = opts?.winW ?? Dimensions.get('window').width;
   const mode = pdfExportMode(Platform.OS, winW);
@@ -33,9 +33,11 @@ export async function exportHtmlPdf(
     try {
       const src = await html;
       const title = fileName.replace(/\.pdf$/i, '');
-      const doc = src
-        .replace(/<title>[\s\S]*?<\/title>/, `<title>${title.replace(/[<>&]/g, '')}</title>`)
-        .replace('</body>', '<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},350)}<\/script></body>');
+      const titled = src
+        .replace(/<title>[\s\S]*?<\/title>/, `<title>${title.replace(/[<>&]/g, '')}</title>`);
+      const doc = opts?.autoPrint === false
+        ? titled
+        : titled.replace('</body>', '<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},350)}<\/script></body>');
       w.document.write(doc); w.document.close();
     } catch (e) { try { w.close(); } catch {} throw e; }
     return;

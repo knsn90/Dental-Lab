@@ -12,11 +12,15 @@ type ArScannerNative = {
   startScan(): Promise<FaceScanResult | null>;
   startFrontScan(): Promise<FaceScanResult | null>;
   startGuidedRearScan(): Promise<FaceScanResult | null>;
+  /** Yeni native derlemede var: ekran metinleri uygulama dilinde */
+  startGuidedRearScanLocalized?(lang: string | null, accent: string | null): Promise<FaceScanResult | null>;
   isHeadScanSupported?(): boolean;
   startHeadScan?(lang: string | null): Promise<FaceScanResult | null>;
+  /** Yeni native derlemede var: yüz + tam kafa tek akışta */
+  startUnifiedScan?(lang: string | null): Promise<FaceScanResult | null>;
 };
 
-export type ScanMode = 'rear' | 'front' | 'rearGuided' | 'head';
+export type ScanMode = 'rear' | 'front' | 'rearGuided' | 'head' | 'unified';
 
 const native: ArScannerNative | null = (() => {
   if (Platform.OS !== 'ios') return null;
@@ -69,19 +73,32 @@ export function isHeadScanSupported(): boolean {
   try { return native.isHeadScanSupported(); } catch { return false; }
 }
 
+/** Birleşik tarama (yüz + tam kafa tek akışta) var mı? Tam kafa koşulları + yeni native derleme. */
+export function isUnifiedScanSupported(): boolean {
+  return !!native?.startUnifiedScan && isHeadScanSupported();
+}
+
 /**
  * Mod seçimli tarama:
  * - 'rear'  → Object Capture (LiDAR/arka kamera) varsa, yoksa TrueDepth fallback
  * - 'front' → Ön kamera rehberli tarama (Faz 1)
  * - 'head'  → Tam kafa 360° (arka kamera + LiDAR, ikinci kişi çeker). lang = ekran dili.
+ * accent = panel rengi (hex) — şimdilik yalnız rehberli tarama ekranı kullanır.
  */
-export async function startScanMode(mode: ScanMode, lang?: string): Promise<FaceScanResult | null> {
+export async function startScanMode(mode: ScanMode, lang?: string, accent?: string): Promise<FaceScanResult | null> {
   if (!native) {
     throw new Error('3D yüz tarama sadece iOS\'ta desteklenir.');
   }
   switch (mode) {
     case 'front':      return native.startFrontScan();
-    case 'rearGuided': return native.startGuidedRearScan();
+    case 'rearGuided':
+      // Eski native derlemede dilli sürüm yok → Türkçe ekrana düş
+      return native.startGuidedRearScanLocalized
+        ? native.startGuidedRearScanLocalized(lang ?? null, accent ?? null)
+        : native.startGuidedRearScan();
+    case 'unified':
+      if (!native.startUnifiedScan) throw new Error('Birleşik tarama bu sürümde yok — uygulamayı güncelleyin.');
+      return native.startUnifiedScan(lang ?? null);
     case 'head':
       if (!native.startHeadScan) throw new Error('Tam kafa taraması bu sürümde yok — uygulamayı güncelleyin.');
       return native.startHeadScan(lang ?? null);

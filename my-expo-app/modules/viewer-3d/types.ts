@@ -17,7 +17,7 @@
  *   8  Performance polish (LOD, worker, dispose, FPS monitor)
  */
 
-export type FileFormat = 'stl' | 'ply' | 'obj';
+export type FileFormat = 'stl' | 'ply' | 'obj' | 'usdz';
 
 export interface ViewerFile {
   /** Stable unique key */

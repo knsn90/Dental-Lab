@@ -23,6 +23,11 @@ export type PreStatementPdfInput = {
   currency: string;
   /** Yalnız lab'ın ürettiği, bağlantılı PDF'te (R5/R7) */
   approve?: { url: string; qrSvg?: string; expiresAt: string };
+  /**
+   * Kâğıt görünümü (varsayılan true): görüntüden PDF (html2canvas) @media print uygulamadığı için gerekli.
+   * Masaüstü sekme önizlemesinde false verilir → genel ekstreyle aynı ekran düzeni + araç çubuğu.
+   */
+  paper?: boolean;
 };
 
 function fmtDate(iso: string): string {
@@ -105,7 +110,7 @@ function build(
           ...(approve ? { approve } : {}),
         }),
       ...(r.hideOpening ? { hideOpening: true } : {}),
-      paper: true,
+      paper: input.paper !== false,
     },
   );
 }

@@ -289,7 +289,7 @@ export default function LabLayout() {
     { key: 'paper', group: autoT('Operasyon'),    requires: 'view_orders',     label: t('nav.items.paperInbox'),     sub: 'OCR · WhatsApp',                 icon: Camera2,   badge: pendingPaperCount > 0 ? pendingPaperCount : undefined, onPress: () => router.push('/(lab)/pending-paper' as any) },
     { key: 'clinics', group: autoT('Yönetim'),                               label: t('nav.items.clinics'),sub: 'Klinik & hekimler',              icon: Building22,onPress: () => router.push('/(lab)/clinics' as any) },
     { key: 'courier', group: autoT('Operasyon'),                               label: t('nav.items.courier'),     sub: 'Teslimat akışı',                 icon: Truck2,    onPress: () => router.push('/(lab)/courier-tracking' as any) },
-    { key: 'finance', group: autoT('Yönetim'),  requires: 'view_financials', label: t('nav.items.finance'),          sub: 'Kasa · Fatura · Gider · Çek',    icon: Landmark2, onPress: () => router.push('/(lab)/finance' as any) },
+    { key: 'finance', group: autoT('Yönetim'),  requires: 'view_financials', label: t('nav.items.finance'),          sub: 'Kasa · Hizmet bedeli · Gider · Çek',    icon: Landmark2, onPress: () => router.push('/(lab)/finance' as any) },
     { key: 'team', group: autoT('Yönetim'),     requires: 'view_team',       label: t('nav.items.team'),            sub: 'Personel · maaş · izin',         icon: Users2,    onPress: () => router.push('/(lab)/ik-depo' as any) },
     { key: 'stock', group: autoT('Yönetim'),    requires: 'view_stock',      label: t('nav.items.stock'),     sub: 'Envanter · alarm',               icon: Package2,  onPress: () => router.push('/(lab)/stock' as any) },
     ...(isManager && scansOn ? [{ key: 'scans', group: autoT('Operasyon'), label: t('nav.items.scans'), sub: t('nav.items.scansSub'), icon: CalendarClock2, onPress: () => router.push('/(lab)/scans' as any) }] : []),
@@ -342,7 +342,7 @@ export default function LabLayout() {
         <Tabs.Screen name="clinics"      options={{ title: 'Sağlık Kurumları' }} />
         <Tabs.Screen name="lab-services" options={{ title: 'Hizmetler' }} />
         <Tabs.Screen name="finance"        options={{ title: 'Finans' }} />
-        <Tabs.Screen name="invoices"       options={{ title: 'Faturalar' }} />
+        <Tabs.Screen name="invoices"       options={{ title: 'Hizmet bedelleri' }} />
         <Tabs.Screen name="expenses"       options={{ title: 'Giderler' }} />
         <Tabs.Screen name="checks"         options={{ title: 'Çek/Senet' }} />
         <Tabs.Screen name="cash"           options={{ title: 'Kasa/Banka' }} />

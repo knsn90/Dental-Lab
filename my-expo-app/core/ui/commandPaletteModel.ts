@@ -4,7 +4,7 @@ import type { GlobalSearchResult, SearchKind, OrderHit, ClinicHit, DoctorHit, In
 
 export const GROUP_ORDER: SearchKind[] = ['orders', 'clinics', 'doctors', 'invoices'];
 export const GROUP_LABEL: Record<SearchKind, string> = {
-  orders: 'Siparişler', clinics: 'Klinikler', doctors: 'Hekimler', invoices: 'Faturalar',
+  orders: 'Siparişler', clinics: 'Klinikler', doctors: 'Hekimler', invoices: 'Hizmet bedelleri',
 };
 
 export type RecordRow =

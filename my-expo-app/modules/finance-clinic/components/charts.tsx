@@ -146,7 +146,7 @@ export function MonthlyFlowChart({ data, height = 220, currency }: { data: Month
           grafiğin kendisi, gösterge yalnız anahtar. */}
       <View style={{ flexDirection: 'row', gap: 14, marginTop: 10, paddingStart: PAD_L - 8 }}>
         {[
-          { c: invoicedFill, l: 'Kesilen Fatura' },
+          { c: invoicedFill, l: 'Kesinleşen hizmet bedeli' },
           { c: paidFill,     l: 'Ödenen' },
         ].map(k => (
           <View key={k.l} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -178,7 +178,7 @@ export function AgingBarChart({ buckets, currency }: { buckets: AgingBucket[]; c
   if (total === 0) {
     return (
       <View style={{ paddingVertical: 14, alignItems: 'center' }}>
-        <Text style={{ fontSize: 12, color: isDark ? (T.ink3 as string) : DS.ink[400] }}>Açık fatura yok</Text>
+        <Text style={{ fontSize: 12, color: isDark ? (T.ink3 as string) : DS.ink[400] }}>Açık hizmet bedeli yok</Text>
       </View>
     );
   }

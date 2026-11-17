@@ -129,7 +129,9 @@ export async function approveAdvanceRequest(req: AdvanceRequest, approvedBy: str
 }
 
 export async function rejectAdvanceRequest(id: string, rejectReason: string, approvedBy: string) {
-  return supabase
+  // Yalnız bekleyen talep reddedilir. Onaylanıp avans defterine işlenmiş bir
+  // talebi "reddedildi"ye çevirmek defterle çelişen kayıt bırakırdı.
+  const { data, error } = await supabase
     .from('employee_advance_requests')
     .update({
       status: 'reddedildi',
@@ -138,6 +140,11 @@ export async function rejectAdvanceRequest(id: string, rejectReason: string, app
       approved_at: new Date().toISOString(),
     })
     .eq('id', id)
-    .select()
-    .single();
+    .eq('status', 'bekliyor')
+    .select();
+  if (error) return { data: null, error };
+  if (!data || data.length === 0) {
+    return { data: null, error: { message: 'Bu talep zaten sonuçlandırılmış (başka bir onaylayıcı işlemiş olabilir).' } as any };
+  }
+  return { data: data[0], error: null };
 }

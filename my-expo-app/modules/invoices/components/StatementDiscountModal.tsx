@@ -217,13 +217,13 @@ export function StatementDiscountModal({
                 </View>
                 {quote ? (
                   <>
-                    <Row k={autoT('Dönemin fatura toplamı')} val={fmt(quote.period_total)} />
+                    <Row k={autoT('Dönemin hizmet bedeli toplamı')} val={fmt(quote.period_total)} />
                     {quote.prior_discounts > 0 ? (
                       <Row k={autoT('Bu döneme önceki indirimler')} val={`−${fmt(quote.prior_discounts)}`} />
                     ) : null}
                     {quote.ok ? (
                       <>
-                        <Row k={autoT('Faturalara dağıtılacak')} val={fmt(quote.to_invoices)} />
+                        <Row k={autoT('Hizmet bedellerine dağıtılacak')} val={fmt(quote.to_invoices)} />
                         <Row k={autoT('Alacağa kalacak')} val={fmt(quote.to_credit)} />
                         <View style={{ borderTopWidth: 1, borderTopColor: U.hairline, paddingTop: 8 }}>
                           <Row k={autoT('Yeni bakiye')} val={fmt(quote.balance_after)} strong />
@@ -272,7 +272,7 @@ export function StatementDiscountModal({
                 <Text style={{ fontSize: 13, fontWeight: '600', color: U.plainBtn.fg }}>{autoT('Vazgeç')}</Text>
               </Pressable>
               <GlassTooltip title={autoT('İndirimi kaydet')}
-                text={autoT('İndirimi kaydet; dönemin faturalarına dağıtılır, kalan kısım alacağa geçer')}
+                text={autoT('İndirimi kaydet; dönemin hizmet bedellerine dağıtılır, kalan kısım alacağa geçer')}
                 enabled={!busy}>
                 <Pressable onPress={save} disabled={busy}
                   style={[{

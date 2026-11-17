@@ -334,7 +334,7 @@
       "emailNotif": "E-Mail-Benachrichtigungen",
       "finance": "Finanzen",
       "stock": "Bestand & Lager",
-      "invoices": "Rechnungen",
+      "invoices": "Leistungsabrechnungen",
       "expenses": "Ausgaben",
       "staff": "Personal",
       "users": "Benutzer",
@@ -487,7 +487,7 @@
         "sub": "Lieferablauf"
       },
       "finance": {
-        "sub": "Kasse · Rechnung · Ausgabe · Scheck"
+        "sub": "Kasse · Leistungsabrechnung · Ausgabe · Scheck"
       },
       "team": {
         "sub": "Personal · Gehalt · Leistung"
@@ -570,14 +570,14 @@
       "recentOrders": "Letzte Aufträge",
       "viewAll": "Alle anzeigen →",
       "noOrders": "Noch keine Aufträge",
-      "unbilledDeliveries": "Nicht abgerechnete Lieferungen vorhanden",
+      "unbilledDeliveries": "Lieferungen ohne Leistungsabrechnung",
       "orders": "Aufträge · ",
       "clinicEstimated": "Klinik · geschätzt ",
-      "invoice": "Abrechnen →",
+      "invoice": "Leistungsabrechnung erstellen →",
       "financialSummary": "Finanzübersicht",
       "monthlyCollection": "Eingang diesen Monat",
       "pendingInvoice": "Forderungen",
-      "paidInvoiceCount": "Bezahlte Rechnungen",
+      "paidInvoiceCount": "Bezahlte Leistungsabrechnungen",
       "statusDistribution": "Statusverteilung",
       "workTypeDistribution": "Verteilung nach Arbeitsart",
       "totalMembers": "Einheiten",
@@ -675,7 +675,11 @@
     "moreMenu": {
       "courierSub": "Lieferablauf",
       "settingsSub": "Profil · Benachrichtigungen · Design",
-      "title": "Vollständiges Menü"
+      "title": "Vollständiges Menü",
+      "approvalsSub": "Designs zur Freigabe",
+      "messagesSub": "Auftragschats mit dem Labor",
+      "financeSub": "Konto · Leistungsentgelte · Zahlungen",
+      "supportSub": "Anfragen · Hilfe"
     },
     "screens": {
       "home": "Start",
@@ -866,7 +870,7 @@
         "statement": "Kontoauszug",
         "statementHint": "Alle Bewegungen",
         "open": "Offen",
-        "openHint": "Unbezahlte Rechnungen",
+        "openHint": "Unbezahlte Leistungsabrechnungen",
         "overdue": "Überfällig",
         "overdueHint": "Dringende Forderungen",
         "pos": "Online-POS",
@@ -874,7 +878,7 @@
         "payments": "Zahlungen",
         "paymentsHint": "Zahlungsverlauf",
         "preStatement": "Vorab-Auszug",
-        "preStatementHint": "Rechnungen zur Freigabe"
+        "preStatementHint": "Leistungsabrechnungen zur Freigabe"
       },
       "error": {
         "clinicNotFound": "Klinikdaten nicht gefunden. Überprüfen Sie Ihre Profileinstellungen."

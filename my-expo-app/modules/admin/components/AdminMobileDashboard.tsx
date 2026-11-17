@@ -547,12 +547,13 @@ export function LiveProductionCard({ nn, active, delivered, total, pct, title, a
   );
 }
 
-type TodayTone = 'danger' | 'info' | 'warning';
+export type TodayTone = 'danger' | 'info' | 'warning';
 // Durum şeridi — masaüstü Özet'in büyük sayılarıyla (BigStat) AYNI dil: kart yok,
 // ince büyük rakam, altında büyük harfli küçük etiket, bölmeler arasında saç teli
 // ayraç (kullanıcı kararı 2026-11-14). Sayı varsa rakam tonlanır ve bölme
 // Siparişler'i o filtreyle açar; sıfır bölme nötr ve dokunulmaz.
-function TodayStrip({ items }: {
+// Lab mobil Özet de aynı şeridi kullanır (tek tanım).
+export function TodayStrip({ items }: {
   items: { key: string; label: string; n: number; tone: TodayTone; icon: any; onPress: () => void }[];
 }) {
   const T = useMobileTokens();

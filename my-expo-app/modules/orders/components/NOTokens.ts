@@ -5,6 +5,7 @@
  */
 import { DS } from '../../../core/theme/dsTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 
 // ── Renkler ────────────────────────────────────────────────────────
 export const NO = {
@@ -107,8 +108,26 @@ export const NO_DARK = {
   inkMute:   'rgba(247,242,233,0.45)',
 };
 
+// Hekim + klinik panelleri (Zümrüt): safran yerine yeşil vurgu, krem yerine beyaz yüzey.
+// Lab safran kalır; admin/istasyon değişmez.
+const NO_CLINIC = {
+  ...NO,
+  bgStage:     '#FFFFFF',
+  saffron:     DS.clinic.primary,          // #32BB78
+  saffronSoft: '#EDFCF3',                  // zümrüt 50
+  saffronTint: 'rgba(50,187,120,0.2)',
+};
+const NO_CLINIC_DARK = {
+  ...NO_DARK,
+  saffron:     DS.clinic.primary,
+  saffronSoft: 'rgba(50,187,120,0.18)',
+  saffronTint: 'rgba(50,187,120,0.2)',
+};
+
 export function useNOTokens() {
   const dark = useThemeModeStore(s => s.resolvedDark);
+  const panelKey = usePanelTheme().key;
+  if (panelKey === 'clinic') return dark ? NO_CLINIC_DARK : NO_CLINIC;
   return dark ? NO_DARK : NO;
 }
 

@@ -42,7 +42,23 @@ public class ArScannerModule: Module {
                     promise.reject("E_UNSUPPORTED", "Tam kafa taraması LiDAR'lı iPhone ve iOS 17 gerektirir.")
                     return
                 }
-                Self.presentHeadScan(from: presenter, lang: lang, promise: promise)
+                Self.presentHeadScan(from: presenter, lang: lang, unified: false, promise: promise)
+            }
+        }
+
+        // Birleşik tarama: yüz + tam kafa tek akışta (ARKit konum takibi + tam çözünürlük kareler +
+        // mm ölçek). Ön yay dolunca "yüz olarak" bitirilebilir. Eski native derlemede yoktur.
+        AsyncFunction("startUnifiedScan") { (lang: String?, promise: Promise) in
+            DispatchQueue.main.async {
+                guard let presenter = Self.topMostViewController() else {
+                    promise.reject("E_NO_PRESENTER", "Aktif view controller bulunamadı.")
+                    return
+                }
+                guard #available(iOS 17.0, *), Self.headScanSupported() else {
+                    promise.reject("E_UNSUPPORTED", "Bu tarama LiDAR'lı iPhone ve iOS 17 gerektirir.")
+                    return
+                }
+                Self.presentHeadScan(from: presenter, lang: lang, unified: true, promise: promise)
             }
         }
 
@@ -73,7 +89,23 @@ public class ArScannerModule: Module {
                     promise.reject("E_UNSUPPORTED", "Bu cihaz world tracking desteklemiyor.")
                     return
                 }
-                Self.presentGuidedRear(from: presenter, promise: promise)
+                Self.presentGuidedRear(from: presenter, lang: nil, accent: nil, promise: promise)
+            }
+        }
+
+        // Aynı tarama, ekran metinleri uygulama dilinde (tr/en/de/fa), vurgu rengi panel renginde (hex). Ayrı ad:
+        // eski native derlemede bu işlev yoktur, JS o zaman yukarıdakine düşer.
+        AsyncFunction("startGuidedRearScanLocalized") { (lang: String?, accent: String?, promise: Promise) in
+            DispatchQueue.main.async {
+                guard let presenter = Self.topMostViewController() else {
+                    promise.reject("E_NO_PRESENTER", "Aktif view controller bulunamadı.")
+                    return
+                }
+                guard #available(iOS 17.0, *), ARWorldTrackingConfiguration.isSupported else {
+                    promise.reject("E_UNSUPPORTED", "Bu cihaz world tracking desteklemiyor.")
+                    return
+                }
+                Self.presentGuidedRear(from: presenter, lang: lang, accent: accent, promise: promise)
             }
         }
 
@@ -150,10 +182,10 @@ public class ArScannerModule: Module {
     // MARK: Arka kamera rehberli (Faz B.1)
 
     @available(iOS 17.0, *)
-    private static func presentGuidedRear(from presenter: UIViewController, promise: Promise) {
+    private static func presentGuidedRear(from presenter: UIViewController, lang: String?, accent: String?, promise: Promise) {
         let dirs = ObjectCaptureDirs.make()
         var didResolve = false
-        let flow = GuidedRearCaptureView(dirs: dirs) { result in
+        let flow = GuidedRearCaptureView(dirs: dirs, text: GuidedRearText(lang: lang), accentHex: accent) { result in
             guard !didResolve else { return }
             didResolve = true
             presenter.dismiss(animated: true) {
@@ -163,19 +195,26 @@ public class ArScannerModule: Module {
                 case .some(.success(let outputDir)):
                     let obj = Self.firstFile(in: outputDir, ext: "obj")
                     let mtl = Self.firstFile(in: outputDir, ext: "mtl")
-                    let png = Self.firstFile(in: outputDir, ext: "png")
+                    // Doku = MTL'nin map_Kd'si. Klasörde normal/AO haritaları da var; ilk png alınırsa
+                    // yanlış harita (AO) yüklenebiliyordu.
+                    let png = obj.flatMap { HeadMeshPostProcess.diffuseTexture(objURL: $0) }
+                        ?? Self.firstFile(in: outputDir, ext: "png")
                     guard let objPath = obj?.path else {
                         promise.reject("E_NO_OBJ", "OBJ üretilemedi."); return
                     }
                     let stlPath = Self.makeSTL(fromOBJ: obj, in: outputDir)
-                    let usdzExists = FileManager.default.fileExists(atPath: dirs.outputUSDZ.path)
+                    // "Tekrar tara" yeni klasör açar → önizleme, dönen çıktı klasörünün yanındadır
+                    let usdzPath = outputDir.deletingLastPathComponent()
+                        .appendingPathComponent(dirs.outputUSDZ.lastPathComponent).path
+                    let usdzExists = FileManager.default.fileExists(atPath: usdzPath)
                     promise.resolve([
                         "asciiSTL": NSNull(), "binarySTL": stlPath,
                         "obj": objPath,
                         "mtl": mtl?.path ?? NSNull(),
                         "texturePNG": png?.path ?? NSNull(),
-                        "usdz": usdzExists ? dirs.outputUSDZ.path : NSNull(),
+                        "usdz": usdzExists ? usdzPath : NSNull(),
                         "ply": NSNull(),
+                        "debugInfo": Self.infoPath(in: outputDir),
                     ] as [String: Any])
                 case .some(.failure(let err)):
                     promise.reject("E_RECONSTRUCT_FAILED", err.localizedDescription)
@@ -190,10 +229,10 @@ public class ArScannerModule: Module {
     // MARK: Tam kafa (Faz 4)
 
     @available(iOS 17.0, *)
-    private static func presentHeadScan(from presenter: UIViewController, lang: String?, promise: Promise) {
+    private static func presentHeadScan(from presenter: UIViewController, lang: String?, unified: Bool, promise: Promise) {
         let dirs = ObjectCaptureDirs.make()
         var didResolve = false
-        let flow = HeadScanView(dirs: dirs, text: HeadScanText(lang: lang)) { result in
+        let flow = HeadScanView(dirs: dirs, text: HeadScanText(lang: lang), unified: unified) { result in
             guard !didResolve else { return }
             didResolve = true
             presenter.dismiss(animated: true) {
@@ -216,6 +255,7 @@ public class ArScannerModule: Module {
                         "texturePNG": tex?.path ?? NSNull(),
                         "usdz": usdzExists ? dirs.outputUSDZ.path : NSNull(),
                         "ply": NSNull(),
+                        "debugInfo": Self.infoPath(in: outputDir),
                     ] as [String: Any])
                 case .some(.failure(let err)):
                     promise.reject("E_RECONSTRUCT_FAILED", err.localizedDescription)
@@ -317,6 +357,12 @@ public class ArScannerModule: Module {
         let stlURL = outputDir.appendingPathComponent("model.stl")
         guard (try? data.write(to: stlURL, options: .atomic)) != nil else { return NSNull() }
         return stlURL.path
+    }
+
+    /// Taramanın tanı kaydı (varsa). Depolamaya yüklenir, uygulamada görünmez.
+    private static func infoPath(in dir: URL) -> Any {
+        let url = dir.appendingPathComponent("scan_info.json")
+        return FileManager.default.fileExists(atPath: url.path) ? url.path : NSNull()
     }
 
     /// Bir klasörde verilen uzantıya sahip ilk dosyayı bulur (case-insensitive).

@@ -95,6 +95,9 @@ function chipTones(U: InkUI) {
   };
 }
 
+// Sipariş önizleme penceresinin zemini = aktif panelin sayfa zemini (lab kremi yalnız lab'da)
+const PREVIEW_PAGE_BG: Record<string, string> = { lab: '#F5F1EB', clinic: '#F9FAFB', exec: '#F7F9FC', tech: '#F5F9FD' };
+
 function modalShadowOf(U: InkUI) {
   return U.isDark ? '0 24px 48px -12px rgba(0,0,0,0.65)' : '0 24px 48px -12px rgba(0,0,0,0.18)';
 }
@@ -206,7 +209,7 @@ interface DetailProps {
   onBack?: () => void;
 }
 
-const DISCOUNT_LOCKED_TEXT = 'Kesilmiş faturada indirim değiştirilemez. Ekstreden indirim ekleyebilirsiniz.';
+const DISCOUNT_LOCKED_TEXT = 'Kesinleşmiş hizmet bedelinde indirim değiştirilemez. Ekstreden indirim ekleyebilirsiniz.';
 
 export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const U = useInkUI();
@@ -355,7 +358,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
         <AlertCircle size={40} strokeWidth={1.4} color={U.ink[300]} />
-        <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }}>Fatura bulunamadı</Text>
+        <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }}>Hizmet bedeli bulunamadı</Text>
         <Pressable onPress={goBack} style={{
           paddingHorizontal: 20, paddingVertical: 10, borderRadius: 9999,
           backgroundColor: U.ink[100], cursor: 'pointer' as any,
@@ -434,7 +437,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
       }
       return;
     }
-    toast.success(autoT('Fatura indirimi kaydedildi'));
+    toast.success(autoT('Hizmet bedeli indirimi kaydedildi'));
     refetchSilent();
   };
 
@@ -505,8 +508,8 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
     label: string; short: string; state: LcState; date?: string | null;
     dueCaption?: string | null; badge?: { text: string; bg: string; fg: string } | null;
   }[] = [
-    { label: 'Fatura oluşturuldu', short: 'Oluşturuldu', state: 'done', date: createdDate },
-    { label: _cancelled ? 'İptal edildi' : 'Kesildi', short: _cancelled ? 'İptal' : 'Kesildi',
+    { label: 'Hizmet bedeli oluşturuldu', short: 'Oluşturuldu', state: 'done', date: createdDate },
+    { label: _cancelled ? 'İptal edildi' : 'Kesinleşti', short: _cancelled ? 'İptal' : 'Kesinleşti',
       state: _cancelled ? 'done' : _issued ? 'done' : 'active',
       date: _issued ? invoice.issue_date : null },
     { label: _partial ? 'Kısmi tahsil edildi' : 'Ödeme bekleniyor', short: _partial ? 'Kısmi' : 'Ödeme',
@@ -561,7 +564,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
       const ps = await fetchPreStatement(invoice.clinic_id);
       if (!canLabWrite(ps.actor, ps.can_manage)) { setMarkErr(autoT('Bu işlem için mali işlem yönetme yetkisi gerekir'), at); return; }
       const inv = (ps.invoices ?? []).find(i => i.id === invoice.id);
-      if (!inv) { setMarkErr(autoT('Bu fatura artık taslak değil'), at); refetch(); return; }
+      if (!inv) { setMarkErr(autoT('Bu hizmet bedeli artık taslak değil'), at); refetch(); return; }
       setLabApprove([inv]);
     } catch (e: any) {
       const msg = String(e?.message ?? e);
@@ -578,7 +581,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
       title: 'Tahsilatı geri al', variant: 'danger',
       message:
         `${fmtMoney(p.amount)} · ${fmtDate(p.payment_date)} · ${autoT(PAYMENT_METHOD_LABELS[p.payment_method])}\n\n` +
-        autoT('Bu tahsilat silinir; fatura durumu ve kalan tutar kendiliğinden güncellenir. İşlem aktivite kaydına yazılır.'),
+        autoT('Bu tahsilat silinir; hizmet bedelinin durumu ve kalan tutar kendiliğinden güncellenir. İşlem aktivite kaydına yazılır.'),
       label: 'Geri al',
       onConfirm: async () => {
         setConfirm(null);
@@ -586,7 +589,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
         const { error } = await undoManualPayment(p, invoice.invoice_number, invoice.lab_id ?? null);
         setBusy(false);
         if (error) toast.error(autoT(error));
-        else { toast.success(autoT('Tahsilat geri alındı, fatura güncellendi.')); refetch(); }
+        else { toast.success(autoT('Tahsilat geri alındı, hizmet bedeli güncellendi.')); refetch(); }
       },
     });
   };
@@ -595,8 +598,8 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   // Cross-platform ConfirmDialog kullanılıyor.
   const handleCancel = () => {
     setConfirm({
-      title: 'Faturayı İptal Et', variant: 'warning',
-      message: 'Bu faturayı iptal etmek istediğinize emin misiniz?',
+      title: 'Hizmet bedelini iptal et', variant: 'warning',
+      message: 'Bu hizmet bedelini iptal etmek istediğinize emin misiniz?',
       label: 'İptal Et',
       onConfirm: async () => {
         setConfirm(null);   // onay diyaloğunu hemen kapat
@@ -609,8 +612,8 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   };
   const handleDelete = () => {
     setConfirm({
-      title: 'Faturayı Sil', variant: 'danger',
-      message: 'Bu taslak fatura silinecek. Geri alınamaz.',
+      title: 'Hizmet bedelini sil', variant: 'danger',
+      message: 'Bu taslak hizmet bedeli silinecek. Geri alınamaz.',
       label: 'Evet, sil',
       onConfirm: async () => {
         setConfirm(null);   // onay diyaloğunu hemen kapat (ConfirmDialog onConfirm sonrası kapatmıyor)
@@ -618,7 +621,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
         const { error } = await deleteInvoice(invoice.id);
         setBusy(false);
         if (error) { toast.error((error as any).message ?? String(error)); return; }
-        toast.success('Taslak fatura silindi.');
+        toast.success('Taslak hizmet bedeli silindi.');
         // Silinen kayda "geri" dönülmez: yığın boşken router.back() sessizce hiçbir şey
         // yapmıyor, kullanıcı silinmiş faturanın sayfasında kalıyordu → listeye REPLACE.
         if (onBack) { onBack(); return; }
@@ -682,7 +685,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
               /* Lacivert geri düğmesi — Finans'ın ortak bileşeni (NavyBackButtonX) */
               <NavyBackButtonX onPress={goBack} />
             }
-            kicker={`${autoT('Fatura')} · ${invoice.invoice_number}`}
+            kicker={`${autoT('Hizmet bedeli')} · ${invoice.invoice_number}`}
             title={fmtMoney(balance)}
             description={autoT('Kalan')}
             /* Durum rozeti + belge eylemleri kartın SAĞ ÜST köşesinde, yani
@@ -728,10 +731,10 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                       <Text style={{ maxWidth: 280, fontSize: 12, lineHeight: 16, color: U.chipTones.danger.fg }}>{markErr}</Text>
                     ) : null}
                     {!readOnly && invoice.status === 'taslak' && !approvalOn && (
-                      <PillBtn icon={Send} label="Kesildi İşaretle" stacked={!isDesktop} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={() => { void handleMarkSent('hero'); }} disabled={busy} />
+                      <PillBtn icon={Send} label="Kesinleştir" stacked={!isDesktop} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={() => { void handleMarkSent('hero'); }} disabled={busy} />
                     )}
                     {!readOnly && invoice.status === 'taslak' && approvalOn && (
-                      <GlassTooltip title={autoT('Klinik adına onay kaydet')} text={autoT('Klinikten aldığınız onayı gerekçesiyle kaydeder; fatura kesinleşir')}>
+                      <GlassTooltip title={autoT('Klinik adına onay kaydet')} text={autoT('Klinikten aldığınız onayı gerekçesiyle kaydeder; hizmet bedeli kesinleşir')}>
                         <PillBtn icon={FileCheck} label={autoT('Klinik adına onay kaydet')} stacked={!isDesktop} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={() => { void openLabApproval('hero'); }} disabled={busy || approveLoading} />
                       </GlassTooltip>
                     )}
@@ -1139,7 +1142,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                     lockedHint={autoT(DISCOUNT_LOCKED_TEXT)}
                   />
                   {zeroed ? (
-                    <Text style={{ marginTop: 6, fontSize: 12, fontWeight: '600', color: U.chipTones.warning.fg }}>{autoT('Fatura tutarı 0 olacak.')}</Text>
+                    <Text style={{ marginTop: 6, fontSize: 12, fontWeight: '600', color: U.chipTones.warning.fg }}>{autoT('Hizmet bedeli tutarı 0 olacak.')}</Text>
                   ) : null}
                   {canEditDiscount ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
@@ -1174,7 +1177,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                   </View>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                     <Text style={{ fontSize: 12, color: U.ink[500] }}>
-                      {autoT('Fatura indirimi')}{invoice.discount_type === 'percent' ? ` (%${Number(invoice.discount_value).toLocaleString('tr-TR')})` : ''}
+                      {autoT('Hizmet bedeli indirimi')}{invoice.discount_type === 'percent' ? ` (%${Number(invoice.discount_value).toLocaleString('tr-TR')})` : ''}
                     </Text>
                     <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900] }}>−{fmtMoney(invoice.discount_amount)}</Text>
                   </View>
@@ -1443,7 +1446,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
             onPress={(e) => (e as any).stopPropagation?.()}
             style={{
               width: '100%', maxWidth: 1240, height: isDesktop ? '94%' : '100%',
-              borderRadius: isDesktop ? 24 : 0, overflow: 'hidden', backgroundColor: '#F5F1EB', position: 'relative',
+              borderRadius: isDesktop ? 24 : 0, overflow: 'hidden', backgroundColor: U.isDark ? '#0E0E0E' : (PREVIEW_PAGE_BG[theme.key] ?? '#F5F1EB'), position: 'relative',
               ...(Platform.OS === 'web' ? { boxShadow: modalShadowOf(U) } as any : {}),
             }}
           >
@@ -1655,7 +1658,7 @@ const PAYMENT_METHOD_OPTIONS: { v: PaymentMethod; l: string; icon: React.Compone
   { v: 'diger',  l: 'Diger',    icon: MoreHorizontal },
 ];
 
-function PaymentModal({ visible, invoiceId, maxAmount, currency = 'TRY', onClose, onDone }: {
+export function PaymentModal({ visible, invoiceId, maxAmount, currency = 'TRY', onClose, onDone }: {
   visible: boolean; invoiceId: string; maxAmount: number; currency?: string; onClose: () => void; onDone: () => void;
 }) {
   const U = useInkUI();

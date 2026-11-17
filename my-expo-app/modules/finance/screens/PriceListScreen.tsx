@@ -59,6 +59,15 @@ import * as Sharing from 'expo-sharing';
 import { File as FSFile, Paths } from 'expo-file-system';
 import { MobileTableX, MobileTableRowX, MobileTableIconX, useMobileTableText } from '../../../core/ui/MobileTableX';
 import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
+import { parseAmount } from '../../cash/drawerModel';
+
+/** ISO zaman damgası → kullanıcının yerel günü (YYYY-MM-DD); split('T') UTC günü verir. */
+function localYmd(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+}
 // Kurum ekleme kartı — Sağlık Kurumları ekranındakiyle AYNI bileşen. Tembel yüklenir:
 // ClinicsScreen rotalarda lazyRoute ile geliyor; statik import burada "Requiring unknown
 // module" çökmesine yol açabilir (bkz. lazy route + statik import tuzağı).
@@ -1220,7 +1229,10 @@ function StandardTab({ urgentRate = 0 }: { urgentRate?: number }) {
   const handleSave = async () => {
     if (!form.name.trim()) { setError('Hizmet adı zorunludur.'); return; }
     // Ücretsiz → fiyat 0; yüzde/tutar → girilen sayı
-    const price = form.priceType === 'free' ? 0 : (parseFloat(form.price) || 0);
+    // "12,5" / "1.250,50" gibi girişler doğru okunur (parseFloat virgülde keser)
+    const parsedPrice = form.priceType === 'free' ? 0 : (form.price.trim() === '' ? 0 : parseAmount(form.price));
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) { setError(autoT('Geçerli bir fiyat girin.')); return; }
+    const price = parsedPrice;
     setSaving(true);
     const days = form.production_days.trim() === '' ? null : Math.max(0, parseInt(form.production_days, 10) || 0);
     const payload = {
@@ -1278,7 +1290,10 @@ function StandardTab({ urgentRate = 0 }: { urgentRate?: number }) {
     const snapshot = services;
     setServices(next);
     if (updates.length) {
-      try { await Promise.all(updates); } catch { setServices(snapshot); }
+      // Supabase hata FIRLATMAZ, { error } döndürür — sonuçlara bakılmazsa geri alma hiç çalışmaz
+      let failed = false;
+      try { failed = (await Promise.all(updates)).some((r: any) => r?.error); } catch { failed = true; }
+      if (failed) { setServices(snapshot); toast.error(autoT('Sıralama kaydedilemedi')); }
     }
   };
 
@@ -1428,14 +1443,15 @@ function StandardTab({ urgentRate = 0 }: { urgentRate?: number }) {
       if (s.id === b.id) return { ...s, sort_order: aOrder.bNew };
       return s;
     }));
+    let failed = false;
     try {
-      await Promise.all([
+      const res = await Promise.all([
         updateLabService(a.id, { sort_order: aOrder.aNew }),
         updateLabService(b.id, { sort_order: aOrder.bNew }),
       ]);
-    } catch {
-      setServices(snapshot);
-    }
+      failed = res.some((r: any) => r?.error);
+    } catch { failed = true; }
+    if (failed) { setServices(snapshot); toast.error(autoT('Sıralama kaydedilemedi')); }
   };
 
   // ── Sürükle-bırak sıralama (kategori içinde) ───────────────────────────────
@@ -2353,13 +2369,20 @@ function CustomTab({ initialClinicId, onExit }: {
   const handleSaveOverride = async () => {
     if (!selectedClinic || !editSvc) return;
     setOErr(null);
+    const customPrice = oForm.custom_price ? parseAmount(oForm.custom_price) : null;
+    const discountPct = oForm.discount_percent ? parseAmount(oForm.discount_percent) : null;
+    if ((customPrice !== null && (!Number.isFinite(customPrice) || customPrice < 0))
+      || (discountPct !== null && (!Number.isFinite(discountPct) || discountPct < 0 || discountPct > 100))) {
+      setOErr(autoT('Geçerli bir fiyat veya indirim oranı girin.'));
+      return;
+    }
     setSaving(true);
     const existing = overrides.find((o) => o.service_id === editSvc.id);
     const payload = {
       clinic_id:        selectedClinic.id,
       service_id:       editSvc.id,
-      custom_price:     oForm.custom_price ? parseFloat(oForm.custom_price) : null,
-      discount_percent: oForm.discount_percent ? parseFloat(oForm.discount_percent) : null,
+      custom_price:     customPrice,
+      discount_percent: discountPct,
       currency:         oForm.currency || 'TRY',
       notes:            oForm.notes || null,
     };
@@ -2899,8 +2922,8 @@ function PromotionsTab() {
       discount_value: String(p.discount_value),
       scope: p.scope,
       category: p.category ?? '',
-      starts_at: p.starts_at ? p.starts_at.split('T')[0] : '',
-      ends_at: p.ends_at ? p.ends_at.split('T')[0] : '',
+      starts_at: p.starts_at ? localYmd(p.starts_at) : '',
+      ends_at: p.ends_at ? localYmd(p.ends_at) : '',
     });
     setModal(true);
   };
@@ -2911,11 +2934,13 @@ function PromotionsTab() {
     const payload = {
       name: form.name.trim(),
       discount_type: form.discount_type,
-      discount_value: parseFloat(form.discount_value) || 0,
+      discount_value: parseAmount(form.discount_value) || 0,
       scope: form.scope,
       category: form.category || null,
-      starts_at: form.starts_at ? new Date(form.starts_at).toISOString() : null,
-      ends_at: form.ends_at ? new Date(form.ends_at).toISOString() : null,
+      // Seçilen gün yerel saatle: başlangıç gün başı, bitiş gün sonu (UTC gece
+      // yarısı bitiş, kampanyayı son gününün sabahında kapatıyordu).
+      starts_at: form.starts_at ? new Date(`${form.starts_at}T00:00:00`).toISOString() : null,
+      ends_at: form.ends_at ? new Date(`${form.ends_at}T23:59:59.999`).toISOString() : null,
       is_active: true,
     };
     if (editPromo) {

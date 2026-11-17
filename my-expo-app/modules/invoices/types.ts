@@ -20,7 +20,7 @@ export type PaymentMethod =
 
 export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
   taslak:       'Taslak',
-  kesildi:      'Kesildi',
+  kesildi:      'Kesinleşti',
   kismi_odendi: 'Kısmi Ödendi',
   odendi:       'Ödendi',
   iptal:        'İptal',

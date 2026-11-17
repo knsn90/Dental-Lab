@@ -93,7 +93,7 @@ export function StatementFilterBar({ view }: { view: StatementView }) {
         }}>
           <AlertTriangle size={14} color={U.chipTones.warning.fg} strokeWidth={1.8} />
           <Text style={{ flex: 1, minWidth: 180, fontSize: 12.5, color: U.chipTones.warning.fg }}>
-            {autoT('Süzülmüş görünüm — onay tüm faturayı kapsar')}
+            {autoT('Süzülmüş görünüm — onay tüm hizmet bedelini kapsar')}
           </Text>
           <Pressable onPress={clear} hitSlop={6} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}>
             <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.chipTones.warning.fg }}>{autoT('Süzmeyi temizle')}</Text>

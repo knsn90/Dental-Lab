@@ -15,6 +15,7 @@ import { Slot, Tabs, useRouter, usePathname, Redirect } from 'expo-router';
 import {
   Home, ClipboardList, QrCode, MessageCircle, User, Plus, MoreHorizontal, Search, Users,
   Stethoscope as Stethoscope2, Truck as Truck2, Settings as Settings2,
+  FileCheck, Wallet, HelpCircle,
 } from '../../core/ui/icons';
 
 import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
@@ -245,10 +246,23 @@ export default function ClinicLayout() {
 
   // "Daha" bottom-sheet — yetkilere göre filtre.
   // Kullanıcılar artık navbar'da, bu menüden kaldırıldı.
+  // Onaylar · Mesajlar · Finans · Destek eklendi (2026-11-17): masaüstü kenar
+  // menüsündeki sayfalar mobilde yalnız aramayla bulunuyordu; "Daha" rozeti de
+  // (okunmamış + onay) menüde karşılığı olmayan bir sayıyı gösteriyordu.
   const MORE_ITEMS: import('../../core/ui/mobile/MoreMenuSheet').MoreItem[] = [
-    { key: 'courier',  label: t('nav.items.courier'),  sub: t('clinic.moreMenu.courierSub'),           icon: Truck2,    accent: '#059669', onPress: () => router.push('/(clinic)/courier-tracking' as any) },
+    ...(perms.orders_view
+      ? [{ key: 'approvals', label: t('nav.items.approvals'), sub: t('clinic.moreMenu.approvalsSub'), icon: FileCheck, accent: accentColor,
+          badge: pendingApprovals > 0 ? pendingApprovals : undefined, onPress: () => router.push('/(clinic)/approvals' as any) }]
+      : []),
+    { key: 'messages', label: t('nav.items.messages'), sub: t('clinic.moreMenu.messagesSub'), icon: MessageCircle, accent: accentColor,
+      badge: totalUnread > 0 ? totalUnread : undefined, onPress: () => router.push('/(clinic)/messages' as any) },
+    ...(showFinance
+      ? [{ key: 'finance', label: t('nav.items.finance'), sub: t('clinic.moreMenu.financeSub'), icon: Wallet, accent: accentColor, onPress: () => router.push('/(clinic)/finance' as any) }]
+      : []),
+    { key: 'support', label: t('nav.items.support'), sub: t('clinic.moreMenu.supportSub'), icon: HelpCircle, accent: accentColor, onPress: () => router.push('/(clinic)/support' as any) },
+    { key: 'courier',  label: t('nav.items.courier'),  sub: t('clinic.moreMenu.courierSub'),           icon: Truck2,    accent: accentColor, onPress: () => router.push('/(clinic)/courier-tracking' as any) },
     ...(perms.settings_manage
-      ? [{ key: 'settings', label: t('nav.items.settings'), sub: t('clinic.moreMenu.settingsSub'), icon: Settings2, accent: '#475569', onPress: () => router.push('/(clinic)/settings' as any) }]
+      ? [{ key: 'settings', label: t('nav.items.settings'), sub: t('clinic.moreMenu.settingsSub'), icon: Settings2, accent: accentColor, onPress: () => router.push('/(clinic)/settings' as any) }]
       : []),
   ];
 

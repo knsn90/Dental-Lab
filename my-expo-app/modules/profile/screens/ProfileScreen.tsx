@@ -31,6 +31,7 @@ import { supabase } from '../../../core/api/supabase';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { DeleteAccountDialog } from '../components/DeleteAccountDialog';
 import { formatAddress } from '../../../core/util/formatAddress';
 
@@ -221,6 +222,15 @@ export function ProfileScreen() {
   const cardSoftBg = T.cardSoft;  // useMobileTokens panele duyarlı (yeşil panelde adaçayı)
   const hairline   = T.hairline;
   const inkPrimary = T.ink;
+  // Masaüstü metin/alan renkleri — açık temada birebir eski değerler, koyuda token
+  // (eskiden sabit #0A0A0A/#3C3C3C/#FAFAFA → koyu temada görünmez metin, beyaz alan).
+  const U = useInkUI();
+  const C900 = isDark ? T.ink  : '#0A0A0A';
+  const C700 = isDark ? T.ink  : '#3C3C3C';
+  const C500 = isDark ? T.ink2 : '#6B6B6B';
+  const C400 = isDark ? T.ink3 : '#9A9A9A';
+  const C300 = isDark ? T.ink3 : '#C0C0C8';
+  const FIELD_BG = isDark ? '#141312' : '#FAFAFA';
 
   const { profile, signOut, setProfile, session } = useAuthStore() as any;
   // Web/PWA çıkış onayı — Alert.alert web'de çalışmadığı için modal
@@ -525,7 +535,7 @@ export function ProfileScreen() {
         <Card>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
             <SectionTitle>Profiliniz</SectionTitle>
-            <Text style={{ fontSize: 12, color: '#9A9A9A' }}>Katılım {joinedDate(profile)}</Text>
+            <Text style={{ fontSize: 12, color: C400 }}>Katılım {joinedDate(profile)}</Text>
           </View>
 
           {editing ? (
@@ -550,7 +560,7 @@ export function ProfileScreen() {
                   </View>
                 </Pressable>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, color: '#6B6B6B', lineHeight: 18 }}>
+                  <Text style={{ fontSize: 13, color: C500, lineHeight: 18 }}>
                     Ad, soyad ve telefon bilgilerinizi güncelleyin.
                   </Text>
                   <Pressable onPress={handlePickAvatar}>
@@ -597,7 +607,7 @@ export function ProfileScreen() {
                 </View>
               </Pressable>
               <View style={{ flex: 1 }}>
-                <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.4, color: '#0A0A0A', marginBottom: 4 }}>
+                <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.4, color: C900, marginBottom: 4 }}>
                   {profile?.full_name ?? '—'}
                 </Text>
                 <View style={{
@@ -612,7 +622,7 @@ export function ProfileScreen() {
                 onPress={() => setEditing(true)}
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 6,
-                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 10,
+                  borderWidth: 1, borderColor: (isDark ? hairline : 'rgba(0,0,0,0.08)'), borderRadius: 10,
                   paddingHorizontal: 12, paddingVertical: 8,
                   // @ts-ignore web
                   cursor: 'pointer',
@@ -637,20 +647,20 @@ export function ProfileScreen() {
 
               {/* E-posta */}
               <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
-                <Mail size={14} color="#9A9A9A" strokeWidth={1.8} style={{ marginEnd: 10 }} />
+                <Mail size={14} color={C400} strokeWidth={1.8} style={{ marginEnd: 10 }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: '#9A9A9A', marginBottom: 2 }}>E-posta</Text>
-                  <Text style={{ fontSize: 14, color: '#3C3C3C' }} numberOfLines={1}>{profile?.email ?? '—'}</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: C400, marginBottom: 2 }}>E-posta</Text>
+                  <Text style={{ fontSize: 14, color: C700 }} numberOfLines={1}>{profile?.email ?? '—'}</Text>
                 </View>
                 <Pressable onPress={() => setEditEmail(v => !v)} style={{ padding: 6, cursor: 'pointer' as any }}>
                   {editEmail
-                    ? <X size={14} color="#9A9A9A" strokeWidth={1.8} />
-                    : <Edit2 size={14} color="#9A9A9A" strokeWidth={1.8} />}
+                    ? <X size={14} color={C400} strokeWidth={1.8} />
+                    : <Edit2 size={14} color={C400} strokeWidth={1.8} />}
                 </Pressable>
               </View>
 
               {editEmail && (
-                <View style={{ marginTop: 12, gap: 10, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', paddingTop: 12 }}>
+                <View style={{ marginTop: 12, gap: 10, borderTopWidth: 1, borderTopColor: (isDark ? hairline : 'rgba(0,0,0,0.04)'), paddingTop: 12 }}>
                   <View style={{ gap: 6 }}>
                     <FieldLabel>Yeni E-posta</FieldLabel>
                     <FieldInput
@@ -658,7 +668,7 @@ export function ProfileScreen() {
                       placeholder="yeni@email.com" keyboardType="email-address"
                       autoCapitalize="none" returnKeyType="done" autoFocus
                     />
-                    <Text style={{ fontSize: 11, color: '#9A9A9A', lineHeight: 16 }}>
+                    <Text style={{ fontSize: 11, color: C400, lineHeight: 16 }}>
                       Değişiklik sonrası doğrulama e-postası gönderilir.
                     </Text>
                   </View>
@@ -670,15 +680,15 @@ export function ProfileScreen() {
 
               {/* Telefon */}
               <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
-                <Phone size={14} color="#9A9A9A" strokeWidth={1.8} style={{ marginEnd: 10 }} />
+                <Phone size={14} color={C400} strokeWidth={1.8} style={{ marginEnd: 10 }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: '#9A9A9A', marginBottom: 2 }}>Telefon</Text>
-                  <Text style={{ fontSize: 14, color: profile?.phone ? '#3C3C3C' : '#C0C0C8' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: C400, marginBottom: 2 }}>Telefon</Text>
+                  <Text style={{ fontSize: 14, color: profile?.phone ? C700 : C300 }}>
                     {profile?.phone ?? 'Eklenmedi'}
                   </Text>
                 </View>
                 <Pressable onPress={() => setEditing(true)} style={{ padding: 6, cursor: 'pointer' as any }}>
-                  <Edit2 size={14} color="#9A9A9A" strokeWidth={1.8} />
+                  <Edit2 size={14} color={C400} strokeWidth={1.8} />
                 </Pressable>
               </View>
             </Card>
@@ -694,26 +704,26 @@ export function ProfileScreen() {
                   cursor: 'pointer',
                 }}
               >
-                <Lock size={15} color="#6B6B6B" strokeWidth={1.8} />
-                <Text style={{ fontSize: 14, fontWeight: '500', color: '#3C3C3C', flex: 1 }}>Şifre Değiştir</Text>
+                <Lock size={15} color={C500} strokeWidth={1.8} />
+                <Text style={{ fontSize: 14, fontWeight: '500', color: C700, flex: 1 }}>Şifre Değiştir</Text>
                 {showPassSection
-                  ? <ChevronUp size={16} color="#9A9A9A" strokeWidth={1.8} />
-                  : isRTL() ? <ChevronLeft size={16} color="#9A9A9A" strokeWidth={1.8} /> : <ChevronRight size={16} color="#9A9A9A" strokeWidth={1.8} />}
+                  ? <ChevronUp size={16} color={C400} strokeWidth={1.8} />
+                  : isRTL() ? <ChevronLeft size={16} color={C400} strokeWidth={1.8} /> : <ChevronRight size={16} color={C400} strokeWidth={1.8} />}
               </Pressable>
 
               {showPassSection && (
-                <View style={{ marginTop: 12, gap: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', paddingTop: 14 }}>
+                <View style={{ marginTop: 12, gap: 14, borderTopWidth: 1, borderTopColor: (isDark ? hairline : 'rgba(0,0,0,0.04)'), paddingTop: 14 }}>
                   <View style={{ gap: 6 }}>
                     <FieldLabel>Yeni Şifre</FieldLabel>
                     <View style={{
                       flexDirection: 'row', alignItems: 'center',
-                      borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', borderRadius: 12,
-                      backgroundColor: '#FAFAFA',
+                      borderWidth: 1, borderColor: (isDark ? hairline : 'rgba(0,0,0,0.06)'), borderRadius: 12,
+                      backgroundColor: FIELD_BG,
                     }}>
                       <TextInput
                         style={{
                           flex: 1, paddingHorizontal: 14, paddingVertical: 12,
-                          fontSize: 14, color: '#0A0A0A',
+                          fontSize: 14, color: C900,
                           // @ts-ignore web
                           outlineWidth: 0,
                         }}
@@ -733,13 +743,13 @@ export function ProfileScreen() {
                     <FieldLabel error={passNoMatch}>Şifre Tekrar</FieldLabel>
                     <View style={{
                       flexDirection: 'row', alignItems: 'center',
-                      borderWidth: 1, borderColor: passNoMatch ? '#EF4444' : 'rgba(0,0,0,0.06)',
-                      borderRadius: 12, backgroundColor: '#FAFAFA',
+                      borderWidth: 1, borderColor: passNoMatch ? '#EF4444' : (isDark ? hairline : 'rgba(0,0,0,0.06)'),
+                      borderRadius: 12, backgroundColor: FIELD_BG,
                     }}>
                       <TextInput
                         style={{
                           flex: 1, paddingHorizontal: 14, paddingVertical: 12,
-                          fontSize: 14, color: passNoMatch ? '#EF4444' : '#0A0A0A',
+                          fontSize: 14, color: passNoMatch ? '#EF4444' : C900,
                           // @ts-ignore web
                           outlineWidth: 0,
                         }}
@@ -771,10 +781,10 @@ export function ProfileScreen() {
             <Card>
               <SectionTitle>Tercihler</SectionTitle>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <Bell size={15} color="#6B6B6B" strokeWidth={1.8} />
+                <Bell size={15} color={C500} strokeWidth={1.8} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '500', color: '#0A0A0A' }}>Bildirimler</Text>
-                  <Text style={{ fontSize: 12, color: '#9A9A9A', marginTop: 2 }}>Sipariş ve durum güncellemeleri</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '500', color: C900 }}>Bildirimler</Text>
+                  <Text style={{ fontSize: 12, color: C400, marginTop: 2 }}>Sipariş ve durum güncellemeleri</Text>
                 </View>
                 <AppSwitch value={notifEnabled} onValueChange={setNotifEnabled} accentColor={accent} />
               </View>
@@ -786,18 +796,18 @@ export function ProfileScreen() {
 
               {/* Hesap Türü */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 }}>
-                <User size={14} color="#9A9A9A" strokeWidth={1.8} />
-                <Text style={{ fontSize: 11, fontWeight: '500', color: '#9A9A9A', width: 90 }}>Hesap Türü</Text>
-                <Text style={{ fontSize: 14, color: '#3C3C3C', flex: 1 }}>{roleLabel}</Text>
+                <User size={14} color={C400} strokeWidth={1.8} />
+                <Text style={{ fontSize: 11, fontWeight: '500', color: C400, width: 90 }}>Hesap Türü</Text>
+                <Text style={{ fontSize: 14, color: C700, flex: 1 }}>{roleLabel}</Text>
               </View>
 
               <Divider />
 
               {/* Katılım Tarihi */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 }}>
-                <Calendar size={14} color="#9A9A9A" strokeWidth={1.8} />
-                <Text style={{ fontSize: 11, fontWeight: '500', color: '#9A9A9A', width: 90 }}>Katılım Tarihi</Text>
-                <Text style={{ fontSize: 14, color: '#3C3C3C', flex: 1 }}>{joinedDate(profile) || '—'}</Text>
+                <Calendar size={14} color={C400} strokeWidth={1.8} />
+                <Text style={{ fontSize: 11, fontWeight: '500', color: C400, width: 90 }}>Katılım Tarihi</Text>
+                <Text style={{ fontSize: 14, color: C700, flex: 1 }}>{joinedDate(profile) || '—'}</Text>
               </View>
             </Card>
 
@@ -849,22 +859,22 @@ export function ProfileScreen() {
       <Modal visible={signOutOpen} transparent animationType="fade" onRequestClose={() => setSignOutOpen(false)}>
         <Pressable
           onPress={() => setSignOutOpen(false)}
-          style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          style={U.modalOverlay}
         >
           <Pressable
             onPress={(e: any) => e.stopPropagation?.()}
-            style={{ width: '100%', maxWidth: 380, backgroundColor: '#FFFFFF', borderRadius: 18, padding: 22, gap: 8 }}
+            style={{ width: '100%', maxWidth: 380, backgroundColor: cardBg, borderRadius: 18, padding: 22, gap: 8, ...(isDark ? { borderWidth: 1, borderColor: hairline } : {}) }}
           >
-            <Text style={{ fontSize: 17, fontWeight: '700', color: '#0A0A0A', letterSpacing: -0.3 }}>Çıkış Yap</Text>
-            <Text style={{ fontSize: 13.5, color: '#6B6B6B', lineHeight: 20 }}>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: C900, letterSpacing: -0.3 }}>Çıkış Yap</Text>
+            <Text style={{ fontSize: 13.5, color: C500, lineHeight: 20 }}>
               Hesabınızdan çıkmak istediğinizden emin misiniz?
             </Text>
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
               <Pressable
                 onPress={() => setSignOutOpen(false)}
-                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#EAEAEA', alignItems: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: isDark ? hairline : '#EAEAEA', alignItems: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
               >
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#2C2C2C' }}>İptal</Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: C700 }}>İptal</Text>
               </Pressable>
               <Pressable
                 onPress={() => { setSignOutOpen(false); signOut(); }}

@@ -52,7 +52,7 @@ const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
 
 const KIND_OPTIONS: { key: KindKey; label: string }[] = [
   { key: 'all',     label: 'Tümü' },
-  { key: 'invoice', label: 'Fatura' },
+  { key: 'invoice', label: 'Hizmet bedeli' },
   { key: 'payment', label: 'Ödeme' },
 ];
 
@@ -448,7 +448,7 @@ export function StatementScreen({ clinicId }: Props) {
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Fatura no, açıklama veya hekim ara…"
+            placeholder="Belge no, açıklama veya hekim ara…"
             placeholderTextColor={DS.ink[400]}
             style={{ flex: 1, fontSize: 12, color: DS.ink[900], paddingVertical: 4, outlineStyle: 'none' as any }}
           />
@@ -463,7 +463,7 @@ export function StatementScreen({ clinicId }: Props) {
         <EmptyCard
           icon={FileText}
           title={lines.length === 0 ? 'Hareket yok' : 'Eşleşen kayıt yok'}
-          description={lines.length === 0 ? 'Seçili dönemde fatura veya ödeme kaydı bulunmuyor.' : 'Filtreleri değiştirin veya temizleyin.'}
+          description={lines.length === 0 ? 'Seçili dönemde hizmet bedeli veya ödeme kaydı bulunmuyor.' : 'Filtreleri değiştirin veya temizleyin.'}
         />
       ) : !isDesktop ? (
         /* Mobil — lab ekstresi / giderler mobil tablosuyla aynı kalıp */

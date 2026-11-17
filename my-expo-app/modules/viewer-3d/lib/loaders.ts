@@ -1,5 +1,5 @@
 /**
- * loaders — STL/PLY/OBJ → THREE.BufferGeometry
+ * loaders — STL/PLY/OBJ/USDZ → THREE.BufferGeometry
  *
  * Faz 2: STL + PLY (vertex color) + OBJ (multi-mesh group → merged geometry).
  *
@@ -16,6 +16,7 @@ export function detectFormat(name: string): FileFormat | null {
   if (ext === 'stl') return 'stl';
   if (ext === 'ply') return 'ply';
   if (ext === 'obj') return 'obj';
+  if (ext === 'usdz') return 'usdz';
   return null;
 }
 
@@ -73,6 +74,35 @@ export async function loadGeometry(
       texture = await loadTexture(textureUrl, signal).catch(() => undefined);
     }
     return { geometry: merged, hasVertexColors: false, texture };
+  }
+
+  if (format === 'usdz') {
+    // USDZ (iPhone taramalarının önizleme dosyası): içinde ikili .usdc + gömülü dokular var.
+    // Yükleyici yalnız bu biçim açılınca indirilsin diye dinamik içe aktarılır (paket boyutu).
+    const { USDLoader } = await import('three/examples/jsm/loaders/USDLoader.js');
+    const group = new USDLoader().parse(buf) as THREE.Group;
+    group.updateMatrixWorld(true);   // USD'nin eksen/ölçek dönüşümleri birleştirmeye girsin
+    let texture: THREE.Texture | undefined;
+    group.traverse((child) => {
+      const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+      if (!texture && mat && !Array.isArray(mat) && mat.map) texture = mat.map;
+    });
+    const merged = mergeObjGroup(group);
+    // Gömülü doku arka planda çözülür. Sahne ilk çizildiğinde hazır olsun diye kısa süre beklenir
+    // (çözülemezse model dokusuz gösterilir).
+    if (texture && !texture.image) {
+      const tex = texture;
+      await new Promise<void>((resolve) => {
+        const started = Date.now();
+        const tick = () => {
+          if (tex.image || signal?.aborted || Date.now() - started > 5000) resolve();
+          else setTimeout(tick, 50);
+        };
+        tick();
+      });
+      if (!tex.image) texture = undefined;
+    }
+    return { geometry: merged, hasVertexColors: false, texture: merged.attributes.uv ? texture : undefined };
   }
 
   throw new Error(`Bilinmeyen format: ${format}`);

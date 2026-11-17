@@ -12,10 +12,12 @@ import { autoT } from "../../../core/i18n/autoTranslate";
 import { useScanAnnotationCount } from "../../viewer-3d/annotations/useScanAnnotationCount";
 import { openFileUrl } from "../../../core/util/openFile";
 import { Viewer3DModalLazy as Viewer3DModal } from "../../viewer-3d/Viewer3DLazy";
+import type { FileFormat } from "../../viewer-3d/types";
 import MobileViewer3D from "../../viewer-3d/mobile/MobileViewer3D";
 import { StageFileUpload } from "./StageFileUpload";
 import { FaceScanButton } from "./FaceScanButton";
 import { unzipToViewer, isArchiveExt } from "../fileArchive";
+import { zipSync } from "fflate";
 import { toast } from "../../../core/ui/Toast";
 import { saveMeshThumb } from "../../../lib/photos";
 import { ImageLightbox } from "../../../core/ui/ImageLightbox";
@@ -27,11 +29,14 @@ import type { WorkOrderPhoto } from "../../../lib/types";
 // HTML tasarim (exocad) native onizleme — web iframe, native WebView.
 const HtmlWebView: any = Platform.OS !== "web" ? require("react-native-webview").WebView : null;
 
-function is3DFileExt(path: string): 'stl' | 'ply' | 'obj' | null {
+function is3DFileExt(path: string): FileFormat | null {
   const ext = path.toLowerCase().split('.').pop();
   if (ext === 'stl') return 'stl';
   if (ext === 'ply') return 'ply';
   if (ext === 'obj') return 'obj';
+  // USDZ yalnız web görüntüleyicide açılır (dokusu dosyanın içinde). Mobilde sistemin kendi
+  // önizlemesi (Quick Look) USDZ'yi zaten açar; oradaki görüntüleyici motoru bu biçimi okumaz.
+  if (ext === 'usdz' && Platform.OS === 'web') return 'usdz';
   return null;
 }
 
@@ -128,7 +133,7 @@ export function FilesList({
   // Masaüstünde satır 32pt (fare), telefonda 40pt (parmak)
   const rowH = Platform.OS === 'web' && winW >= 1024 ? 32 : 40;
   // 3D viewer state
-  const [viewer3DFile, setViewer3DFile] = useState<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj'; textureUrl?: string|null } | null>(null);
+  const [viewer3DFile, setViewer3DFile] = useState<{ id: string; name: string; url: string; format: FileFormat; textureUrl?: string|null } | null>(null);
   // Uygulama-içi görsel / HTML tasarım önizleme (yeni tab yerine popup) — dosya modalı ile aynı davranış
   const [imageViewer, setImageViewer] = useState<{ url: string; name: string } | null>(null);
   const [htmlViewer, setHtmlViewer]   = useState<{ url?: string; html?: string; name: string } | null>(null);
@@ -159,6 +164,29 @@ export function FilesList({
     if (!tex) return null;
     return signedUrls[tex.storage_path] ?? (tex as any).signed_url ?? null;
   };
+
+  // OBJ'nin yardımcı dosyaları: aynı klasörde, adı OBJ'nin adıyla başlayan .mtl ve
+  // doku görseli (baked_mesh_x.obj → baked_mesh_x.mtl, baked_mesh_x_tex0.png).
+  // Tek başlarına işe yaramazlar → listede gizlenir, OBJ indirilirken ZIP'e girer.
+  const objCompanions = (objPath: string): WorkOrderPhoto[] => {
+    const slash = objPath.lastIndexOf('/');
+    if (slash < 0) return [];
+    const dir = objPath.slice(0, slash + 1);
+    const stem = objPath.slice(slash + 1).replace(/\.obj$/i, '');
+    return photos.filter(p =>
+      p.storage_path !== objPath &&
+      p.storage_path.startsWith(dir) &&
+      p.storage_path.slice(dir.length).startsWith(stem) &&
+      /\.(mtl|png|jpe?g)$/i.test(p.storage_path)
+    );
+  };
+  const hiddenPaths = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of photos) {
+      if (/\.obj$/i.test(f.storage_path)) objCompanions(f.storage_path).forEach(c => set.add(c.storage_path));
+    }
+    return set;
+  }, [photos]);
 
   // İndirme dosya adı — caption'da uzantı yoksa gerçek uzantıyı ekle (zip zip iner).
   const zipDownloadName = (f: WorkOrderPhoto): string => {
@@ -247,6 +275,34 @@ export function FilesList({
   const forceDownload = async (f: WorkOrderPhoto) => {
     const url = signedUrls[f.storage_path] ?? (f as any).signed_url ?? null;
     if (!url) return;
+    // OBJ (web): yardımcı dosyalarıyla birlikte tek ZIP. ZIP içindeki adlar depodaki
+    // gerçek adlardır — MTL dokuyu bu adla arar, değişirse model gri açılır.
+    // Başarısız olursa aşağıdaki tek-dosya indirmesine düşer.
+    if (Platform.OS === 'web' && typeof document !== 'undefined' && /\.obj$/i.test(f.storage_path)) {
+      const parts = [f, ...objCompanions(f.storage_path)]
+        .map(p => ({ name: p.storage_path.split('/').pop() ?? 'file', url: (signedUrls[p.storage_path] ?? (p as any).signed_url ?? null) as string | null }));
+      if (parts.length > 1 && parts.every(p => p.url)) {
+        setExtractingId(f.id);
+        try {
+          const entries: Record<string, [Uint8Array, { level: 0 | 6 }]> = {};
+          await Promise.all(parts.map(async p => {
+            const res = await fetch(p.url!);
+            if (!res.ok) throw new Error('fetch');
+            // Görseller zaten sıkıştırılmış → yeniden sıkıştırma (hız)
+            entries[p.name] = [new Uint8Array(await res.arrayBuffer()), { level: /\.(png|jpe?g)$/i.test(p.name) ? 0 : 6 }];
+          }));
+          const blobUrl = URL.createObjectURL(new Blob([zipSync(entries) as BlobPart], { type: 'application/zip' }));
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = parts[0].name.replace(/\.obj$/i, '') + '.zip';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => { try { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); } catch {} }, 1000);
+          return;
+        } catch { /* tek dosya indirmesine düş */ }
+        finally { setExtractingId(null); }
+      }
+    }
     // Dosya adı — caption'da uzantı yoksa gerçek uzantıyı ekle (ör. "Üst Çene · OrthoCAD" → ".zip").
     // Böylece ZIP, ZIP olarak iner (içi AÇILMAZ) — tüm platformlarda ham dosya.
     const base = f.storage_path.split('/').pop() ?? 'file';
@@ -272,7 +328,7 @@ export function FilesList({
   };
 
   // Multi-file viewer (tüm 3D dosyaları üst üste aç) — Faz 7
-  const [viewerAll, setViewerAll] = useState<Array<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj'; textureUrl?: string|null }> | null>(null);
+  const [viewerAll, setViewerAll] = useState<Array<{ id: string; name: string; url: string; format: FileFormat; textureUrl?: string|null }> | null>(null);
   // 3D kalem notu sayısı — sipariş detayında rozet; viewer kapanınca tazelenir
   // (içeride not eklenmiş olabilir).
   const { count: annotCount, refresh: refreshAnnotCount } = useScanAnnotationCount(workOrderId);
@@ -288,7 +344,7 @@ export function FilesList({
         const textureUrl = fmt === 'obj' ? siblingTextureUrl(f.storage_path) : null;
         return { id: f.id, name: filename, url, format: fmt, textureUrl };
       })
-      .filter(Boolean) as Array<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj'; textureUrl?: string|null }>;
+      .filter(Boolean) as Array<{ id: string; name: string; url: string; format: FileFormat; textureUrl?: string|null }>;
   }, [photos, signedUrls]);
 
   // ZIP taramaları — "Tümünü 3D Aç" bunları da kapsar. Klinikler taramaları çoğunlukla
@@ -330,6 +386,7 @@ export function FilesList({
   // 2D referans fotoğraflar — gülüş tasarımı / ekartörlü resim vb. (jpg/png)
   const referenceImages = useMemo(() => {
     return photos
+      .filter(f => !hiddenPaths.has(f.storage_path))
       .map(f => {
         const filename = f.caption ?? f.storage_path.split('/').pop() ?? 'Resim';
         const isImg = /\.(png|jpe?g|webp|gif|heic|heif|bmp)$/i.test(f.storage_path);
@@ -339,7 +396,7 @@ export function FilesList({
         return isImg && url ? { id: f.id, name: filename, url, thumb } : null;
       })
       .filter(Boolean) as Array<{ id: string; name: string; url: string; thumb: string }>;
-  }, [photos, signedUrls]);
+  }, [photos, signedUrls, hiddenPaths]);
 
   // Kategori grupları — Taramalar / Fotoğraflar / Belgeler (boş olanlar gizli)
   // Fotoğraf kategorisi galeri olarak gösterilir: üstte büyük görsel, altta
@@ -348,9 +405,12 @@ export function FilesList({
 
   const photoGroups = useMemo(() => {
     const by: Record<FileCat, WorkOrderPhoto[]> = { scan: [], photo: [], doc: [] };
-    for (const f of photos) by[fileCategoryOf(f.caption || f.storage_path)].push(f);
+    for (const f of photos) {
+      if (hiddenPaths.has(f.storage_path)) continue;   // OBJ yardımcı dosyaları (mtl + doku)
+      by[fileCategoryOf(f.caption || f.storage_path)].push(f);
+    }
     return FILE_CAT_META.map(m => ({ ...m, files: by[m.key] })).filter(g => g.files.length > 0);
-  }, [photos]);
+  }, [photos, hiddenPaths]);
 
   // ÖNEMLİ: StageFileUpload her zaman aynı JSX pozisyonunda render edilmeli;
   // photos.length 0→1 geçişinde unmount olmamalı. Aksi halde modalOpen state
@@ -601,6 +661,23 @@ export function FilesList({
                 <Text numberOfLines={1} style={{ fontSize: 12, color: isDark ? T.ink3 : '#8A94A6', flexShrink: 0 }}>
                   {meta}
                 </Text>
+                {/* Önizle — satıra tıklamakla aynı işi yapar; düğme olarak da görünür olsun */}
+                <Pressable
+                  onPress={(e: any) => { e?.stopPropagation?.(); openPreview(f); }}
+                  disabled={busy}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${autoT('Önizle')}: ${filename}`}
+                  // @ts-ignore web tooltip
+                  title={autoT(isArchiveExt(f.storage_path) ? 'Zip aç ve 3D göster' : 'Önizle')}
+                  style={{
+                    width: rowH >= 40 ? 32 : 26, height: rowH >= 40 ? 32 : 26, borderRadius: 8,
+                    alignItems: 'center', justifyContent: 'center',
+                    ...(Platform.OS === 'web' && !busy ? { cursor: 'pointer' } as any : {}),
+                  }}
+                >
+                  <Eye size={rowH >= 40 ? 17 : 15} color={isDark ? (T.ink2 as string) : '#475569'} strokeWidth={1.8} />
+                </Pressable>
                 <Pressable
                   onPress={(e: any) => { e?.stopPropagation?.(); forceDownload(f); }}
                   hitSlop={6}

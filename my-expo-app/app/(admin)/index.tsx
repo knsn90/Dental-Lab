@@ -1147,7 +1147,7 @@ function TasksCard({
 //  • Satır sonunda boş daire yok (onay kutusu sanılıyordu) → ok ya da eylem kapsülü.
 const TASK_GROUP_ORDER: TaskGroup[] = ['late', 'hold', 'delivery', 'invoice', 'collect', 'stock'];
 const TASK_GROUP_LABEL: Record<TaskGroup, string> = {
-  late: 'Geciken', hold: 'Beklemede', delivery: 'Teslimat', invoice: 'Fatura', collect: 'Tahsilat', stock: 'Stok',
+  late: 'Geciken', hold: 'Beklemede', delivery: 'Teslimat', invoice: 'Hizmet bedeli', collect: 'Tahsilat', stock: 'Stok',
 };
 function TasksCardMobile({ tasks }: { tasks: TaskItem[] }) {
   const PB = usePanelBlue();
@@ -1868,10 +1868,10 @@ export default function AdminDashboard() {
   unbilledRows.forEach((u: any) => {
     taskItems.push({
       icon: Receipt as React.FC<any>, group: 'invoice',
-      label: `${autoT('Fatura kes')} · ${taskNo(u.order_number)}`,
+      label: `${autoT('Hizmet bedeli oluştur')} · ${taskNo(u.order_number)}`,
       time: u.delivered_at
         ? `${fmtDate(String(u.delivered_at).slice(0, 10))} ${autoT('tarihinde teslim edildi')}`
-        : 'Teslim edildi, faturası yok',
+        : 'Teslim edildi, hizmet bedeli yok',
       done: false,
       onPress: () => router.push(`/(admin)/order/${u.work_order_id}` as any),
     });

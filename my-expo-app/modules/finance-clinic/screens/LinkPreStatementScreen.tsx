@@ -219,7 +219,7 @@ export function LinkPreStatementScreen() {
             ) : null}
           </View>
           <Text style={{ fontSize: 13, color: U.ink[500], lineHeight: 18 }}>
-            {autoT('Lab\'ın kesmeden önce onayınıza sunduğu taslak faturalar')}
+            {autoT('Lab\'ın kesinleştirmeden önce onayınıza sunduğu taslak hizmet bedelleri')}
           </Text>
         </View>
 
@@ -229,7 +229,7 @@ export function LinkPreStatementScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <CheckCircle2 size={15} color={U.chipTones.success.fg} strokeWidth={1.8} />
               <Text style={{ fontSize: 13.5, fontWeight: '700', color: U.chipTones.success.fg }}>
-                {`${issuedCount} ${autoT('fatura kesinleşti')}`}
+                {`${issuedCount} ${autoT('hizmet bedeli kesinleşti')}`}
               </Text>
             </View>
             {data.approved_at ? (
@@ -239,7 +239,7 @@ export function LinkPreStatementScreen() {
             ) : null}
             {leftCount > 0 ? (
               <Text style={{ fontSize: 12, color: U.chipTones.success.fg }}>
-                {`${leftCount} ${autoT('fatura taslakta kaldı')}`}
+                {`${leftCount} ${autoT('hizmet bedeli taslakta kaldı')}`}
               </Text>
             ) : null}
             <Text style={{ fontSize: 12, color: U.chipTones.success.fg, opacity: 0.85 }}>
@@ -252,7 +252,7 @@ export function LinkPreStatementScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, backgroundColor: U.chipTones.warning.bg }}>
             <AlertTriangle size={14} color={U.chipTones.warning.fg} strokeWidth={1.8} />
             <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '600', color: U.chipTones.warning.fg }}>
-              {autoT('Bazı faturalar değişti; lab\'dan yeni bağlantı isteyin')}
+              {autoT('Bazı hizmet bedelleri değişti; lab\'dan yeni bağlantı isteyin')}
             </Text>
           </View>
         ) : null}
@@ -301,14 +301,14 @@ export function LinkPreStatementScreen() {
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
                 <ActionPill
                   label={`${autoT('İtirazsız kalemleri onayla')} (${undisputed})`}
-                  tip={autoT('İtirazlı kalem içeren faturalar taslakta kalır')}
+                  tip={autoT('İtirazlı kalem içeren hizmet bedelleri taslakta kalır')}
                   disabled={undisputed === 0 || approving}
                   primary
                   onPress={() => { setApproveError(null); setResult(null); setConfirmMode('undisputed'); }}
                 />
                 <ActionPill
                   label={autoT('Tümünü onayla')}
-                  tip={autoT('İtirazlılar dahil tüm taslak faturaları kesinleştirir')}
+                  tip={autoT('İtirazlılar dahil tüm taslak hizmet bedellerini kesinleştirir')}
                   disabled={approving}
                   onPress={() => { setApproveError(null); setResult(null); setConfirmMode('all'); }}
                 />
@@ -343,7 +343,7 @@ export function LinkPreStatementScreen() {
               approvedView ? null : (
                 <View style={{ ...U.cardSolid, alignItems: 'center', gap: 8 }}>
                   <CheckCircle2 size={22} color={U.ink[400]} strokeWidth={1.6} />
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[700] }}>{autoT('Onay bekleyen fatura yok')}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[700] }}>{autoT('Onay bekleyen hizmet bedeli yok')}</Text>
                 </View>
               )
             ) : (

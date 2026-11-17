@@ -2256,12 +2256,12 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
             </SectionCard>
 
             {/* Faturalama */}
-            <SectionCard title="Faturalama">
-              <ModalField label="Fatura Modu">
+            <SectionCard title="Hizmet bedeli">
+              <ModalField label="Hizmet bedeli modu">
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   {([
-                    { v: 'monthly_bulk', l: 'Aylık Toplu', d: 'Ay sonu tüm teslimler tek fatura' },
-                    { v: 'per_order',    l: 'Her Teslimat', d: 'Her sipariş için ayrı fatura' },
+                    { v: 'monthly_bulk', l: 'Aylık Toplu', d: 'Ay sonu tüm teslimler tek hizmet bedeli' },
+                    { v: 'per_order',    l: 'Her Teslimat', d: 'Her sipariş için ayrı hizmet bedeli' },
                   ] as const).map(opt => {
                     const active = form.billing_mode === opt.v;
                     return (

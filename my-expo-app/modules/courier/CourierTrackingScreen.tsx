@@ -30,6 +30,7 @@ import { patientInitials } from '../orders/lib/workLabel';
 import { isIncomingLeg } from '../delivery/direction';
 import { NewShipmentModal } from './components/NewShipmentModal';
 import { SlideTabBar } from '../../core/ui/SlideTabBar';
+import { PAGE_PADDING } from '../../core/ui/pageMetrics';
 import { GlassTooltip } from '../../core/ui/GlassTooltip';
 
 const INK_900 = '#0A0A0A';
@@ -1120,7 +1121,7 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
             // harita ekranında sabit kalır) — bkz. navScroll.ts opt-out.
             {...({ dataSet: { navscroll: 'off' } } as any)}
             contentContainerStyle={{
-              padding: 14,
+              paddingHorizontal: PAGE_PADDING, // kenar her yerde 16 (14'tü)
               paddingTop: 4,
               gap: 10,
               // Mobilde sheet zaten navbar'ın üstünde bitiyor → 120px ölü alan

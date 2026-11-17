@@ -33,6 +33,7 @@ import { getStationKind, type StationKind } from '../../orders/stations/registry
 
 // Lazy viewer-3d (three.js ayrı chunk) — tek paylaşılan retry'lı lazy instance.
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
+import type { FileFormat } from '../../viewer-3d/types';
 import { unzipToViewer, isArchiveExt } from '../../orders/fileArchive';
 import { LivingToothChart } from '../../orders/components/LivingToothChart';
 import { FilesList } from '../../orders/components/FilesList';
@@ -391,7 +392,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   const laneUidRef = useRef(0);
 
   // 3D önizleme — tekil dosya + tümünü katmanlı (OrderDetailScreenV2 kalıbı)
-  type ViewerMesh = { id: string; name: string; url: string; format: 'stl'|'ply'|'obj'; textureUrl?: string | null };
+  type ViewerMesh = { id: string; name: string; url: string; format: FileFormat; textureUrl?: string | null };
   const [viewer3DFile, setViewer3DFile] = useState<ViewerMesh | null>(null);
   const [viewerAll, setViewerAll] = useState<ViewerMesh[] | null>(null);
   // ZIP'ten açılan viewer'da indirme kaynağı (mesh yerine kaynak zip insin)

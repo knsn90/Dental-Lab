@@ -10,7 +10,7 @@ const MessagesPopup: any = React.lazy(() => import('../../modules/orders/compone
 const CommandPalette: any = React.lazy(() => import('../../core/ui/CommandPalette').then(m => ({ default: (m as any).CommandPalette })));
 const ScanB6Mobile: any = React.lazy(() => import('../../modules/orders/screens/ScanB6Mobile').then(m => ({ default: (m as any).ScanB6Mobile })));
 const MoreMenuSheet: any = React.lazy(() => import('../../core/ui/mobile/MoreMenuSheet').then(m => ({ default: (m as any).MoreMenuSheet })));
-import { Modal, Text, View } from 'react-native';
+import { Modal, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Slot, Tabs, useRouter, usePathname, Redirect } from 'expo-router';
 import { C as Colors } from '../../core/theme/colors';
@@ -20,7 +20,7 @@ import { panelNavigator } from '../../core/layout/shellSwitchHref';
 import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
 import {
   Home, ClipboardList, MessageCircle, User, Plus, MoreHorizontal, Search,
-  Truck as Truck2, Settings as Settings2,
+  Truck as Truck2, Settings as Settings2, FileCheck, Wallet, HelpCircle,
 } from '../../core/ui/icons';
 
 import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
@@ -53,10 +53,6 @@ const DOCTOR_DEFAULT_ACCENT = '#32BB78';
 // layout remount doesn't re-fire). Only runs for doctors with a null
 // doctor_onboarded_at (RPC decides).
 let doctorTourChecked = false;
-
-function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
-  return <Text style={{ fontSize: focused ? 24 : 22, opacity: focused ? 1 : 0.6 }}>{emoji}</Text>;
-}
 
 export default function DoctorLayout() {
   const { t } = useTranslation();
@@ -224,12 +220,25 @@ export default function DoctorLayout() {
     { routeName: 'courier-tracking', label: t('doctor.nav.courierShort'),   icon: Truck2 },
     // Mesaj artık üst bardaki (TopActionBar) butonda — bu slot Ara oldu.
     { routeName: 'search',           label: t('nav.items.search'),     icon: Search },
-    { routeName: 'settings',         label: t('nav.items.settings'), icon: Settings2 },
+    // Ayarlar "Daha" menüsüne taşındı; Daha rozeti = okunmamış mesaj + bekleyen onay
+    { routeName: 'more',             label: t('clinic.tabs.more'), icon: MoreHorizontal, onPress: () => setMoreOpen(true),
+      badgeCount: (totalUnread + pendingApprovals) > 0 ? (totalUnread + pendingApprovals) : undefined },
   ];
   const SEARCH_ITEMS = DOCTOR_NAV.map((n: any) => ({ label: n.label, href: n.href, sublabel: n.sectionLabel }));
 
-  // "Daha" menüsü artık pill'de değil; ileride genişletmek için boş bırakıldı.
-  const MORE_ITEMS: import('../../core/ui/mobile/MoreMenuSheet').MoreItem[] = [];
+  // "Daha" menüsü — masaüstü kenar menüsündeki sayfalar mobilde yalnız aramayla
+  // bulunuyordu (2026-11-17). Onaylar · Mesajlar · Finans · Destek · Ayarlar.
+  const MORE_ITEMS: import('../../core/ui/mobile/MoreMenuSheet').MoreItem[] = [
+    { key: 'approvals', label: t('nav.items.approvals'), sub: t('clinic.moreMenu.approvalsSub'), icon: FileCheck, accent: accentColor,
+      badge: pendingApprovals > 0 ? pendingApprovals : undefined, onPress: () => router.push('/(doctor)/approvals' as any) },
+    { key: 'messages', label: t('nav.items.messages'), sub: t('clinic.moreMenu.messagesSub'), icon: MessageCircle, accent: accentColor,
+      badge: totalUnread > 0 ? totalUnread : undefined, onPress: () => router.push('/(doctor)/messages' as any) },
+    ...(showFinance
+      ? [{ key: 'finance', label: t('nav.items.finance'), sub: t('clinic.moreMenu.financeSub'), icon: Wallet, accent: accentColor, onPress: () => router.push('/(doctor)/finance' as any) }]
+      : []),
+    { key: 'support', label: t('nav.items.support'), sub: t('clinic.moreMenu.supportSub'), icon: HelpCircle, accent: accentColor, onPress: () => router.push('/(doctor)/support' as any) },
+    { key: 'settings', label: t('nav.items.settings'), sub: t('clinic.moreMenu.settingsSub'), icon: Settings2, accent: accentColor, onPress: () => router.push('/(doctor)/settings' as any) },
+  ];
   const FAB_ITEM: PillTabItem = {
     routeName: 'new',
     label: t('nav.items.new'),

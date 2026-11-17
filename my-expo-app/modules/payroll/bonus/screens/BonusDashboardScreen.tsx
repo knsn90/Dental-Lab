@@ -149,7 +149,7 @@ export default function BonusDashboardScreen({
       {/* ═════ F1 HERO ═════ */}
       <DashHero
         kicker={`${autoT('Prim Motoru')} · ${autoT(MONTH_LABELS[month - 1])} ${year}`}
-        title={<>{autoT('Bu ay')} <Text style={{ color: accentInk }}>{TRY(totals.payout)}</Text></>}
+        title={<>{(year === now.getFullYear() && month === now.getMonth() + 1) ? autoT('Bu ay') : `${autoT(MONTH_LABELS[month - 1])} ${year}`} <Text style={{ color: accentInk }}>{TRY(totals.payout)}</Text></>}
         description={
           `${summaries.length} ${autoT('aktif politika')} · ${totals.earners}/${totals.techs} ${autoT('teknisyen prim hak etti')} · ${autoT('ortalama')} ${TRY(totals.avg)}.` +
           (totals.pool > 0 ? ` ${autoT('Havuz dağıtımı:')} ${TRY(totals.pool)}.` : '')

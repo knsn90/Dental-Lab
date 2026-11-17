@@ -4956,7 +4956,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                             </TouchableOpacity>
                             <TouchableOpacity
                               onPress={finishEditOp}
-                              style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999, backgroundColor: NO.saffron,
+                              style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999, backgroundColor: NO.saffron,
                                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
                             >
                               <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF' }}>{autoT('Kaydet')}</Text>

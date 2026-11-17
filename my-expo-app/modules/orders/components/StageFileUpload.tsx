@@ -26,6 +26,7 @@ import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 // Viewer3D — tek paylaşılan lazy (retry'lı; Metro dev async-chunk {} sorununa dayanıklı)
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
+import type { FileFormat } from '../../viewer-3d/types';
 import { unzipToViewer, isArchiveExt } from '../fileArchive';
 
 // HTML tasarım (exocad) native önizleme — sadece native'de WebView yükle (web iframe kullanır).
@@ -259,7 +260,7 @@ export function StageFileUpload({
   const [viewer3DFile, setViewer3DFile] = useState<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj' } | null>(null);
   // Çoklu 3D viewer — tüm taramaları üst üste aç
   const [zipViewer, setZipViewer] = useState<{ url: string; name: string } | null>(null);
-  const [viewer3DFiles, setViewer3DFiles] = useState<Array<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj' }> | null>(null);
+  const [viewer3DFiles, setViewer3DFiles] = useState<Array<{ id: string; name: string; url: string; format: FileFormat }> | null>(null);
   // ZIP açılırken (extract) yükleniyor göstergesi
   const [extractingId, setExtractingId] = useState<string | null>(null);
   // Uygulama-içi görsel önizleme (yeni tab yerine popup)

@@ -146,8 +146,8 @@ export function SendReminderModal({
               </Text>
               <Text style={{ fontSize: 12, color: isDark ? (T.ink3 as string) : DS.ink[500], marginTop: 4 }}>
                 {invoiceNo
-                  ? `Fatura ${invoiceNo} için bildirim`
-                  : 'Tüm açık fatura ve bakiyeler için bildirim'}
+                  ? `${autoT('Hizmet bedeli')} ${invoiceNo} ${autoT('için bildirim')}`
+                  : 'Tüm açık hizmet bedelleri ve bakiyeler için bildirim'}
               </Text>
             </View>
             <Pressable onPress={onClose} hitSlop={8} style={{ padding: 4 }}>

@@ -31,14 +31,22 @@ function initialsOf(name: string): string {
   return name.trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toLocaleUpperCase() ?? '').join('') || '—';
 }
 
-export function TechWorkloadCard() {
+/**
+ * Varsayılan (prop'suz) hâli Admin Özet'tir — kobalt/lacivert, /(admin)/performance.
+ * Lab Özet kendi renklerini verir (safran): `accent` çubuk/avatar zemini,
+ * `accentText` baş harf rengi (açık accent'lerde okunur koyu ton), `href` ok bağlantısı.
+ */
+export function TechWorkloadCard({ accent: accentProp, accentText, href }: {
+  accent?: string; accentText?: string; href?: string;
+} = {}) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const { profile } = useAuthStore();
   const router = useRouter();
   const theme = usePanelTheme() as any;
   // Koyu temada kobalt parlak kalıyor → lacivert ailenin açık tonu (admin Özet ile aynı kural)
-  const accent: string = isDark ? HERO_NAVY.light : (theme?.primary ?? DS.exec.primary);
+  const accent: string = accentProp ?? (isDark ? HERO_NAVY.light : (theme?.primary ?? DS.exec.primary));
+  const initialsColor: string = accentText ?? (isDark ? '#93C5FD' : accent);
   // Son sonuç bellekte tutulur: sayfaya dönüldüğünde kart beklemeden dolu açılır
   const [rows, setRows] = useState<Row[] | null>(cachedRows);
 
@@ -104,7 +112,7 @@ export function TechWorkloadCard() {
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <Text style={{ fontSize: 14, fontWeight: '500', color: T.ink }}>{autoT('Teknisyen iş yükü')}</Text>
         <Pressable
-          onPress={() => router.push('/(admin)/performance' as any)}
+          onPress={() => router.push((href ?? '/(admin)/performance') as any)}
           accessibilityRole="button"
           accessibilityLabel={autoT('Ekip')}
           hitSlop={8}
@@ -141,7 +149,7 @@ export function TechWorkloadCard() {
                   width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
                   backgroundColor: `${accent}1F`,
                 }}>
-                  <Text style={{ fontSize: 10.5, fontWeight: '600', color: isDark ? '#93C5FD' : accent }}>{initialsOf(r.name)}</Text>
+                  <Text style={{ fontSize: 10.5, fontWeight: '600', color: initialsColor }}>{initialsOf(r.name)}</Text>
                 </View>
                 <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
                   <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }} numberOfLines={1}>{r.name}</Text>

@@ -117,7 +117,7 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
           icon={Wallet}
           label="Toplam Borç"
           slices={data.total_due_ccy}
-          sub={`${data.open_invoices_count} açık fatura`}
+          sub={`${data.open_invoices_count} ${autoT('açık hizmet bedeli')}`}
           accent="#0F172A"
           percent={Math.min(100, collectionRate)}
           trend={{
@@ -130,7 +130,7 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
           icon={AlertCircle}
           label="Vadesi Geçen"
           slices={data.overdue_ccy}
-          sub={`${data.overdue_count} fatura geciken`}
+          sub={`${data.overdue_count} ${autoT('hizmet bedeli geciken')}`}
           accent="#DC2626"
           alert={data.overdue > 0}
           percent={overduePct}
@@ -153,7 +153,7 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
           icon={CheckCircle2}
           label="Bu Ay Ödenen"
           slices={data.this_month_paid_ccy}
-          sub={`${data.this_month_invoiced_count} fatura kesildi`}
+          sub={`${data.this_month_invoiced_count} ${autoT('hizmet bedeli kesinleşti')}`}
           accent="#059669"
           percent={collectionRate}
           trend={{ text: `%${collectionRate}`, tone: collectionRate >= 70 ? 'success' : 'neutral' }}
@@ -183,9 +183,9 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
             {/* Aylık Akış */}
             {cc.monthly_flow.length > 0 && (
               <View>
-                <SecHeader eyebrow="Trend" title="Aylık Akış · Son 6 Ay" desc="Kesilen fatura vs. ödenen tutar"
+                <SecHeader eyebrow="Trend" title="Aylık Akış · Son 6 Ay" desc="Kesinleşen hizmet bedeli ve ödenen tutar"
                   action={{ label: 'Ekstre →', onPress: () => onJump('statement'),
-                    hint: 'Aynı dönemin fatura ve ödeme hareketlerini satır satır gör' }} />
+                    hint: 'Aynı dönemin hizmet bedeli ve ödeme hareketlerini satır satır gör' }} />
                 <Card style={{ padding: 16, paddingTop: 12 }}>
                   {/* Kartın konusu ORAN: en büyük öğe o olmalı. Yanındaki
                       ikon kutusu aynı satırda ondan daha fazla yer kaplıyordu.
@@ -229,7 +229,7 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
             {/* Yaşlandırma + Yöntem ikilisi */}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
               <View style={{ flexGrow: 1, flexBasis: 320, minWidth: 280 }}>
-                <SecHeader eyebrow="Risk" title="Yaşlandırma" desc="Açık faturaların vade dağılımı" />
+                <SecHeader eyebrow="Risk" title="Yaşlandırma" desc="Açık hizmet bedellerinin vade dağılımı" />
                 <Card style={{ padding: 16 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                     <View style={{ width: 28, height: 28, borderRadius: 9, backgroundColor: 'rgba(217,75,75,0.10)', alignItems: 'center', justifyContent: 'center' }}>
@@ -265,9 +265,9 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
 
       {/* ── Vadesi Geçen — ekstre / giderler mobil tablosuyla aynı kalıp ── */}
       {overdueItems.length > 0 ? (
-        <MobileTableX title="Vadesi Geçen Faturalar" count={overdueItems.length} countLabel="fatura" accent="#D94B4B"
+        <MobileTableX title="Vadesi geçen hizmet bedelleri" count={overdueItems.length} countLabel="hizmet bedeli" accent="#D94B4B"
           right={
-            <GlassTooltip title={autoT('Tümü')} text={autoT('Vadesi geçen faturaları açar')}>
+            <GlassTooltip title={autoT('Tümü')} text={autoT('Vadesi geçen hizmet bedellerini açar')}>
               <Pressable onPress={() => onJump('overdue')} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}>
                 <Text style={{ fontSize: 12, fontWeight: '600', color: onAccentInk('#D94B4B') }}>Tümü →</Text>
               </Pressable>
@@ -298,9 +298,9 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
 
       {/* ── Yaklaşan Vade ── */}
       {upcomingItems.length > 0 ? (
-        <MobileTableX title="Vadesi Yaklaşan" count={upcomingItems.length} countLabel="fatura"
+        <MobileTableX title="Vadesi Yaklaşan" count={upcomingItems.length} countLabel="hizmet bedeli"
           right={
-            <GlassTooltip title={autoT('Tümü')} text={autoT('Tüm açık faturaları açar')}>
+            <GlassTooltip title={autoT('Tümü')} text={autoT('Tüm açık hizmet bedellerini açar')}>
               <Pressable onPress={() => onJump('open')} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}>
                 <Text style={{ fontSize: 12, fontWeight: '600', color: onAccentInk(TH.primary) }}>Tümü →</Text>
               </Pressable>
@@ -435,8 +435,8 @@ function PremiumHero({
                 tutarı hem adedi veriliyor, iki yerde söylemek gürültü. */}
             <Text style={{ fontSize: 12.5, color: isDark ? (T.ink3 as string) : DS.ink[500], lineHeight: 18, maxWidth: 520 }}>
               {totalDue === 0
-                ? 'Şu anda ödenmemiş fatura yok. Tüm hesaplar güncel.'
-                : `${openCount} açık fatura · ${upcomingCount} yaklaşan vade`}
+                ? 'Şu anda ödenmemiş hizmet bedeli yok. Tüm hesaplar güncel.'
+                : `${openCount} ${autoT('açık hizmet bedeli')} · ${upcomingCount} ${autoT('yaklaşan vade')}`}
             </Text>
           </View>
 
@@ -448,7 +448,7 @@ function PremiumHero({
             {([
               {
                 key: 'overdue',
-                label: overdueCount > 0 ? `Geciken · ${overdueCount} fatura` : 'Geciken',
+                label: overdueCount > 0 ? `${autoT('Geciken')} · ${overdueCount} ${autoT('hizmet bedeli')}` : 'Geciken',
                 slices: overdueCcy,
                 danger: overdue > 0,
               },
@@ -494,7 +494,7 @@ function PremiumHero({
             )}
             <GlassTooltip
               title="Cari Ekstre"
-              text="Fatura ve ödeme hareketlerinin tamamı; yazdırılabilir ve Excel'e aktarılabilir">
+              text="Hizmet bedeli ve ödeme hareketlerinin tamamı; yazdırılabilir ve Excel'e aktarılabilir">
               <PillButton variant="light" leftIcon={<FileText size={13} color={isDark ? T.ink : DS.ink[800]} />} onPress={onStatement}>
                 Cari Ekstre
               </PillButton>

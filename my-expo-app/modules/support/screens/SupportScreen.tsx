@@ -36,6 +36,7 @@ import { HubContext } from '../../../core/ui/HubContext';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { DS } from '../../../core/theme/dsTokens';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { WhiteHero } from '../../../core/ui/WhiteHero';
@@ -1665,6 +1666,8 @@ function NewTicketModal({ visible, onClose, onCreated, labId, prefill }: {
   visible: boolean; onClose: () => void; onCreated: (id: string) => void; labId: string | null;
   prefill?: TicketPrefill | null;
 }) {
+  // Popup arkası bulanık (CLAUDE.md popup kuralı) — ham scrim yerine token
+  const U = useInkUI();
   const [subject, setSubject] = useState('');
   const [category, setCategory] = useState<SupportCategory>('teknik_sorun');
   const [priority, setPriority] = useState<SupportPriority>('normal');
@@ -1707,7 +1710,7 @@ function NewTicketModal({ visible, onClose, onCreated, labId, prefill }: {
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <View style={U.modalOverlay}>
         <View style={{ width: 580, maxWidth: '100%', maxHeight: '92%', backgroundColor: W.surface, borderRadius: 22, overflow: 'hidden' }}>
           <View style={{ paddingHorizontal: 22, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: W.border, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
             <View style={{ flex: 1 }}>

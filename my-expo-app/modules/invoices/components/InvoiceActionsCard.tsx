@@ -153,7 +153,7 @@ export function InvoiceActionsCard({
           fontSize: 9, fontWeight: '700', letterSpacing: 1,
           textTransform: 'uppercase', color: U.ink[400],
         }}>
-          {flow ? autoT('Belge işlemleri') : autoT('Fatura notu')}
+          {flow ? autoT('Belge işlemleri') : autoT('Hizmet bedeli notu')}
         </Text>
       </View>
 
@@ -163,7 +163,7 @@ export function InvoiceActionsCard({
           <ActionSectionHead
             step={1}
             title={autoT('Kliniğe gösterilecek not')}
-            hint={autoT('Fatura çıktısında ve klinik ekranında görünür')}
+            hint={autoT('Çıktıda ve klinik ekranında görünür')}
           />
         ) : null}
         {readOnly ? (
@@ -174,7 +174,7 @@ export function InvoiceActionsCard({
               value={noteDraft}
               onChangeText={onNoteChange}
               multiline
-              placeholder={autoT('Örn. Bu faturaya klinik indirimi uygulanmıştır.')}
+              placeholder={autoT('Örn. Bu hizmet bedeline klinik indirimi uygulanmıştır.')}
               placeholderTextColor={U.ink[400]}
               textAlignVertical="top"
               style={{

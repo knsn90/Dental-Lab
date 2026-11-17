@@ -102,5 +102,17 @@ export async function uploadFaceScanResult({
     uploadedCount += 1;
   }
 
+  // Tanı kaydı: yalnız depolamaya gider, work_order_photos satırı AÇILMAZ → sipariş eklerinde
+  // görünmez. Bir tarama hatalı çıkınca nasıl kurulduğunu sonradan görmek için (cihaz günlüğü yok).
+  if (result.debugInfo) {
+    const uri = result.debugInfo.startsWith('file://') ? result.debugInfo : `file://${result.debugInfo}`;
+    const fd = new FormData();
+    fd.append('file', { uri, name: 'scan_info.json', type: 'application/json' } as any);
+    await supabase.storage
+      .from('work-order-photos')
+      .upload(`${folder}/scan_info.json`, fd, { contentType: 'application/json', upsert: false })
+      .catch(() => null);
+  }
+
   return { uploadedCount, errors };
 }

@@ -9,6 +9,7 @@ export interface Check {
   check_number: string | null;
   bank_name: string | null;
   amount: number;
+  currency?: string | null;
   issue_date: string;
   due_date: string;
   status: CheckStatus;
@@ -62,6 +63,13 @@ export async function createCheck(params: CreateCheckParams) {
   }).select('*, clinic:clinics(id, name)').single();
 }
 
+/** Bekleyen çekin bilgilerini düzeltir (tutar, vade, banka, klinik, not). */
+export async function updateCheck(id: string, patch: Partial<CreateCheckParams>) {
+  return supabase.from('checks')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id).select('*, clinic:clinics(id, name)').single();
+}
+
 export async function updateCheckStatus(id: string, status: CheckStatus) {
   return supabase.from('checks')
     .update({ status, updated_at: new Date().toISOString() })
@@ -70,4 +78,19 @@ export async function updateCheckStatus(id: string, status: CheckStatus) {
 
 export async function deleteCheck(id: string) {
   return supabase.from('checks').delete().eq('id', id);
+}
+
+/**
+ * Çek tahsilatı, klinik tahsilat makbuzu olarak (record_clinic_receipt) yazılır.
+ * Makbuz ile çek arasındaki bağ bu idempotency anahtarıdır: aynı çek iki kez
+ * tahsil edilse bile tek makbuz oluşur; geri alırken makbuz bununla bulunur.
+ */
+export const checkReceiptKey = (checkId: string) => `check:${checkId}`;
+
+export async function findCheckReceiptId(checkId: string): Promise<string | null> {
+  const { data } = await supabase.from('clinic_receipts')
+    .select('id')
+    .eq('idempotency_key', checkReceiptKey(checkId))
+    .maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
 }

@@ -59,7 +59,7 @@ import { useOrderMetrics } from '../../../core/metrics/useOrderMetrics';
 import { matchesOrderSearch } from '../lib/orderSearch';
 import { foldTR } from '../../search/lib/fold';
 import { doctorFilterInfo } from '../api';
-import { Search, X, Stethoscope, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Flame, Clock, CalendarClock, LayoutList, Columns3, UserCheck, Pencil, Archive, Trash2, RotateCcw, AlertCircle, ShieldAlert, ListChecks, Camera, CornerDownLeft, CornerDownRight, Inbox, Pause } from '../../../core/ui/icons';
+import { Search, X, Stethoscope, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Flame, Clock, CalendarClock, LayoutList, Columns3, UserCheck, Pencil, Archive, Trash2, RotateCcw, AlertCircle, ShieldAlert, ListChecks, Camera, CornerDownLeft, CornerDownRight, Inbox, Pause, Check, ArrowUp, ArrowDown } from '../../../core/ui/icons';
 import { RowActionsMenu, type RowAction } from '../../../core/ui/RowActionsMenu';
 import { ScanWorkOrderModal } from '../components/ScanWorkOrderModal';
 // Admin düzenleme artık yeni-sipariş SİHİRBAZINI (aynı 4 adım) düzenleme modunda açar.
@@ -71,6 +71,7 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { supabase } from '../../../core/api/supabase';
 import { bootMark } from '../../../core/debug/bootTrace';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { useNavScrollProps } from '../../../core/ui/mobile/navScroll';
 import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
@@ -119,6 +120,7 @@ import { PendingPaperOrdersScreen } from './PendingPaperOrdersScreen';
 import { mapStationToStage } from '../stationMapping';
 import { STAGE_LABEL, STAGE_COLOR, legacyStatusToStage, type Stage } from '../stages';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 
 // ── Panel detection helper ─────────────────────────────────────────
 type PanelKind = 'lab' | 'clinic' | 'doctor' | 'admin';
@@ -206,6 +208,14 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
 ];
 
 // ── Helpers ─────────────────────────────────────────────────────────
+/** Teslim gününe kalan gün — "bugün" LAB saat diliminde (Geciken çipiyle aynı tanım;
+ *  eskiden cihaz saati kullanılıyordu → gece yarısı/yurt dışında çip ile satır ayrışıyordu). */
+function dueDiffDays(d?: string | null): number {
+  const due = String(d ?? '').slice(0, 10);
+  if (!due) return 0;
+  return labDaysBetween(orderDefs.labTodayOf(cachedLabTz()), due);
+}
+
 function deliveryText(d: string, status: WorkOrderStatus, holdStatus?: string | null, holdCategory?: string | null, holdStartedAt?: string | null): string {
   if (status === 'teslim_edildi') return 'Teslim edildi';
   // Beklemedeki iş gecikme göstermez — sayaç durdu (bkz. isOrderOverdue / hold).
@@ -218,10 +228,10 @@ function deliveryText(d: string, status: WorkOrderStatus, holdStatus?: string | 
     const n = Math.max(0, labDaysBetween(orderDefs.labTodayOf(tz, new Date(holdStartedAt)), orderDefs.labTodayOf(tz)));
     return `${autoT('Beklemede')} · ${n} ${autoT('gün')}`;
   }
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const due   = new Date(d + 'T00:00:00');
-  const diff  = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
+  if (status === 'iptal') return autoT('İptal');
+  const diff = dueDiffDays(d);
   if (diff < 0)   return `${Math.abs(diff)} ${autoT('gün gecikti')}`;
+  const due = new Date(String(d).slice(0, 10) + 'T00:00:00');
   if (diff === 0) return 'Bugün';
   if (diff === 1) return 'Yarın';
   if (diff <= 6)  return `${diff} ${autoT('gün')}`;
@@ -255,6 +265,7 @@ export function OrdersListScreenV2() {
   // Floating navbar scroll farkındalığı (bkz. core/ui/mobile/navScroll.ts)
   const navScrollProps = useNavScrollProps();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const U = useInkUI();
   // SlideTabBar cursor'ı beyaz metin basar → koyu ink şart (panel `primary`si
   // lab'da safran sarısı, beyaz yazıyla okunmaz). Ekranda zaten bir `panel`
   // değişkeni var, bu yüzden `panelTheme`.
@@ -436,36 +447,6 @@ export function OrdersListScreenV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeKey]);
 
-  // GEÇİCİ TEŞHİS: ekran saniyede ~60 kez render ediliyor. Hangi DEĞERİN
-  // değiştiğini bulmak için önceki render ile karşılaştırıp yalnız FARKI yazar;
-  // fark yoksa "referans değişimi" (yeni nesne kimliği) demektir.
-  const _prevRef = useRef<Record<string, any> | null>(null);
-  const _renderNo = useRef(0);
-  {
-    _renderNo.current += 1;
-    const snap: Record<string, any> = {
-      panel, isDesktop, viewMode, statusFilter, loading, isAdmin,
-      showArchived, urgentOnly, overdueOnly, search,
-      ordersLen: orders.length,
-      ordersRef: orders,          // kimlik karşılaştırması
-      profileRef: profile,
-      windowW: typeof window !== 'undefined' ? window.innerWidth : 0,
-      windowH: typeof window !== 'undefined' ? window.innerHeight : 0,
-    };
-    const prev = _prevRef.current;
-    if (prev) {
-      const changed = Object.keys(snap).filter(k => !Object.is(prev[k], snap[k]));
-      if (_renderNo.current % 20 === 0 || changed.length) {
-        bootMark(`OrdersList render #${_renderNo.current}`, {
-          degisen: changed.length ? changed.join(', ') : '(HİÇBİRİ — üstten geliyor)',
-          w: snap.windowW, h: snap.windowH,
-        });
-      }
-    } else {
-      bootMark('OrdersList render #1', { panel, isDesktop, orders: orders.length });
-    }
-    _prevRef.current = snap;
-  }
 
   const { flags: provaFlags } = useProvaFlags(true, orders.length);
   const provaCtx = useMemo<ProvaFlagsCtx>(() => ({
@@ -498,9 +479,9 @@ export function OrdersListScreenV2() {
     });
     return list.sort((a, b) => {
       let cmp = 0;
-      if      (sortBy === 'delivery_date') cmp = a.delivery_date.localeCompare(b.delivery_date);
-      else if (sortBy === 'created_at')    cmp = a.created_at.localeCompare(b.created_at);
-      else if (sortBy === 'order_number')  cmp = a.order_number.localeCompare(b.order_number);
+      if      (sortBy === 'delivery_date') cmp = String(a.delivery_date ?? '').localeCompare(String(b.delivery_date ?? ''));
+      else if (sortBy === 'created_at')    cmp = String(a.created_at ?? '').localeCompare(String(b.created_at ?? ''));
+      else if (sortBy === 'order_number')  cmp = String(a.order_number ?? '').localeCompare(String(b.order_number ?? ''), undefined, { numeric: true });
       else if (sortBy === 'is_urgent')     cmp = (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0);
       return sortDir === 'asc' ? cmp : -cmp;
     });
@@ -561,6 +542,12 @@ export function OrdersListScreenV2() {
     setProvaChip((k === 'prova' || k === 'risk') && on ? k : null);
     setHoldOnly(k === 'hold' && on);
   }, [urgentOnly, overdueOnly, dueFlag, provaChip, holdOnly]);
+
+  // Durum sekmesi değişince TÜM çipler kapanır (eskiden yalnız Acil/Geciken kapanıyor,
+  // Bugün/Beklemede/Prova açık kalıp sekmeyi gizlice daraltıyordu).
+  const clearChips = useCallback(() => {
+    setUrgentOnly(false); setOverdueOnly(false); setDueFlag(null); setProvaChip(null); setHoldOnly(false);
+  }, []);
 
   // ── Handlers (memo'lu satırlar re-render etmesin diye stable callback) ──
   const onCardPress = useCallback((order: WorkOrder) => {
@@ -643,7 +630,7 @@ export function OrdersListScreenV2() {
       {/* Admin: kapsamlı düzenleme — yeni-sipariş sihirbazı (aynı 4 adım), bilgi dolu, popup */}
       {adminEditTarget && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setAdminEditTarget(null)}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: width >= 768 ? 24 : 0 }}>
+          <View style={{ ...U.modalOverlay, padding: width >= 768 ? 24 : 0 }}>
             <View style={{ width: '100%', maxWidth: 1120, flex: 1, maxHeight: width >= 768 ? '94%' : '100%', borderRadius: width >= 768 ? 20 : 0, overflow: 'hidden', backgroundColor: isDark ? T.bg : '#F1F5F9', ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 60px rgba(15,23,42,0.28)' } as any) : {}) }}>
               <React.Suspense fallback={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={T.ink as string} /></View>}>
                 <NewOrderEditWizard
@@ -758,7 +745,7 @@ export function OrdersListScreenV2() {
         <SlideTabBar
           items={statusFilters.filter(f => f.value !== 'manual').map(f => ({ key: String(f.value), label: f.label, count: statusCounts[f.value] ?? 0 }))}
           activeKey={String(statusFilter)}
-          onChange={(k) => { setStatusFilter(k as any); setUrgentOnly(false); setOverdueOnly(false); }}
+          onChange={(k) => { setStatusFilter(k as any); clearChips(); }}
           accentColor={panelTheme.accent}
           style={{ marginStart: -4 }}
         />
@@ -778,7 +765,7 @@ export function OrdersListScreenV2() {
               const active = statusFilter === 'manual';
               return (
                 <Pressable
-                  onPress={() => { setStatusFilter('manual'); setUrgentOnly(false); setOverdueOnly(false); }}
+                  onPress={() => { setStatusFilter('manual'); clearChips(); }}
                   className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
                   style={{
                     backgroundColor: active ? panelTheme.accent : (isDark ? T.card : '#FFFFFF'),
@@ -1043,141 +1030,6 @@ export function OrdersListScreenV2() {
       </View>
       )}
 
-      {/* ── Mobile Filter Bar — sade, tek elle kullanım ───────────── */}
-      {!isDesktop && (
-        <View className="px-4 pb-3" style={{ paddingTop: insets.top + 8, gap: 10 }}>
-          {/* Search + Sort row */}
-          <View className="flex-row items-center" style={{ gap: 8 }}>
-            <View
-              className="flex-1 flex-row items-center rounded-2xl px-3"
-              style={{ height: 40, borderWidth: 1, borderColor: T.hairline, backgroundColor: isDark ? T.card : '#FFFFFF' }}
-            >
-              <Search size={16} color={T.ink2} strokeWidth={1.8} />
-              <TextInput
-                className="flex-1 ms-2 text-[14px]"
-                placeholder="Sipariş, hasta, hekim, klinik ara"
-                placeholderTextColor={T.ink3 as string}
-                value={search}
-                onChangeText={setSearch}
-                returnKeyType="search"
-                style={{ color: T.ink }}
-              />
-              {search.length > 0 && (
-                <Pressable onPress={() => setSearch('')} hitSlop={8}>
-                  <X size={15} color={T.ink2} strokeWidth={2} />
-                </Pressable>
-              )}
-            </View>
-            <Pressable
-              onPress={() => setSortOpen(true)}
-              className="items-center justify-center rounded-2xl"
-              style={{ width: 40, height: 40, borderWidth: 1, borderColor: T.hairline, backgroundColor: isDark ? T.card : '#FFFFFF' }}
-            >
-              <ArrowUpDown size={16} color={T.ink} strokeWidth={1.8} />
-            </Pressable>
-          </View>
-
-          {/* Status chips — yatay scroll */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 6 }}
-          >
-            {statusFilters.map(f => {
-              const active = statusFilter === f.value && !urgentOnly && !overdueOnly;
-              const count = f.value === 'manual' ? paperInboxCount : (statusCounts[f.value] ?? 0);
-              return (
-                <Pressable
-                  key={f.value}
-                  onPress={() => { setStatusFilter(f.value); setUrgentOnly(false); setOverdueOnly(false); }}
-                  className="flex-row items-center rounded-full px-3.5"
-                  style={{ height: 32, borderWidth: 1, borderColor: active ? 'transparent' : T.hairline, gap: 6, backgroundColor: active ? T.ink : (isDark ? T.card : '#FFFFFF') }}
-                >
-                  <Text className="text-[13px] font-semibold" style={{ color: active ? '#FFFFFF' : T.ink2 }}>
-                    {f.label}
-                  </Text>
-                  <Text className="text-[11px] font-bold" style={{ color: active ? 'rgba(255,255,255,0.6)' : T.ink3 }}>
-                    {count}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-
-          {/* Acil + Geciken — alt satır */}
-          <View className="flex-row" style={{ gap: 8 }}>
-            <Pressable
-              onPress={() => { setUrgentOnly(v => !v); if (!urgentOnly) setOverdueOnly(false); }}
-              className="flex-row items-center rounded-full px-3"
-              style={{
-                height: 30,
-                gap: 5,
-                backgroundColor: urgentOnly ? 'rgba(217,119,6,0.12)' : (isDark ? T.card : '#FFFFFF'),
-                borderWidth: 1,
-                borderColor: urgentOnly ? 'rgba(217,119,6,0.25)' : T.hairline,
-              }}
-            >
-              <Flame size={13} color={urgentOnly ? '#D97706' : T.ink3} strokeWidth={1.8} />
-              <Text className="text-[12px] font-semibold" style={urgentOnly ? { color: '#D97706' } : { color: T.ink2 }}>
-                Acil
-              </Text>
-              {urgentCount > 0 && (
-                <Text className="text-[10px] font-bold" style={urgentOnly ? { color: '#D97706', opacity: 0.7 } : { color: T.ink3 }}>
-                  {urgentCount}
-                </Text>
-              )}
-            </Pressable>
-
-            <Pressable
-              onPress={() => { setOverdueOnly(v => !v); if (!overdueOnly) setUrgentOnly(false); }}
-              className="flex-row items-center rounded-full px-3"
-              style={{
-                height: 30,
-                gap: 5,
-                backgroundColor: overdueOnly ? 'rgba(220,38,38,0.12)' : (isDark ? T.card : '#FFFFFF'),
-                borderWidth: 1,
-                borderColor: overdueOnly ? 'rgba(220,38,38,0.25)' : T.hairline,
-              }}
-            >
-              <Clock size={13} color={overdueOnly ? '#DC2626' : T.ink3} strokeWidth={1.8} />
-              <Text className="text-[12px] font-semibold" style={overdueOnly ? { color: '#DC2626' } : { color: T.ink2 }}>
-                Geciken
-              </Text>
-              {overdueCount > 0 && (
-                <Text className="text-[10px] font-bold" style={overdueOnly ? { color: '#DC2626', opacity: 0.7 } : { color: T.ink3 }}>
-                  {overdueCount}
-                </Text>
-              )}
-            </Pressable>
-            {showProvaChips && (
-              <GlassTooltip title={autoT('Provada')} text={autoT('Provası klinikte ya da lab onayı bekleyen siparişler')}>
-                <Pressable
-                  onPress={() => pickChip('prova')}
-                  className="flex-row items-center rounded-full px-3"
-                  style={{ height: 30, gap: 5, backgroundColor: provaChip === 'prova' ? (isDark ? 'rgba(232,155,42,0.22)' : 'rgba(232,155,42,0.15)') : (isDark ? T.card : '#FFFFFF'), borderWidth: 1, borderColor: provaChip === 'prova' ? 'transparent' : T.hairline }}
-                >
-                  <CalendarClock size={13} color={provaChip === 'prova' ? (isDark ? '#F0C078' : '#9C5E0E') : T.ink3} strokeWidth={1.8} />
-                  <Text className="text-[12px] font-semibold" style={{ color: provaChip === 'prova' ? (isDark ? '#F0C078' : '#9C5E0E') : T.ink2 }}>Provada</Text>
-                  {provaCount > 0 && <Text className="text-[10px] font-bold" style={{ color: provaChip === 'prova' ? (isDark ? '#F0C078' : '#9C5E0E') : T.ink3 }}>{provaCount}</Text>}
-                </Pressable>
-              </GlassTooltip>
-            )}
-            {showProvaChips && (
-              <GlassTooltip title={autoT('Randevu riski')} text={autoT('Takma randevusuna yetişmeyecek ya da randevusu yaklaşan siparişler')}>
-                <Pressable
-                  onPress={() => pickChip('risk')}
-                  className="flex-row items-center rounded-full px-3"
-                  style={{ height: 30, gap: 5, backgroundColor: provaChip === 'risk' ? (isDark ? 'rgba(217,75,75,0.22)' : 'rgba(217,75,75,0.12)') : (isDark ? T.card : '#FFFFFF'), borderWidth: 1, borderColor: provaChip === 'risk' ? 'transparent' : T.hairline }}
-                >
-                  <CalendarClock size={13} color={provaChip === 'risk' ? (isDark ? '#F3A0A0' : '#9C2E2E') : T.ink3} strokeWidth={1.8} />
-                  <Text className="text-[12px] font-semibold" style={{ color: provaChip === 'risk' ? (isDark ? '#F3A0A0' : '#9C2E2E') : T.ink2 }}>Randevu riski</Text>
-                  {riskCount > 0 && <Text className="text-[10px] font-bold" style={{ color: provaChip === 'risk' ? (isDark ? '#F3A0A0' : '#9C2E2E') : T.ink3 }}>{riskCount}</Text>}
-                </Pressable>
-              </GlassTooltip>
-            )}
-          </View>
-        </View>
-      )}
 
       {/* ── Content ────────────────────────────────────────────────── */}
       {statusFilter === 'manual' ? (
@@ -1210,12 +1062,12 @@ export function OrdersListScreenV2() {
           <PendingPaperOrdersScreen embedded />
         </View>
       ) : isDesktop && viewMode === 'kanban' ? (
-        <KanbanBoard orders={visibleOrders} userGroup={(panelGroup || '(lab)') as any} onStatusAdvance={onStatusAdvance} />
+        <KanbanBoard orders={filtered} userGroup={(panelGroup || '(lab)') as any} onStatusAdvance={onStatusAdvance} />
       ) : (
         <ScrollView
           className="flex-1"
           contentContainerStyle={{
-            paddingHorizontal: isDesktop ? 16 : 12,
+            paddingHorizontal: PAGE_PADDING, // mobilde 12'ydi; sayfa kenarı her yerde 16
             paddingTop: 4,
             paddingBottom: 120,
           }}
@@ -1286,6 +1138,7 @@ export function OrdersListScreenV2() {
                       isManager={isManager}
                       isAdmin={isAdmin}
                       paginate
+                      resetKey={[statusFilter, search, urgentOnly, overdueOnly, dueFlag, provaChip, holdOnly, showArchived, sortBy, sortDir, doctorFilter?.id ?? ''].join('|')}
                       onPress={onCardPress}
                       onAssign={onAssignPress}
                       onEdit={setAdminEditTarget}
@@ -1322,7 +1175,7 @@ export function OrdersListScreenV2() {
         <Pressable
           onPress={() => setSortOpen(false)}
           className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(10,10,10,0.45)' }}
+          style={U.modalOverlay}
         >
           <Pressable
             onPress={e => e.stopPropagation()}
@@ -1355,7 +1208,7 @@ export function OrdersListScreenV2() {
                   </Text>
                   {active && (
                     <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: T.ink }}>
-                      <Text className="text-[10px] text-white font-bold">✓</Text>
+                      <Check size={11} color={T.card as string} strokeWidth={2.6} />
                     </View>
                   )}
                 </Pressable>
@@ -1373,18 +1226,20 @@ export function OrdersListScreenV2() {
                 className="flex-1 py-2.5 rounded-xl items-center"
                 style={{ backgroundColor: sortDir === 'asc' ? T.ink : T.cardSoft }}
               >
-                <Text className="text-[13px] font-semibold" style={{ color: sortDir === 'asc' ? '#FFFFFF' : T.ink2 }}>
-                  Artan ↑
-                </Text>
+                <View className="flex-row items-center" style={{ gap: 5 }}>
+                  <Text className="text-[13px] font-semibold" style={{ color: sortDir === 'asc' ? T.card : T.ink2 }}>Artan</Text>
+                  <ArrowUp size={13} color={(sortDir === 'asc' ? T.card : T.ink2) as string} strokeWidth={2} />
+                </View>
               </Pressable>
               <Pressable
                 onPress={() => setSortDir('desc')}
                 className="flex-1 py-2.5 rounded-xl items-center"
                 style={{ backgroundColor: sortDir === 'desc' ? T.ink : T.cardSoft }}
               >
-                <Text className="text-[13px] font-semibold" style={{ color: sortDir === 'desc' ? '#FFFFFF' : T.ink2 }}>
-                  Azalan ↓
-                </Text>
+                <View className="flex-row items-center" style={{ gap: 5 }}>
+                  <Text className="text-[13px] font-semibold" style={{ color: sortDir === 'desc' ? T.card : T.ink2 }}>Azalan</Text>
+                  <ArrowDown size={13} color={(sortDir === 'desc' ? T.card : T.ink2) as string} strokeWidth={2} />
+                </View>
               </Pressable>
             </View>
 
@@ -1404,7 +1259,7 @@ export function OrdersListScreenV2() {
         <Pressable
           onPress={() => setAssignModalVisible(false)}
           className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(10,10,10,0.45)' }}
+          style={U.modalOverlay}
         >
           <Pressable
             onPress={e => e.stopPropagation()}
@@ -1641,11 +1496,10 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
   onArchive?: (o: WorkOrder) => void;
   onDelete?: (o: WorkOrder) => void;
 }) {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const due   = new Date(order.delivery_date + 'T00:00:00');
-  const diff  = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
+  const diff    = dueDiffDays(order.delivery_date);
   const onHold  = (order as any).hold_status === 'on_hold';
-  const isLate  = order.status !== 'teslim_edildi' && diff < 0 && !onHold;
+  // Tek tanım: Geciken çipiyle aynı (açık iş + beklemede değil + teslim günü lab'ın bugününden önce)
+  const isLate  = orderDefs.isOverdueOrder(order as any, orderDefs.labTodayOf(cachedLabTz()));
   const stage   = stageOf(order);
   const stageColor = STAGE_COLOR[stage];
   const dText   = deliveryText(order.delivery_date, order.status, (order as any).hold_status, (order as any).hold_category, (order as any).hold_started_at);
@@ -1775,8 +1629,8 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
             <Text className="text-[11px] font-semibold text-white">Ata</Text>
           </Pressable>
         ) : (
-          isRTL() ? <ChevronLeft size={16} color="#CCC" strokeWidth={1.6} />
-                  : <ChevronRight size={16} color="#CCC" strokeWidth={1.6} />
+          isRTL() ? <ChevronLeft size={16} color={T.ink3 as string} strokeWidth={1.6} />
+                  : <ChevronRight size={16} color={T.ink3 as string} strokeWidth={1.6} />
         )}
       </View>
     </Pressable>
@@ -1786,7 +1640,7 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
 // ═══════════════════════════════════════════════════════════════════════
 // DESKTOP TABLE
 // ═══════════════════════════════════════════════════════════════════════
-function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, onArchive, onDelete, onAwaitDoctor, footerTitle, footerColor, footerBandColor, paginate }: {
+function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, onArchive, onDelete, onAwaitDoctor, footerTitle, footerColor, footerBandColor, paginate, resetKey }: {
   orders: WorkOrder[];
   isManager: boolean;
   isAdmin?: boolean;
@@ -1805,6 +1659,8 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
   footerBandColor?: string;
   /** Ana listede sayfalama (referans: sayfa başına birkaç kayıt, ferah görünüm) */
   paginate?: boolean;
+  /** Süzgeç/arama/sıralama imzası — değişince 1. sayfaya dönülür. */
+  resetKey?: string;
 }) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -1830,6 +1686,7 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
   const totalPages = paginate ? Math.max(1, Math.ceil(orders.length / PAGE_SIZE)) : 1;
   const safePage = Math.min(page, totalPages - 1);
   useEffect(() => { if (page > totalPages - 1) setPage(0); }, [totalPages, page]);
+  useEffect(() => { setPage(0); }, [resetKey]);
   const pageOrders = paginate ? orders.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE) : orders;
   const firstIdx = safePage * PAGE_SIZE;
 
@@ -1960,11 +1817,10 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
   onDelete?: (o: WorkOrder) => void;
   onAwaitDoctor?: (o: WorkOrder) => void;
 }) {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const due   = new Date(order.delivery_date + 'T00:00:00');
-  const diff  = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
+  const diff    = dueDiffDays(order.delivery_date);
   const onHold  = (order as any).hold_status === 'on_hold';
-  const isLate  = order.status !== 'teslim_edildi' && diff < 0 && !onHold;
+  // Tek tanım: Geciken çipiyle aynı (açık iş + beklemede değil + teslim günü lab'ın bugününden önce)
+  const isLate  = orderDefs.isOverdueOrder(order as any, orderDefs.labTodayOf(cachedLabTz()));
   const stage   = stageOf(order);
   const stageColor = STAGE_COLOR[stage];
   const dText   = deliveryText(order.delivery_date, order.status, (order as any).hold_status, (order as any).hold_category, (order as any).hold_started_at);
@@ -2083,7 +1939,7 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
             </Text>
             {order.is_urgent && (
               <View style={{ backgroundColor: 'rgba(217,75,75,0.12)', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, flexShrink: 0 }}>
-                <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.6, color: '#9C2E2E' }}>ACİL</Text>
+                <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.6, color: isDark ? '#F3A0A0' : '#9C2E2E' }}>ACİL</Text>
               </View>
             )}
           </View>
@@ -2180,11 +2036,11 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
             className="px-3 py-1 rounded-full"
             style={{ backgroundColor: T.ink }}
           >
-            <Text className="text-[10px] font-semibold text-white">Ata</Text>
+            <Text className="text-[10px] font-semibold" style={{ color: T.card }}>Ata</Text>
           </Pressable>
         ) : (
-          isRTL() ? <ChevronLeft size={14} color="#CCC" strokeWidth={1.6} />
-                  : <ChevronRight size={14} color="#CCC" strokeWidth={1.6} />
+          isRTL() ? <ChevronLeft size={14} color={T.ink3 as string} strokeWidth={1.6} />
+                  : <ChevronRight size={14} color={T.ink3 as string} strokeWidth={1.6} />
         ))}
       </View>
     </Pressable>

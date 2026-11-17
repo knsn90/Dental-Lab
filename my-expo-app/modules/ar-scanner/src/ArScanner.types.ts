@@ -20,4 +20,6 @@ export type FaceScanResult = {
   usdz: string | null;
   /** Köşe renkli binary PLY (mm) — ön kamera (TrueDepth) modu; dokulu OBJ ile aynı uzayda. */
   ply: string | null;
+  /** Taramanın tanı kaydı (scan_info.json) — depolamaya yüklenir, sipariş eklerinde görünmez. */
+  debugInfo?: string | null;
 };

@@ -12,8 +12,8 @@
  *    "Klinik adına onay kaydet". Yazma yalnız canLabWrite(actor, can_manage).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, Platform, useWindowDimensions, Modal } from 'react-native';
-import { AlertTriangle, FileCheck, RefreshCw, Info, Send, X } from '../../../core/ui/icons';
+import { View, Text, Pressable, Platform, useWindowDimensions, Modal, Dimensions } from 'react-native';
+import { AlertTriangle, FileCheck, RefreshCw, Info, Send, ChevronDown, Link2, X } from '../../../core/ui/icons';
 import { InvoiceDetailScreen } from '../screens/InvoiceDetailScreen';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useInkUI } from '../../../core/theme/inkScale';
@@ -29,10 +29,9 @@ import { InvoiceBlock } from '../../finance-clinic/screens/PreStatementScreen';
 import { useStatementView, StatementFilterBar, NoMatchLine } from '../../finance-clinic/components/StatementFilter';
 import { StatementApprovalBadge } from './StatementApprovalBadge';
 import { LabApprovalModal } from './LabApprovalModal';
-import { PreStatementPdfButton, doctorNamesOf } from './PreStatementPdfButton';
 import { fetchLabLetterhead } from '../labLetterheadApi';
 import { StatementLinkPanel } from './StatementLinkPanel';
-import { StatementRequestButton } from './StatementRequestModal';
+import { StatementRequestModal } from './StatementRequestModal';
 
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300' as const };
 
@@ -106,7 +105,7 @@ export function LabPreStatementTop({ st, currency }: { st: LabPreStatementState;
   }
   const invoices = st.data.invoices ?? [];
   const open = openDisputeCount(invoices);
-  const row = (st.data.summary ?? []).find(s => s.currency === currency);
+  if (open === 0) return null;
 
   return (
     <View style={{ gap: 12 }}>
@@ -124,28 +123,101 @@ export function LabPreStatementTop({ st, currency }: { st: LabPreStatementState;
           </Text>
         </View>
       ) : null}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-        <Tile label={autoT('Kesinleşmiş bakiye')} value={money(row?.finalized_balance, currency)} color={U.ink[900]} />
-        <Tile
-          label={autoT('Vadesi geçen')}
-          value={money(row?.overdue, currency)}
-          color={(Number(row?.overdue) || 0) > 0 ? U.chipTones.danger.fg : U.ink[900]}
-        />
-        <Tile label={autoT('Onay bekleyen')} value={money(row?.pending, currency)} color={U.chipTones.warning.fg} />
-      </View>
+      {/* Kesinleşmiş/vadesi geçen/onay bekleyen rakamları ekstre hero'sunda (Toplam bakiye dökümü). */}
     </View>
   );
 }
 
-function Tile({ label, value, color }: { label: string; value: string; color: string }) {
+// ─── Aç/kapa tercihi (yalnız tarayıcı kolaylığı) ─────────────────────────
+const COLLAPSE_KEY = 'siman.preStatement.collapsed';
+function readCollapsed(): boolean {
+  try { return typeof window !== 'undefined' && window.localStorage?.getItem(COLLAPSE_KEY) === '1'; } catch { return false; }
+}
+function writeCollapsed(v: boolean) {
+  try { if (typeof window !== 'undefined') window.localStorage?.setItem(COLLAPSE_KEY, v ? '1' : '0'); } catch { /* yok say */ }
+}
+
+// ─── "Onay iste ▾" menüsü — gönder · bağlantı · klinik adına onay tek yerde ──
+type ApprovalMenuItem = {
+  key: string;
+  label: string;
+  hint?: string;
+  icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
+  onPress: () => void;
+};
+
+function ApprovalMenu({ items, warn }: { items: ApprovalMenuItem[]; warn?: boolean }) {
   const U = useInkUI();
+  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const ref = useRef<any>(null);
+  const MENU_W = 290;
+
+  const openMenu = () => {
+    const node = ref.current;
+    if (node?.measureInWindow) {
+      node.measureInWindow((x: number, y: number, w: number, h: number) => { setAnchor({ x, y, w, h }); setOpen(true); });
+    } else { setAnchor(null); setOpen(true); }
+  };
+  const win = Dimensions.get('window');
+  const estH = items.length * 54 + 12;
+  const right = anchor ? Math.max(8, win.width - (anchor.x + anchor.w)) : 12;
+  const below = anchor ? anchor.y + anchor.h + 6 : 72;
+  const top = anchor && below + estH > win.height - 12 ? Math.max(12, anchor.y - estH - 6) : below;
+
   return (
-    <View style={{ flex: 1, minWidth: 140, backgroundColor: U.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: U.hairline }}>
-      <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[400], marginBottom: 4 }}>
-        {label}
-      </Text>
-      <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color }}>{value}</Text>
-    </View>
+    <>
+      <Pressable
+        ref={ref}
+        onPress={openMenu}
+        accessibilityRole="button"
+        accessibilityLabel={autoT('Onay iste')}
+        style={({ pressed }: any) => ({
+          flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 16, paddingVertical: 9,
+          borderRadius: 999, backgroundColor: U.ink[900], opacity: pressed ? 0.85 : 1,
+          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+        })}
+      >
+        <Send size={13} color={U.onDarkPill} strokeWidth={2} />
+        <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.onDarkPill }}>{autoT('Onay iste')}</Text>
+        {warn ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#D94B4B' }} /> : null}
+        <ChevronDown size={13} color={U.onDarkPill} strokeWidth={2} />
+      </Pressable>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable onPress={() => setOpen(false)} style={{ flex: 1 }}>
+          <Pressable
+            onPress={(e: any) => e?.stopPropagation?.()}
+            style={{
+              position: 'absolute', top, right, width: MENU_W, padding: 6, borderRadius: 14,
+              backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
+              shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 10,
+            }}
+          >
+            {items.map(it => {
+              const Icon = it.icon;
+              return (
+                <Pressable
+                  key={it.key}
+                  onPress={() => { setOpen(false); it.onPress(); }}
+                  style={({ pressed, hovered }: any) => ({
+                    flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 10,
+                    borderRadius: 10, backgroundColor: hovered || pressed ? U.rowHover : 'transparent',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  })}
+                >
+                  <Icon size={15} color={U.ink[700]} strokeWidth={1.9} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{it.label}</Text>
+                    {it.hint ? <Text style={{ fontSize: 11, color: U.chipTones.danger.fg, marginTop: 1 }}>{it.hint}</Text> : null}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 
@@ -189,6 +261,8 @@ function LinkStatusLine({ clinicId, epoch }: { clinicId: string; epoch: number }
   useEffect(() => { setSt(undefined); }, [clinicId]);
   if (st === undefined) return null;
   const line = statementLinkStatusLine(st, fmtDate, autoT);
+  // "Gönderim yok" bilgi taşımıyordu; yalnız gerçek bir gönderim/bağlantı varsa göster.
+  if (!st?.last_send && !st?.active_link) return null;
   const fg = line.tone === 'neutral' ? U.ink[500] : U.chipTones[line.tone].fg;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -199,8 +273,10 @@ function LinkStatusLine({ clinicId, epoch }: { clinicId: string; epoch: number }
 }
 
 // ─── Alt: çerçeveli bölüm ──────────────────────────────────────────────
-export function LabPreStatementSection({ st, clinicId, clinicName, currency, onApproved }: {
+export function LabPreStatementSection({ st, clinicId, clinicName, currency, onApproved, embedded }: {
   st: LabPreStatementState;
+  /** Üst kartın ("Kesinleşmemiş kalemler") içinde: kendi çerçevesi, ikonu ve başlığı çizilmez. */
+  embedded?: boolean;
   clinicId: string;
   /** PDF başlığı ve dosya adı için */
   clinicName?: string;
@@ -222,6 +298,12 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
   const [linkEpoch, setLinkEpoch] = useState(0);
   // Panelden elle bağlantı oluşturulunca yalnız durum satırı tazelenir (panel yeniden kurulmaz).
   const [statusEpoch, setStatusEpoch] = useState(0);
+  // Bölüm aç/kapa — tercih tarayıcıda hatırlanır (yalnız kolaylık; okunamazsa açık başlar).
+  const [collapsed, setCollapsedState] = useState<boolean>(() => readCollapsed());
+  const setCollapsed = (v: boolean) => { setCollapsedState(v); writeCollapsed(v); };
+  const [requestOpen, setRequestOpen] = useState(false);
+  // Bağlantı paneli menüden açılır; kapatılınca DOM'da kalır (oluşturulan bağlantı yalnız bellekte).
+  const [linkOpen, setLinkOpen] = useState(false);
 
   const all = useMemo(() => st.data?.invoices ?? [], [st.data]);
   // Liste seçili dövizde; onay da yalnız bu dövizin taslaklarını kapsar (ekstre tek dövizde okunur).
@@ -234,7 +316,9 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
     for (const i of invoices) m[i.id] = (i.items ?? []).length;
     return m;
   }, [invoices]);
-  const doctors = useMemo(() => doctorNamesOf(st.data), [st.data]);
+  const pendingSum = useMemo(() => invoices.reduce((s, i) => s + (Number(i.total) || 0), 0), [invoices]);
+  // Tutarı ₺0 olan taslak: fiyat girilmeden onaya gidebilir → görünür uyarı.
+  const zeroInvoices = useMemo(() => invoices.filter(i => !(Number(i.total) > 0)), [invoices]);
 
   const noteTarget = useMemo(() => {
     if (!noteItemId) return null;
@@ -251,46 +335,67 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
   const canWrite = canLabWrite(st.data.actor, st.data.can_manage);
 
   return (
-    <View style={{ ...U.tableCard, borderWidth: 1.5, borderColor: U.chipTones.warning.fg, borderStyle: 'dashed' as any }}>
+    <View style={embedded ? undefined : { ...U.tableCard, borderWidth: 1.5, borderColor: U.chipTones.warning.fg, borderStyle: 'dashed' as any }}>
       {/* Başlık */}
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-        paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: U.hairline,
+        paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: collapsed ? 0 : 1, borderBottomColor: U.hairline,
       }}>
-        <FileCheck size={17} color={U.chipTones.warning.fg} strokeWidth={1.8} />
-        <View style={{ flex: 1, minWidth: 180 }}>
-          <Text style={{ fontSize: 14.5, fontWeight: '700', color: U.ink[900] }}>{autoT('Ön ekstre — onay bekliyor')}</Text>
-          <Text style={{ fontSize: 11.5, color: U.ink[500], marginTop: 1 }}>
-            {autoT('Taslaklar bakiyeye ve hatırlatmaya girmez; klinik onayıyla kesinleşir')}
+        {embedded ? null : <FileCheck size={17} color={U.chipTones.warning.fg} strokeWidth={1.8} />}
+        <Pressable
+          onPress={() => setCollapsed(!collapsed)}
+          accessibilityRole="button"
+          accessibilityLabel={collapsed ? autoT('Ön ekstreyi aç') : autoT('Ön ekstreyi kapat')}
+          style={{ flex: 1, minWidth: 180, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+        >
+          {embedded ? null : <Text style={{ fontSize: 14.5, fontWeight: '700', color: U.ink[900] }}>{autoT('Ön ekstre — onay bekliyor')}</Text>}
+          <Text style={{ fontSize: 12, color: U.ink[500], marginTop: embedded ? 0 : 2 }}>
+            {invoices.length > 0
+              ? <>
+                  <Text style={{ fontWeight: '700', color: U.chipTones.warning.fg }}>{money(pendingSum, currency)}</Text>
+                  {` · ${invoices.length} ${autoT('hizmet bedeli')}`}
+                  {zeroInvoices.length > 0 ? <Text style={{ color: U.chipTones.danger.fg, fontWeight: '600' }}>{` · ${zeroInvoices.length} ${autoT('fiyatsız')}`}</Text> : null}
+                </>
+              : autoT('Onay bekleyen hizmet bedeli yok')}
           </Text>
-        </View>
-        {all.length > 0 ? (
-          <PreStatementPdfButton
-            clinicName={clinicName || autoT('Klinik')}
-            data={st.data}
-            lab={fetchLabLetterhead}
-            doctors={doctors}
-            currency={currency}
+          <View style={{ marginTop: 4 }}>
+            <LinkStatusLine clinicId={clinicId} epoch={linkEpoch + statusEpoch} />
+          </View>
+        </Pressable>
+        {/* PDF: ekstre hero'sundaki "Yazdır / PDF" penceresinde ("Yalnız onay bekleyenler"). */}
+        {canWrite && all.length > 0 ? (
+          <ApprovalMenu
+            warn={zeroInvoices.length > 0}
+            items={[
+              { key: 'send', icon: Send, label: autoT('Kliniğe gönder (e-posta / WhatsApp)'), onPress: () => setRequestOpen(true) },
+              { key: 'link', icon: Link2, label: linkOpen ? autoT('Bağlantı panelini gizle') : autoT('Onay bağlantısı oluştur'), onPress: () => { setLinkOpen(!linkOpen); setCollapsed(false); } },
+              ...(invoices.length > 0 ? [{
+                key: 'approve', icon: FileCheck,
+                label: autoT('Klinik adına onay kaydet'),
+                hint: zeroInvoices.length > 0 ? `${zeroInvoices.length} ${autoT('taslağın tutarı sıfır')}` : undefined,
+                onPress: () => setApproveOpen(true),
+              }] : []),
+            ]}
           />
         ) : null}
-        {canWrite && invoices.length > 0 ? (
-          <GlassTooltip title={autoT('Klinik adına onay kaydet')} text={autoT('Klinikten aldığınız onayı gerekçesiyle kaydeder; taslaklar kesinleşir')}>
-            <Pressable
-              onPress={() => setApproveOpen(true)}
-              style={({ pressed }) => ({
-                flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 16, paddingVertical: 9,
-                borderRadius: 999, backgroundColor: U.ink[900], opacity: pressed ? 0.85 : 1,
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              })}
-            >
-              <FileCheck size={13} color={U.onDarkPill} strokeWidth={2} />
-              <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.onDarkPill }}>{autoT('Klinik adına onay kaydet')}</Text>
-            </Pressable>
-          </GlassTooltip>
-        ) : null}
+        <GlassTooltip title={collapsed ? autoT('Aç') : autoT('Kapat')} text={autoT('Ön ekstre ayrıntılarını göster ya da gizle')}>
+          <Pressable
+            onPress={() => setCollapsed(!collapsed)}
+            accessibilityLabel={collapsed ? autoT('Ön ekstreyi aç') : autoT('Ön ekstreyi kapat')}
+            style={({ pressed }: any) => ({
+              width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
+              backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border, opacity: pressed ? 0.8 : 1,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}
+          >
+            <View style={{ transform: [{ rotate: collapsed ? '0deg' : '180deg' }] }}>
+              <ChevronDown size={15} color={U.plainBtn.fg} strokeWidth={2} />
+            </View>
+          </Pressable>
+        </GlassTooltip>
       </View>
 
-      <View style={{ padding: 16, gap: 12 }}>
+      <View style={{ padding: 16, gap: 12, ...(collapsed ? { display: 'none' as const } : null) }}>
         {!canWrite ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Info size={13} color={U.ink[400]} strokeWidth={1.8} />
@@ -314,26 +419,39 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
           </View>
         ) : null}
 
-        {/* Girişsiz onay bağlantısı + karekodlu PDF (plan 4) — yalnız yazma yetkili lab kullanıcısı */}
-        {canWrite && all.length > 0 ? (
-          <StatementRequestButton clinicId={clinicId} onSent={() => setLinkEpoch(n => n + 1)} />
+        {/* ₺0 taslak — fiyat girilmeden onaya gitmesin */}
+        {zeroInvoices.length > 0 ? (
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+            paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: U.chipTones.danger.bg,
+          }}>
+            <AlertTriangle size={14} color={U.chipTones.danger.fg} strokeWidth={1.9} />
+            <Text style={{ flex: 1, minWidth: 200, fontSize: 12.5, fontWeight: '600', color: U.chipTones.danger.fg }}>
+              {`${zeroInvoices.length} ${autoT('taslağın tutarı sıfır — onaya göndermeden önce fiyatı girin')}`}
+            </Text>
+            <Text style={{ fontSize: 12, color: U.chipTones.danger.fg }}>
+              {zeroInvoices.map(i => i.invoice_number || '—').join(', ')}
+            </Text>
+          </View>
         ) : null}
-        {/* Son gönderim / etkin bağlantı — finans gören herkes için salt okunur */}
-        {all.length > 0 ? <LinkStatusLine clinicId={clinicId} epoch={linkEpoch + statusEpoch} /> : null}
+
+        {/* Girişsiz onay bağlantısı + karekodlu PDF (plan 4) — menüden açılır; gizliyken de bağlı kalır */}
         {canWrite && all.length > 0 ? (
-          <StatementLinkPanel
-            key={`link-${linkEpoch}`}
-            clinicId={clinicId}
-            clinicName={clinicName || autoT('Klinik')}
-            data={st.data}
-            lab={fetchLabLetterhead}
-            currency={currency}
-            onCreated={() => setStatusEpoch(n => n + 1)}
-          />
+          <View style={linkOpen ? undefined : { display: 'none' }}>
+            <StatementLinkPanel
+              key={`link-${linkEpoch}`}
+              clinicId={clinicId}
+              clinicName={clinicName || autoT('Klinik')}
+              data={st.data}
+              lab={fetchLabLetterhead}
+              currency={currency}
+              onCreated={() => setStatusEpoch(n => n + 1)}
+            />
+          </View>
         ) : null}
 
         {invoices.length === 0 ? (
-          <Text style={{ fontSize: 12.5, color: U.ink[400] }}>{autoT('Onay bekleyen fatura yok')}</Text>
+          <Text style={{ fontSize: 12.5, color: U.ink[400] }}>{autoT('Onay bekleyen hizmet bedeli yok')}</Text>
         ) : (
           <>
             <StatementFilterBar view={view} />
@@ -392,6 +510,10 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
         onClose={() => setNoteItemId(null)}
         onSent={() => st.reload()}
       />
+
+      {canWrite ? (
+        <StatementRequestModal open={requestOpen} clinicId={clinicId} onClose={() => setRequestOpen(false)} onSent={() => setLinkEpoch(n => n + 1)} />
+      ) : null}
 
       {canWrite ? (
         <LabApprovalModal

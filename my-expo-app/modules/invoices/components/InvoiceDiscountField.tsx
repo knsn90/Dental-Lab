@@ -25,7 +25,7 @@ export function InvoiceDiscountField({
 
   return (
     <View style={{ opacity: disabled ? 0.6 : 1 }}>
-      <Text style={{ ...U.colHeader, marginBottom: 6 }}>{autoT('Fatura indirimi')}</Text>
+      <Text style={{ ...U.colHeader, marginBottom: 6 }}>{autoT('Hizmet bedeli indirimi')}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <View style={{ flexDirection: 'row', gap: 4, padding: 3, backgroundColor: U.ink[100], borderRadius: 14 }}>
           {([
@@ -54,7 +54,7 @@ export function InvoiceDiscountField({
           keyboardType="decimal-pad"
           placeholder={kind === 'percent' ? '%' : '0,00'}
           placeholderTextColor={U.ink[400]}
-          accessibilityLabel={autoT('Fatura indirimi')}
+          accessibilityLabel={autoT('Hizmet bedeli indirimi')}
           style={[U.inputStyle as any, { flex: 1, minWidth: 0 },
             error ? { borderColor: U.chipTones.danger.fg } : null]}
         />

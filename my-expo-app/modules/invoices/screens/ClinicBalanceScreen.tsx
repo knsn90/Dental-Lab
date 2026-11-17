@@ -11,16 +11,16 @@ import { safeBack } from '../../../core/util/safeBack';
  *
  * Klinik satırına tıklayınca /statement/[clinicId] sayfasına yönlendirir.
  */
-import React, { useContext, useMemo, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable, RefreshControl,
-  TextInput, useWindowDimensions, Platform, Modal, ActivityIndicator,
+  TextInput, useWindowDimensions, Platform, Modal, ActivityIndicator, Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useSegments } from 'expo-router';
 import {
   ArrowLeft, ArrowRight, Search, X, Building2, AlertTriangle,
-  Clock, Inbox, ChevronLeft, ChevronRight, FileText, Receipt, SlidersHorizontal, Check, Bell,
+  Clock, Inbox, ChevronLeft, ChevronRight, FileText, Receipt, SlidersHorizontal, Check, Bell, MoreHorizontal, ChevronDown,
 } from '../../../core/ui/icons';
 import { SendReminderModal } from '../../finance-clinic/components/SendReminderModal';
 import { sendBulkPaymentReminders } from '../../finance-clinic/api';
@@ -28,16 +28,18 @@ import { sendBulkPaymentReminders } from '../../finance-clinic/api';
 import { useClinicBalancesByCurrency, useUnbilledWorkOrders } from '../hooks/useInvoices';
 import { createBulkInvoice } from '../api';
 import { supabase } from '../../../core/api/supabase';
+import { labTodayOf } from '../../../core/metrics/orderDefs';
+import { cachedLabTz } from '../../../core/metrics/useLabToday';
 import { toast } from '../../../core/ui/Toast';
 import { useInkUI } from '../../../core/theme/inkScale';
-import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { HubContext } from '../../../core/ui/HubContext';
 import { useBaseCurrency } from '../../../core/money/baseCurrency';
 import { formatMoney, CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { groupByCurrency } from '../../../core/money/aggregations';
 import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
-import { MobileTableX, MobileTableRowX, MobileTableIconX, useMobileTableText } from '../../../core/ui/MobileTableX';
+import { useMobileTableText } from '../../../core/ui/MobileTableX';
 import { FAB_CLEARANCE } from '../../../core/ui/pageMetrics';
 import { isRTL } from '../../../core/i18n';
 import { clinicCollected } from '../lib/discountPayment';
@@ -46,10 +48,24 @@ import {
   validateInvoiceDiscount, invoiceTotalsWithDiscount, invoiceDiscountRpcError, type InvoiceDiscountType,
 } from '../lib/invoiceDiscount';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { useInvoiceApprovalEnabled } from '../../../core/store/labSettingsStore';
+import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
+import { AnchorMenu } from '../components/AnchorMenu';
 
 /** Vadesi geçmiş alacak — tek tanım (2026-10-26): kliniğin avansı düşülmüş (v_clinic_balance_ccy.overdue_net);
  *  Özet'teki "hatırlatılacak" listesi ve hatırlatma tutarıyla aynı. Görünüm eskiyse brüt değere düşer. */
 const netOverdue = (b: any): number => Number(b.overdue_net ?? b.overdue_amount) || 0;
+
+/** v_clinic_balance_ccy.overdue_amount ile aynı tanım: iptal/taslak hariç, vade < lab günü, ödenmemiş. */
+async function countOverdueInvoices(clinicId: string, currency: string): Promise<number> {
+  const today = labTodayOf(cachedLabTz());
+  let q = supabase.from('invoices').select('id, total, paid_amount, currency')
+    .eq('clinic_id', clinicId).not('status', 'in', '(iptal,taslak)').lt('due_date', today);
+  q = currency === 'TRY' ? q.or('currency.eq.TRY,currency.is.null') : q.eq('currency', currency);
+  const { data, error } = await q;
+  if (error) return 1;   // sayı alınamadı ama gecikme kesin var → acil ton korunur
+  return (data ?? []).filter((i: any) => (Number(i.paid_amount) || 0) < (Number(i.total) || 0)).length || 1;
+}
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -85,9 +101,6 @@ export function ClinicBalanceScreen() {
   const MT = useMobileTableText();
   // Hero — açık temada panel accent'i, koyu temada lacivert gradyan (HERO_NAVY).
   const heroInk = useWhiteHeroInk(theme.primary);
-  // Tablo kartı başlığı düz panel accent'i (uygulama genelinde aynı dil).
-  const tblAccent = theme.primary;
-  const tblInk = onAccentInk(tblAccent);
   const router = useRouter();
   const panelBase = String((useSegments() as string[])?.[0] ?? '(lab)');
   const isEmbedded = useContext(HubContext);
@@ -96,11 +109,11 @@ export function ClinicBalanceScreen() {
 
   // clinic_id → { count, total, work_order_ids[], byCcy (para birimi → tutar) }
   const unbilledByClinic = useMemo(() => {
-    const map: Record<string, { count: number; total: number; ids: string[]; byCcy: Record<string, number> }> = {};
+    const map: Record<string, { count: number; total: number; ids: string[]; byCcy: Record<string, number>; name: string }> = {};
     for (const o of (unbilled ?? [])) {
       const k = (o as any).clinic_id;
       if (!k) continue;
-      if (!map[k]) map[k] = { count: 0, total: 0, ids: [], byCcy: {} };
+      if (!map[k]) map[k] = { count: 0, total: 0, ids: [], byCcy: {}, name: String((o as any).clinic_name ?? '') };
       map[k].count += 1;
       map[k].total += Number((o as any).estimated_total ?? 0);
       map[k].ids.push((o as any).work_order_id);
@@ -159,13 +172,33 @@ export function ClinicBalanceScreen() {
       return;
     }
     setBillTarget(null);
-    toast.success(`${bucket.count} ${autoT('sipariş tek faturada birleştirildi')}`);
-    refetch();
-    refetchUnbilled();
+    toast.success(`${bucket.count} ${autoT('sipariş tek hizmet bedelinde birleştirildi')}`);
+    refreshAll();
   };
   const [search, setSearch] = useState('');
-  const [overdueOnly, setOverdueOnly] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(false);
+  // Hızlı süzgeç (tablo başı sekmeleri): Tümü · Gecikmiş · Faturalanacak · Onayda/Taslak
+  type Seg = 'all' | 'overdue' | 'unbilled' | 'draft';
+  const [seg, setSeg] = useState<Seg>('all');
+  const approvalOn = useInvoiceApprovalEnabled();
+  // Kesilmemiş taslak faturalar (ön ekstre açıkken = klinik onayında). Bakiyeye dahil değil.
+  const [drafts, setDrafts] = useState<{ clinic_id: string; currency: string | null; total: number | null }[]>([]);
+  const loadDrafts = useCallback(async () => {
+    const { data } = await supabase.from('invoices').select('clinic_id, currency, total').eq('status', 'taslak');
+    setDrafts(((data ?? []) as any[]).filter(r => r.clinic_id));
+  }, []);
+  useEffect(() => { void loadDrafts(); }, [loadDrafts]);
+  const draftByClinic = useMemo(() => {
+    const m: Record<string, { count: number; byCcy: Record<string, number> }> = {};
+    for (const d of drafts) {
+      const k = d.clinic_id;
+      if (!m[k]) m[k] = { count: 0, byCcy: {} };
+      m[k].count += 1;
+      const c = d.currency || 'TRY';
+      m[k].byCcy[c] = (m[k].byCcy[c] ?? 0) + (Number(d.total) || 0);
+    }
+    return m;
+  }, [drafts]);
+  const refreshAll = useCallback(() => { refetch(); refetchUnbilled(); void loadDrafts(); }, [refetch, refetchUnbilled, loadDrafts]);
   const insets = useSafeAreaInsets();
   type CBSortKey = 'balance_desc' | 'balance_asc' | 'overdue_desc' | 'name_asc';
   const [sortKey, setSortKey] = useState<CBSortKey>('balance_desc');
@@ -188,23 +221,55 @@ export function ClinicBalanceScreen() {
   } | null>(null);
   const [bulkSending, setBulkSending] = useState(false);
 
-  const handleBulkReminders = async () => {
+  // Toplu hatırlatma — uygulamanın onay penceresiyle (tarayıcı confirm() değil); hata pencerede satır içi.
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
+  const bulkInFlight = useRef(false);
+  const handleBulkReminders = () => {
     if (bulkSending) return;
-    if (!confirm('Vadesi geçen tüm kliniklere hatırlatma gönderilecek. Onaylıyor musunuz?')) return;
-    setBulkSending(true);
-    try {
-      const n = await sendBulkPaymentReminders({ severity: 'warning' });
-      toast.success(`${n} kliniğe hatırlatma gönderildi.`);
-    } catch (e: any) {
-      toast.error(`Hata: ${e?.message ?? e}`);
-    } finally { setBulkSending(false); }
+    const n = rows.filter(b => netOverdue(b) > 0).length;
+    setConfirmState({
+      title: autoT('Gecikenlere hatırlat'),
+      highlight: `${n} ${autoT('kuruma')}`,
+      message: autoT('ödeme hatırlatması gönderilecek. Her kurum kendi kanalından (e-posta / WhatsApp) bildirim alır.'),
+      label: autoT('Gönder'),
+      variant: 'warning',
+      onConfirm: async () => {
+        if (bulkInFlight.current) return;
+        bulkInFlight.current = true;
+        setBulkSending(true);
+        try {
+          const sent = await sendBulkPaymentReminders({ severity: 'warning' });
+          setConfirmState(null);
+          toast.success(`${sent} ${autoT('kuruma hatırlatma gönderildi')}`);
+        } catch (e: any) {
+          setConfirmState(st => st ? { ...st, error: `${autoT('Gönderilemedi')}: ${e?.message ?? e}` } : st);
+        } finally { bulkInFlight.current = false; setBulkSending(false); }
+      },
+    });
   };
+
+  // Liste satırları: bakiye görünümündeki kurumlar + yalnız faturalanmamış işi olan (henüz faturası olmayan)
+  // kurumlar. Eklenenler sıfır bakiyeli satırdır; hero toplamları yalnız `rows`tan gelir.
+  const allRows = useMemo(() => {
+    const have = new Set(rows.map(r => r.clinic_id));
+    const extra = Object.entries(unbilledByClinic)
+      .filter(([id, u]) => !have.has(id) && u.count > 0)
+      .map(([id, u]) => ({
+        clinic_id: id, clinic_name: u.name || autoT('Sağlık Kurumu'), lab_id: null,
+        currency: Object.entries(u.byCcy).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'TRY',
+        invoice_count: 0, total_billed: 0, total_paid: 0, balance: 0, overdue_amount: 0,
+        aging_current: 0, aging_30: 0, aging_60: 0, aging_90: 0, oldest_overdue_date: null,
+      }));
+    return [...rows, ...extra] as typeof rows;
+  }, [rows, unbilledByClinic]);
 
   // Her satır = (klinik, para birimi). Sıralama tek-para satır bazında (gösterilen
   // toplam değil, yalnız sıralama sezgisi — para birimleri toplanmaz).
   const filtered = useMemo(() => {
-    const list = rows.filter(b => {
-      if (overdueOnly && netOverdue(b) <= 0) return false;
+    const list = allRows.filter(b => {
+      if (seg === 'overdue' && netOverdue(b) <= 0) return false;
+      if (seg === 'unbilled' && !(unbilledByClinic[b.clinic_id]?.count > 0)) return false;
+      if (seg === 'draft' && !(draftByClinic[b.clinic_id]?.byCcy[b.currency || 'TRY'] > 0)) return false;
       if (search) return b.clinic_name.toLowerCase().includes(search.toLowerCase());
       return true;
     });
@@ -217,7 +282,7 @@ export function ClinicBalanceScreen() {
         default:             return 0;
       }
     });
-  }, [rows, search, overdueOnly, sortKey]);
+  }, [allRows, search, seg, sortKey, unbilledByClinic, draftByClinic]);
 
   // Hero & footer için per-currency gruplar (KATI — asla toplanmaz)
   // Lab alacağı (tek tanım): yalnız POZİTİF bakiyeler; bir kliniğin avans fazlası başkasının borcunu kapatmaz.
@@ -250,6 +315,34 @@ export function ClinicBalanceScreen() {
 
   const hasAging = agingByCcy.length > 0;
 
+  // ── Hero özetleri — ana (en büyük) para biriminde; diğerleri açıklama satırında ──
+  const leadCcy = (lead?.currency as string) || 'TRY';
+  const sumCcy = (slices: { currency: Currency; total: number }[]) => slices.find(x => x.currency === leadCcy)?.total ?? 0;
+  const leadOverdue = sumCcy(overdueByCcy);
+  const leadBilled = sumCcy(billedByCcy);
+  const leadPaid = sumCcy(paidByCcy);
+  const leadCollectPct = leadBilled > 0 ? Math.min(100, (leadPaid / leadBilled) * 100) : 0;
+  // Kesinleşmemiş = taslak/onaydaki faturalar + faturalanmamış işler (ekstre sayfasıyla aynı tanım)
+  const leadPending = useMemo(() => {
+    let t = 0;
+    for (const d of Object.values(draftByClinic)) t += d.byCcy[leadCcy] ?? 0;
+    for (const u of Object.values(unbilledByClinic)) t += u.byCcy[leadCcy] ?? 0;
+    return t;
+  }, [draftByClinic, unbilledByClinic, leadCcy]);
+  const leadAging = agingByCcy.find(g => g.currency === leadCcy) ?? null;
+  const draftLabel = approvalOn ? 'Onayda' : 'Taslak';
+
+  // Sekme sayıları — satır (kurum × para birimi) bazında, aramayla birlikte
+  const segCounts = useMemo(() => {
+    const base = allRows.filter(b => !search || b.clinic_name.toLowerCase().includes(search.toLowerCase()));
+    return {
+      all: base.length,
+      overdue: base.filter(b => netOverdue(b) > 0).length,
+      unbilled: base.filter(b => unbilledByClinic[b.clinic_id]?.count > 0).length,
+      draft: base.filter(b => draftByClinic[b.clinic_id]?.byCcy[b.currency || 'TRY'] > 0).length,
+    };
+  }, [allRows, search, unbilledByClinic, draftByClinic]);
+
   const openStatement = (clinicId: string) => {
     // GRUP ÖNEKİ ŞART: /statement/:id yolu hem (lab) hem (admin) grubunda tanımlı.
     // Öneksiz push belirsiz eşleşme yapıyor → URL değişiyor ama ekran yenilenmiyor
@@ -275,13 +368,11 @@ export function ClinicBalanceScreen() {
         // paddingBottom 48 idi: kartın "Toplam: …" alt satırı sağ-altta yüzen
         // Simanty FAB'ının altında kalıp okunamıyordu (FAB zIndex 9999).
         contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: FAB_CLEARANCE, gap: 14 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={U.ink[300]} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshAll} tintColor={U.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
-            Prim Motoru hiyerarşisi: kicker → 44px tek büyük rakam → bağlam
-            cümlesi → sağda 40px stat'lar. Rakam TOPLANMAZ; başlık en büyük
-            para birimi dilimini, kalanlar altındaki chip şeridini kullanır. */}
+        {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) — çerçeve aynı, içi sade:
+            büyük toplam alacak · sağda kesinleşmemiş + vadesi geçen · tek yaşlandırma çubuğu. */}
         <WhiteHero
           kicker="Sağlık Kurumu Bakiyeleri"
           accent={theme.primary}
@@ -295,10 +386,28 @@ export function ClinicBalanceScreen() {
             (overdueCount ? ` · ${overdueCount} tanesinin vadesi geçmiş` : ' · vadesi geçen yok')
           }
           stats={[
-            { value: String(filtered.length), label: 'Kurum' },
-            { value: String(overdueCount),    label: 'Gecikmiş' },
-            ...(rest.length ? [{ value: String(rest.length + 1), label: 'Para Birimi' }] : []),
+            { value: formatMoney(leadPending, leadCcy as Currency, { fractionDigits: 0 }), label: autoT('Kesinleşmemiş'), color: leadPending > 0 ? (U.isDark ? '#FAC775' : '#92560E') : undefined },
+            { value: formatMoney(leadOverdue, leadCcy as Currency, { fractionDigits: 0 }), label: autoT('Vadesi geçen'), color: leadOverdue > 0 ? (U.isDark ? '#F09595' : '#A32D2D') : undefined },
           ]}
+          actionsAlign="end"
+          actions={overdueExists ? (
+            <GlassTooltip title={autoT('Gecikenlere hatırlat')} text={autoT('Vadesi geçen tüm kurumlara ödeme hatırlatması gönderir')}>
+              <Pressable
+                onPress={handleBulkReminders}
+                disabled={bulkSending}
+                style={({ pressed }: any) => ({
+                  flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10,
+                  borderRadius: 999, backgroundColor: U.ink[900], opacity: bulkSending ? 0.55 : pressed ? 0.85 : 1,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                })}
+              >
+                <Bell size={14} color={U.onDarkPill} strokeWidth={1.8} />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: U.onDarkPill }}>
+                  {bulkSending ? autoT('Gönderiliyor…') : `${autoT('Gecikenlere hatırlat')} (${overdueCount})`}
+                </Text>
+              </Pressable>
+            </GlassTooltip>
+          ) : undefined}
         >
           {rest.length > 0 && (
             <View style={{ marginTop: 10 }}>
@@ -306,441 +415,344 @@ export function ClinicBalanceScreen() {
             </View>
           )}
 
-          {/* Kesilen / Tahsil / Vadesi Geçen — toplamı "nereden geldi"ye açar. */}
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-            <HeroCcyStat label="Kesilen" slices={billedByCcy} />
-            <HeroCcyStat label="Tahsil Edilen" slices={paidByCcy} />
-            <HeroCcyStat label="Vadesi Geçen" slices={overdueByCcy} />
-          </View>
-
-          {hasAging && (
-            <View style={{ marginTop: 18, paddingTop: 16, borderTopWidth: 1, borderTopColor: heroInk.tileBorder, gap: 14 }}>
-              <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: heroInk.inkSoft }}>Yaşlandırma</Text>
-              {agingByCcy.map(g => {
-                const total = g.current + g.d30 + g.d60 + g.d90;
-                const sym = CURRENCY_META[(g.currency as Currency)]?.symbol ?? g.currency;
-                return (
-                  <View key={g.currency} style={{ gap: 8 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: heroInk.ink, letterSpacing: 0.5 }}>{sym} {g.currency}</Text>
-                    <View style={{ flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: heroInk.tileBg }}>
-                      {[
-                        { v: g.current, color: '#2D9A6B' },
-                        { v: g.d30,     color: '#E89B2A' },
-                        { v: g.d60,     color: '#F97316' },
-                        { v: g.d90,     color: '#D94B4B' },
-                      ].map((seg, i) => {
-                        const w = total > 0 ? (seg.v / total) * 100 : 0;
-                        if (w === 0) return null;
-                        return <View key={i} style={{ width: `${w}%` as any, height: 6, backgroundColor: seg.color }} />;
-                      })}
+          {hasAging && leadAging ? (() => {
+            const g = leadAging;
+            const total = g.current + g.d30 + g.d60 + g.d90;
+            return (
+              <View style={{ marginTop: 18, gap: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase', color: heroInk.inkSoft }}>
+                    {`${autoT('Yaşlandırma')} · ${g.currency}`}
+                  </Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: heroInk.ink }}>
+                    {`${autoT('Kesinleşen')} ${fmtCur(leadBilled, leadCcy)} · ${autoT('Tahsil')} ${fmtCur(leadPaid, leadCcy)} · %${leadCollectPct.toFixed(0)}`}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: heroInk.tileBg }}>
+                  {[
+                    { v: g.current, color: '#2D9A6B' },
+                    { v: g.d30,     color: '#E89B2A' },
+                    { v: g.d60,     color: '#F97316' },
+                    { v: g.d90,     color: '#D94B4B' },
+                  ].map((seg, i) => {
+                    const w = total > 0 ? (seg.v / total) * 100 : 0;
+                    if (w === 0) return null;
+                    return <View key={i} style={{ width: `${w}%` as any, height: 8, backgroundColor: seg.color }} />;
+                  })}
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
+                  {g.current > 0 && <AgingLegend label="Vadesi var" value={fmtCur(g.current, g.currency)} color="#2D9A6B" />}
+                  {g.d30 > 0 && <AgingLegend label="1–30 gün" value={fmtCur(g.d30, g.currency)} color="#E89B2A" />}
+                  {g.d60 > 0 && <AgingLegend label="31–60 gün" value={fmtCur(g.d60, g.currency)} color="#F97316" />}
+                  {g.d90 > 0 && <AgingLegend label="61+ gün" value={fmtCur(g.d90, g.currency)} color="#D94B4B" />}
+                </View>
+                {/* Diğer para birimleri: ince çubuk + vadesi geçen tutar (her döviz kendi çubuğu, toplanmaz) */}
+                {agingByCcy.filter(o => o.currency !== leadCcy).map(o => {
+                  const t = o.current + o.d30 + o.d60 + o.d90;
+                  const late = o.d30 + o.d60 + o.d90;
+                  return (
+                    <View key={o.currency} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                      <Text style={{ width: 34, fontSize: 10, fontWeight: '700', letterSpacing: 0.5, color: heroInk.inkSoft }}>{o.currency}</Text>
+                      <View style={{ flex: 1, flexDirection: 'row', height: 4, borderRadius: 2, overflow: 'hidden', backgroundColor: heroInk.tileBg }}>
+                        {[
+                          { v: o.current, color: '#2D9A6B' }, { v: o.d30, color: '#E89B2A' },
+                          { v: o.d60, color: '#F97316' },     { v: o.d90, color: '#D94B4B' },
+                        ].map((sg, k) => t > 0 && sg.v > 0
+                          ? <View key={k} style={{ width: `${(sg.v / t) * 100}%` as any, height: 4, backgroundColor: sg.color }} />
+                          : null)}
+                      </View>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: late > 0 ? (U.isDark ? '#F09595' : '#A32D2D') : heroInk.inkFaint }}>
+                        {late > 0 ? `${fmtCur(late, o.currency)} ${autoT('gecikmiş')}` : `${fmtCur(t, o.currency)}`}
+                      </Text>
                     </View>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 2 }}>
-                      {g.current > 0 && <AgingLegend label="Vadesi var" value={fmtCur(g.current, g.currency)} color="#2D9A6B" />}
-                      {g.d30 > 0 && <AgingLegend label="1–30 gün" value={fmtCur(g.d30, g.currency)} color="#E89B2A" />}
-                      {g.d60 > 0 && <AgingLegend label="31–60 gün" value={fmtCur(g.d60, g.currency)} color="#F97316" />}
-                      {g.d90 > 0 && <AgingLegend label="61+ gün" value={fmtCur(g.d90, g.currency)} color="#D94B4B" />}
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          )}
+                  );
+                })}
+              </View>
+            );
+          })() : null}
         </WhiteHero>
 
-        {/* ── Search + Filter — §05.5 ───────────────────────────
-            LAYOUT: satır `flexWrap` idi YOK'tu; dar ekranda "Vadesi Geçenleri
-            Hatırlat" butonu arama kutusunun ÜSTÜNE biniyordu. Arama kutusu
-            esner ama bir taban genişliğinin altına inmez (`minWidth`), butonlar
-            sığmayınca alt satıra sarar — hiçbir şey kırpılmaz/örtüşmez. */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', rowGap: 8 }}>
+        {/* ── Kurumlar: sade başlık (sekme + arama + sıralama kartın içinde) ── */}
+        <View style={U.tableCard}>
           <View style={{
-            flexGrow: 1, flexShrink: 1, flexBasis: 220, minWidth: 180,
-            flexDirection: 'row', alignItems: 'center', gap: 10,
-            height: 44, paddingHorizontal: 14, borderRadius: 9999,
-            borderWidth: 1, borderColor: U.fieldBorder,
-            backgroundColor: U.inputStyle.backgroundColor,
+            paddingHorizontal: isDesktop ? 20 : 16, paddingTop: isDesktop ? 18 : 14, paddingBottom: 14, gap: 12,
+            borderBottomWidth: 1, borderBottomColor: U.hairline,
           }}>
-            <Search size={15} color={U.ink[400]} strokeWidth={1.8} />
-            <TextInput
-              style={{ flex: 1, fontSize: 14, color: U.ink[900], outline: 'none' as any }}
-              placeholder="Sağlık kurumu ara..."
-              placeholderTextColor={U.ink[400]}
-              value={search}
-              onChangeText={setSearch}
-            />
-            {search.length > 0 && (
-              <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
-                <X size={14} color={U.ink[400]} strokeWidth={2} />
-              </Pressable>
-            )}
-          </View>
-
-          {/* Bulk hatırlatma butonu — sadece vadesi geçen varsa anlamlı.
-              Kırmızı = status rengi → koyu temada da kırmızı kalır (U.chipTones). */}
-          {overdueExists && (
-            <Pressable
-              onPress={handleBulkReminders}
-              disabled={bulkSending}
-              style={{
-                flexShrink: 1,
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                height: 44, paddingHorizontal: 14, borderRadius: 9999,
-                backgroundColor: bulkSending ? U.chipNeutral : U.chipTones.danger.bg,
-                borderWidth: 1, borderColor: U.isDark ? 'rgba(217,75,75,0.45)' : 'rgba(217,75,75,0.30)',
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              }}
-            >
-              <Bell size={14} color={U.chipTones.danger.fg} strokeWidth={2} />
-              <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '700', color: U.chipTones.danger.fg }}>
-                {bulkSending ? '...' : 'Vadesi Geçenleri Hatırlat'}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 10 }}>
+              <Text style={{ ...DISPLAY, fontSize: isDesktop ? 22 : 18, letterSpacing: isDesktop ? -0.4 : -0.3, color: U.ink[900] }}>
+                Kurumlar
               </Text>
-            </Pressable>
-          )}
-
-          {(() => {
-            const activeCount = (overdueOnly ? 1 : 0) + (sortKey !== 'balance_desc' ? 1 : 0);
-            const hasFilter = activeCount > 0;
-            return (
-              <Pressable
-                onPress={() => setFilterOpen(true)}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  height: 44, paddingHorizontal: 14, borderRadius: 9999,
-                  // Beyaz buton kuralı: pasifken kart yüzeyi DEĞİL, bir kademe koyu plainBtn.
-                  backgroundColor: hasFilter ? U.ink[900] : U.plainBtn.bg,
-                  borderWidth: hasFilter ? 0 : 1, borderColor: U.fieldBorder,
-                  cursor: 'pointer' as any,
-                }}
-              >
-                {/* İkiz tuzak: ink[900] zeminli pill koyu temada KREM olur → içerik onDarkPill. */}
-                <SlidersHorizontal size={14} strokeWidth={1.8} color={hasFilter ? U.onDarkPill : U.ink[700]} />
-                <Text style={{ fontSize: 12, fontWeight: hasFilter ? '700' : '600', color: hasFilter ? U.onDarkPill : U.ink[700] }}>
-                  Filtre{hasFilter ? ` (${activeCount})` : ''}
-                </Text>
-              </Pressable>
-            );
-          })()}
-        </View>
-
-        {/* ── Clinic list ─────────────────────────────────────── */}
-        {filtered.length === 0 ? (
-          <View style={{ ...U.cardSolid, alignItems: 'center', paddingVertical: 48, gap: 10 }}>
-            <Inbox size={32} color={U.ink[300]} strokeWidth={1.4} />
-            <Text style={{ fontSize: 14, fontWeight: '500', color: U.ink[400] }}>
-              {search || overdueOnly ? 'Sonuç bulunamadı' : 'Henüz klinik yok'}
-            </Text>
-          </View>
-        ) : isDesktop ? (
-          /* ── Desktop: tableCard §09 ──────────────────────────── */
-          <View style={U.tableCard}>
-            {/* Toolbar */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, backgroundColor: tblAccent }}>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: tblInk }}>
-                Sağlık Kurumu Bakiyeleri
-              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 1 }}
+                          contentContainerStyle={{ flexDirection: 'row', padding: 3, borderRadius: 999, backgroundColor: U.ink[100] }}>
+                {([
+                  { key: 'all' as const,      label: autoT('Tümü'),          n: segCounts.all,      tone: null },
+                  { key: 'overdue' as const,  label: autoT('Gecikmiş'),      n: segCounts.overdue,  tone: U.chipTones.danger.fg },
+                  { key: 'unbilled' as const, label: autoT('Hizmet bedeli bekliyor'), n: segCounts.unbilled, tone: U.chipTones.warning.fg },
+                  { key: 'draft' as const,    label: autoT(draftLabel),      n: segCounts.draft,    tone: U.chipTones.warning.fg },
+                ]).filter(o => o.key === 'all' || o.n > 0 || seg === o.key).map(o => {
+                  const active = seg === o.key;
+                  return (
+                    <Pressable
+                      key={o.key}
+                      onPress={() => setSeg(o.key)}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: active }}
+                      style={{
+                        paddingHorizontal: active ? 18 : 12, paddingVertical: 8, borderRadius: 999,
+                        backgroundColor: active ? U.segActive : 'transparent',
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer', outlineStyle: 'none' } as any : {}),
+                      }}
+                    >
+                      <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: active ? '700' : '500',
+                                                       color: active ? U.ink[900] : (o.tone ?? U.ink[500]) }}>
+                        {`${o.label} · ${o.n}`}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
               <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, color: tblInk, opacity: 0.75 }}>
-                {filtered.length} kurum
+              <View style={{
+                flexGrow: 1, flexShrink: 1, flexBasis: 200, minWidth: 160, maxWidth: isDesktop ? 280 : undefined,
+                flexDirection: 'row', alignItems: 'center', gap: 8,
+                height: 40, paddingHorizontal: 14, borderRadius: 9999,
+                borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
+              }}>
+                <Search size={14} color={U.ink[400]} strokeWidth={1.8} />
+                <TextInput
+                  style={{ flex: 1, fontSize: 13.5, color: U.ink[900], outline: 'none' as any }}
+                  placeholder="Sağlık kurumu ara..."
+                  placeholderTextColor={U.ink[400]}
+                  value={search}
+                  onChangeText={setSearch}
+                />
+                {search.length > 0 && (
+                  <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
+                    <X size={13} color={U.ink[400]} strokeWidth={2} />
+                  </Pressable>
+                )}
+              </View>
+              <AnchorMenu
+                width={200}
+                items={SORT_OPTIONS.map(o => ({ key: o.key, label: o.label, active: sortKey === o.key, onPress: () => setSortKey(o.key) }))}
+                renderTrigger={(open) => (
+                  <GlassTooltip title={autoT('Sırala')} text={autoT('Listeyi bakiye, gecikme ya da isme göre sırala')}>
+                    <Pressable
+                      onPress={open}
+                      style={({ pressed }: any) => ({
+                        flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: 14, borderRadius: 999,
+                        borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg, opacity: pressed ? 0.8 : 1,
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                      })}
+                    >
+                      <SlidersHorizontal size={13} color={U.plainBtn.fg} strokeWidth={1.8} />
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: U.plainBtn.fg }}>
+                        {SORT_OPTIONS.find(o => o.key === sortKey)?.label}
+                      </Text>
+                      <ChevronDown size={12} color={U.plainBtn.fg} strokeWidth={2} />
+                    </Pressable>
+                  </GlassTooltip>
+                )}
+              />
+            </View>
+          </View>
+
+          {filtered.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
+              <Inbox size={32} color={U.ink[300]} strokeWidth={1.4} />
+              <Text style={{ fontSize: 14, fontWeight: '500', color: U.ink[400] }}>
+                {search || seg !== 'all' ? 'Sonuç bulunamadı' : 'Henüz klinik yok'}
               </Text>
             </View>
+          ) : (
+            <>
+              {isDesktop ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10, backgroundColor: U.surfaceSoft, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+                  {[
+                    { label: 'SAĞLIK KURUMU', flex: 2.6 },
+                    { label: 'KESİNLEŞEN',  flex: 1.2, align: 'end' as const },
+                    { label: 'TAHSİL',   flex: 1.3, align: 'end' as const },
+                    { label: 'BAKİYE',   flex: 1.2, align: 'end' as const },
+                    { label: 'GECİKMİŞ', flex: 1.2, align: 'end' as const },
+                  ].map((h, i) => (
+                    <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: U.ink[500], textAlign: h.align as any }}>
+                      {h.label}
+                    </Text>
+                  ))}
+                  <View style={{ width: 44 }} />
+                </View>
+              ) : null}
 
-            {/* Header */}
-            <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: U.surfaceSoft, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
-              {[
-                { label: 'SAĞLIK KURUMU', flex: 2.4 },
-                { label: 'FATURA',     flex: 0.7 },
-                { label: 'KESİLEN',    flex: 1.2 },
-                { label: 'TAHSİL',     flex: 1.2 },
-                { label: 'BAKİYE',     flex: 1.2, align: 'end' as const },
-                { label: 'GECİKMİŞ',   flex: 1.2, align: 'end' as const },
-                { label: '',           flex: 1.6 },
-              ].map((h, i) => (
-                <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: U.ink[500], textAlign: h.align as any }}>
-                  {h.label}
-                </Text>
-              ))}
-            </View>
+              {filtered.map((b, i) => {
+                const balance = Number(b.balance);
+                const overdue = netOverdue(b);
+                const hasOverdue = overdue > 0;
+                const billed = Number(b.total_billed);
+                // Tahsil = faturaya yazilan odemeler + faturaya baglanmamis tahsilat − ekstre indirimi (tahsilat degil).
+                const paid = clinicCollected(b);
+                const pct = billed > 0 ? Math.min(100, (paid / billed) * 100) : 0;
+                const ccy = b.currency || 'TRY';
+                const bucket = unbilledByClinic[b.clinic_id];
+                const draftAmt = draftByClinic[b.clinic_id]?.byCcy[ccy] ?? 0;
+                const tone = hasOverdue ? U.chipTones.danger : U.chipTones.info;
+                const days = b.oldest_overdue_date
+                  ? Math.max(0, Math.floor((Date.now() - new Date(b.oldest_overdue_date + 'T00:00:00').getTime()) / 86400000)) : 0;
+                // Ad altı tek satır: gecikme > onayda/taslak > faturalanacak > fatura sayısı
+                const sub = hasOverdue && b.oldest_overdue_date
+                  ? { text: `${autoT('vade')} ${fmtDateShort(b.oldest_overdue_date)} · ${days} ${autoT('gün')}`, color: U.chipTones.danger.fg }
+                  : draftAmt > 0
+                    ? { text: `${fmtCur(draftAmt, ccy)} ${autoT(approvalOn ? 'onayda' : 'taslakta')}`, color: U.chipTones.warning.fg }
+                    : bucket?.count
+                      ? { text: `${bucket.count} ${autoT('iş hizmet bedeli bekliyor')}`, color: U.chipTones.warning.fg }
+                      : { text: `${Number(b.invoice_count)} ${autoT('hizmet bedeli')}`, color: U.ink[400] };
+                const busyBill = billingClinicId === b.clinic_id;
+                const menuItems = [
+                  { key: 'open', label: autoT('Ekstreyi aç'), icon: FileText, onPress: () => openStatement(b.clinic_id) },
+                  ...(balance > 0 ? [{ key: 'remind', label: autoT('Ödeme hatırlat'), icon: Bell, onPress: async () => {
+                    // Toplam fatura sayısı değil, vadesi geçmiş açık fatura sayısı (tek faturalı
+                    // her klinik "acil" tonla uyarılıyordu). Gecikme yoksa sorgu yapılmaz.
+                    const overdueCount = netOverdue(b) > 0 ? await countOverdueInvoices(b.clinic_id, ccy) : 0;
+                    setReminderTarget({
+                      clinicId: b.clinic_id, clinicName: b.clinic_name, totalDue: balance,
+                      overdueCount, currency: ccy,
+                    });
+                  } }] : []),
+                  ...(bucket?.count && !busyBill ? [{ key: 'bill', label: `${bucket.count} ${autoT('sipariş için hizmet bedeli oluştur')}`, icon: Receipt, onPress: () => openBulkBill(b.clinic_id, b.clinic_name) }] : []),
+                ];
+                const rowMenu = (
+                  <AnchorMenu
+                    width={230}
+                    items={menuItems}
+                    renderTrigger={(open) => (
+                      <Pressable
+                        onPress={(e: any) => { e?.stopPropagation?.(); open(); }}
+                        accessibilityRole="button"
+                        accessibilityLabel={autoT('Diğer')}
+                        hitSlop={6}
+                        style={({ pressed, hovered }: any) => ({
+                          width: isDesktop ? 32 : 44, height: isDesktop ? 32 : 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
+                          backgroundColor: hovered || pressed ? U.rowHover : 'transparent',
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                        })}
+                      >
+                        {busyBill ? <ActivityIndicator size="small" color={U.ink[400]} /> : <MoreHorizontal size={16} color={U.ink[500]} strokeWidth={1.8} />}
+                      </Pressable>
+                    )}
+                  />
+                );
+                const avatar = (
+                  <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: tone.fg }}>{initialsOf(b.clinic_name)}</Text>
+                  </View>
+                );
 
-            {/* Rows */}
-            {filtered.map((b, i) => {
-              const balance = Number(b.balance);
-              const overdue = netOverdue(b);
-              const hasOverdue = overdue > 0;
-              const billed = Number(b.total_billed);
-              // Tahsil = faturaya yazilan odemeler + faturaya baglanmamis tahsilat − ekstre indirimi (tahsilat degil).
-              const paid = clinicCollected(b);
-              const pct = billed > 0 ? Math.min(100, (paid / billed) * 100) : 0;
-
-              return (
-                <Pressable
-                  key={`${b.clinic_id}-${b.currency}`}
-                  onPress={() => openStatement(b.clinic_id)}
-                  style={{
-                    flexDirection: 'row', alignItems: 'center',
-                    paddingHorizontal: 20, paddingVertical: 14,
-                    borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
-                    borderBottomColor: U.hairlineSoft,
-                    cursor: 'pointer' as any,
-                  }}
-                >
-                  {/* Clinic name + avatar */}
-                  <View style={{ flex: 2.4, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <View style={{
-                      width: 32, height: 32, borderRadius: 10,
-                      backgroundColor: hasOverdue ? U.chipTones.danger.bg : U.chipTones.info.bg,
-                      alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Building2 size={14} color={hasOverdue ? U.chipTones.danger.fg : U.chipTones.info.fg} strokeWidth={1.8} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900], flexShrink: 1 }} numberOfLines={1}>
-                          {b.clinic_name}
-                        </Text>
-                        <CcyBadge currency={b.currency} />
+                return isDesktop ? (
+                  <Pressable
+                    key={`${b.clinic_id}-${b.currency}`}
+                    onPress={() => openStatement(b.clinic_id)}
+                    style={({ hovered }: any) => ({
+                      flexDirection: 'row', alignItems: 'center',
+                      paddingHorizontal: 20, paddingVertical: 12,
+                      borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
+                      borderBottomColor: U.hairlineSoft,
+                      backgroundColor: hovered ? U.rowHover : 'transparent',
+                      cursor: 'pointer' as any,
+                    })}
+                  >
+                    <View style={{ flex: 2.6, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                      {avatar}
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900], flexShrink: 1 }} numberOfLines={1}>
+                            {b.clinic_name}
+                          </Text>
+                          {ccy !== leadCcy ? <CcyBadge currency={ccy} /> : null}
+                        </View>
+                        <Text numberOfLines={1} style={{ fontSize: 11, color: sub.color, marginTop: 1 }}>{sub.text}</Text>
                       </View>
-                      {b.oldest_overdue_date && hasOverdue && (
-                        <Text style={{ fontSize: 10, color: U.chipTones.danger.fg, marginTop: 1 }}>
-                          vade: {fmtDateShort(b.oldest_overdue_date)}
-                        </Text>
+                    </View>
+
+                    <Text style={{ flex: 1.2, fontSize: 13, color: U.ink[700], textAlign: 'end' as any, fontVariant: ['tabular-nums'] }}>
+                      {fmtCur(billed, ccy)}
+                    </Text>
+
+                    <View style={{ flex: 1.3, alignItems: 'flex-end', paddingStart: 12 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '500', color: U.chipTones.success.fg, fontVariant: ['tabular-nums'] }}>
+                        {fmtCur(paid, ccy)}
+                      </Text>
+                      <View style={{ width: '100%', maxWidth: 120, height: 3, borderRadius: 2, backgroundColor: U.ink[100], marginTop: 4, overflow: 'hidden' }}>
+                        <View style={{ width: `${pct}%` as any, height: 3, backgroundColor: '#2D9A6B' }} />
+                      </View>
+                    </View>
+
+                    <Text style={{ flex: 1.2, fontSize: 13, fontWeight: '600', textAlign: 'end' as any, fontVariant: ['tabular-nums'],
+                                   color: balance > 0 ? U.ink[900] : U.chipTones.success.fg }}>
+                      {fmtCur(balance, ccy)}
+                    </Text>
+
+                    <View style={{ flex: 1.2, alignItems: 'flex-end' }}>
+                      {hasOverdue ? (
+                        <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: U.chipTones.danger.bg }}>
+                          <Text style={{ fontSize: 11, fontWeight: '600', color: U.chipTones.danger.fg }}>{fmtCur(overdue, ccy)}</Text>
+                        </View>
+                      ) : (
+                        <Text style={{ fontSize: 11, color: U.ink[300] }}>—</Text>
                       )}
                     </View>
-                  </View>
 
-                  <Text style={{ flex: 0.7, fontSize: 13, color: U.ink[500] }}>
-                    {Number(b.invoice_count)}
-                  </Text>
-
-                  <Text style={{ flex: 1.2, fontSize: 13, color: U.ink[800] }}>
-                    {fmtCur(billed, b.currency)}
-                  </Text>
-
-                  <Text style={{ flex: 1.2, fontSize: 13, fontWeight: '500', color: U.chipTones.success.fg }}>
-                    {fmtCur(paid, b.currency)}
-                  </Text>
-
-                  <Text style={{ flex: 1.2, fontSize: 13, fontWeight: '600', color: hasOverdue ? U.chipTones.danger.fg : U.ink[900], textAlign: 'end' as any }}>
-                    {fmtCur(balance, b.currency)}
-                  </Text>
-
-                  <View style={{ flex: 1.2, alignItems: 'flex-end' }}>
-                    {hasOverdue ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: U.chipTones.danger.bg }}>
-                        <AlertTriangle size={10} color={U.chipTones.danger.fg} strokeWidth={2} />
-                        <Text style={{ fontSize: 11, fontWeight: '600', color: U.chipTones.danger.fg }}>
-                          {fmtCur(overdue, b.currency)}
-                        </Text>
+                    <View style={{ width: 44, alignItems: 'flex-end' }}>{rowMenu}</View>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    key={`${b.clinic_id}-${b.currency}`}
+                    onPress={() => openStatement(b.clinic_id)}
+                    style={({ pressed }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 12,
+                      paddingStart: 16, paddingEnd: 8, paddingVertical: 12,
+                      borderBottomWidth: i < filtered.length - 1 ? 1 : 0, borderBottomColor: U.hairlineSoft,
+                      backgroundColor: pressed ? U.rowHover : 'transparent',
+                    })}
+                  >
+                    {avatar}
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={MT.title} numberOfLines={1}>{b.clinic_name}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                        {ccy !== leadCcy ? <CcyBadge currency={ccy} /> : null}
+                        <Text style={[MT.meta, { color: sub.color, flexShrink: 1 }]} numberOfLines={1}>{sub.text}</Text>
                       </View>
-                    ) : (
-                      <Text style={{ fontSize: 11, color: U.ink[300] }}>—</Text>
-                    )}
-                  </View>
-
-                  {/* Action: Hatırlat + Faturala chip + ChevronRight */}
-                  <View style={{ flex: 1.6, alignItems: 'flex-end', flexDirection: 'row', gap: 6, justifyContent: 'flex-end' }}>
-                    {balance > 0 && (
-                      <Pressable
-                        onPress={(e: any) => {
-                          e?.stopPropagation?.();
-                          setReminderTarget({
-                            clinicId: b.clinic_id,
-                            clinicName: b.clinic_name,
-                            totalDue: balance,
-                            overdueCount: Number(b.invoice_count ?? 0),
-                            currency: b.currency || 'TRY',
-                          });
-                        }}
-                        style={{
-                          paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
-                          backgroundColor: hasOverdue ? U.chipTones.danger.bg : U.chipTones.info.bg,
-                          flexDirection: 'row', alignItems: 'center', gap: 4,
-                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                        }}
-                      >
-                        <Bell size={10} color={hasOverdue ? U.chipTones.danger.fg : U.chipTones.info.fg} strokeWidth={2} />
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: hasOverdue ? U.chipTones.danger.fg : U.chipTones.info.fg }}>
-                          Hatırlat
-                        </Text>
-                      </Pressable>
-                    )}
-                    {(() => {
-                      const bucket = unbilledByClinic[b.clinic_id];
-                      if (!bucket || bucket.count === 0) return null;
-                      const busy = billingClinicId === b.clinic_id;
-                      return (
-                        <Pressable
-                          onPress={(e: any) => { e?.stopPropagation?.(); openBulkBill(b.clinic_id, b.clinic_name); }}
-                          disabled={busy}
-                          style={{
-                            paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
-                            backgroundColor: busy ? U.chipNeutral : U.chipTones.warning.bg,
-                            flexDirection: 'row', alignItems: 'center', gap: 4,
-                            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                          }}
-                        >
-                          <Receipt size={10} color={U.chipTones.warning.fg} strokeWidth={2} />
-                          <Text style={{ fontSize: 10, fontWeight: '700', color: U.chipTones.warning.fg }}>
-                            {busy ? '...' : `${bucket.count} faturala`}
-                          </Text>
-                        </Pressable>
-                      );
-                    })()}
-                    {isRTL() ? <ChevronLeft size={14} color={U.ink[300]} strokeWidth={1.8} /> : <ChevronRight size={14} color={U.ink[300]} strokeWidth={1.8} />}
-                  </View>
-                </Pressable>
-              );
-            })}
-
-            {/* Footer */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: tblAccent, gap: 10, paddingEnd: 76 }}>
-              <Text style={{ fontSize: 11, color: tblInk, opacity: 0.75 }}>
-                {new Set(filtered.map(f => f.clinic_id)).size} sağlık kurumu
-              </Text>
-              <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: tblInk }}>Toplam:</Text>
-              <MoneyMultiX slices={balanceByCcy} variant="inline" onAccent={tblInk} colorBySign />
-            </View>
-          </View>
-        ) : (
-          /* ── Mobile: tableCard — ekstre / giderler mobil tablosuyla aynı kalıp ── */
-          <MobileTableX
-            title="Sağlık Kurumu Bakiyeleri" count={filtered.length} countLabel="kurum" accent={tblAccent}
-            footer={<>
-              <Text style={MT.footNote}>{new Set(filtered.map(f => f.clinic_id)).size} sağlık kurumu</Text>
-              <View style={{ flex: 1 }} />
-              <Text style={MT.footLabel}>Toplam:</Text>
-              <MoneyMultiX slices={balanceByCcy} variant="inline" colorBySign />
-            </>}
-          >
-            {filtered.map((b, i) => {
-              const balance = Number(b.balance);
-              const overdue = netOverdue(b);
-              const hasOverdue = overdue > 0;
-              const billed = Number(b.total_billed);
-              // Tahsil = faturaya yazilan odemeler + faturaya baglanmamis tahsilat − ekstre indirimi (tahsilat degil).
-              const paid = clinicCollected(b);
-              const tone = hasOverdue ? U.chipTones.danger : U.chipTones.info;
-
-              return (
-                <MobileTableRowX key={`${b.clinic_id}-${b.currency}`} isLast={i === filtered.length - 1} onPress={() => openStatement(b.clinic_id)}>
-                  <MobileTableIconX icon={Building2} tone={tone} />
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    {/* Ad TEK BAŞINA tam satırı kullanır — rozet + sağdaki bakiye
-                        birlikte adı "Luna ..." gibi kırpıyordu. */}
-                    <Text style={MT.title} numberOfLines={1}>{b.clinic_name}</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                      <CcyBadge currency={b.currency} />
-                      <Text style={MT.meta} numberOfLines={1}>{Number(b.invoice_count)} fatura</Text>
-                      {b.oldest_overdue_date && hasOverdue ? (
-                        <Text style={[MT.meta, { color: U.chipTones.danger.fg, fontWeight: '600' }]} numberOfLines={1}>Vade: {fmtDateShort(b.oldest_overdue_date)}</Text>
-                      ) : null}
                     </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', columnGap: 8, rowGap: 2, marginTop: 2, flexWrap: 'wrap' }}>
-                      <Text style={MT.meta}>Kesilen {fmtCur(billed, b.currency)}</Text>
-                      <Text style={[MT.meta, { color: U.chipTones.success.fg }]}>Tahsil {fmtCur(paid, b.currency)}</Text>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text numberOfLines={1} style={[MT.amount, { color: balance > 0 ? U.ink[900] : U.chipTones.success.fg }]}>
+                        {fmtCur(balance, ccy)}
+                      </Text>
+                      {hasOverdue ? (
+                        <Text style={[MT.amountSub, { color: U.chipTones.danger.fg, marginTop: 2 }]}>{`${autoT('Gecikmiş')} ${fmtCur(overdue, ccy)}`}</Text>
+                      ) : (
+                        <Text style={[MT.amountSub, { color: U.ink[400], marginTop: 2 }]}>{`%${pct.toFixed(0)} ${autoT('tahsil')}`}</Text>
+                      )}
                     </View>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text numberOfLines={1} style={[MT.amount, { color: hasOverdue ? U.chipTones.danger.fg : U.ink[900] }]}>
-                      {fmtCur(balance, b.currency)}
-                    </Text>
-                    <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400], marginTop: 1 }}>
-                      Bakiye
-                    </Text>
-                    {hasOverdue ? (
-                      <Text style={[MT.amountSub, { color: U.chipTones.danger.fg, marginTop: 3 }]}>Gecikmiş {fmtCur(overdue, b.currency)}</Text>
-                    ) : null}
-                  </View>
-                </MobileTableRowX>
-              );
-            })}
-          </MobileTableX>
-        )}
-      </ScrollView>
+                    {rowMenu}
+                  </Pressable>
+                );
+              })}
 
-      {/* ── Filtre Sheet ──────────────────────────────────── */}
-      <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
-        <Pressable onPress={() => setFilterOpen(false)} style={{ flex: 1, backgroundColor: U.isDark ? U.scrim : 'rgba(10,14,26,0.42)', justifyContent: 'flex-end', ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
-          <Pressable onPress={(e) => e.stopPropagation()} style={{
-            backgroundColor: U.surface,
-            borderTopStartRadius: 24, borderTopEndRadius: 24,
-            paddingTop: 12, paddingBottom: Math.max(insets.bottom, 16) + 12,
-            maxHeight: '85%',
-          }}>
-            <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: U.ink[200], marginBottom: 14 }} />
-            <View style={{ paddingHorizontal: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: 18, fontWeight: '700', color: U.ink[900], flex: 1 }}>Filtrele</Text>
-              <Pressable onPress={() => { setOverdueOnly(false); setSortKey('balance_desc'); }} style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[500] }}>Temizle</Text>
-              </Pressable>
-              <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center', marginStart: 4 }}>
-                <X size={16} color={U.ink[700]} strokeWidth={2} />
-              </Pressable>
-            </View>
-
-            <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, gap: 18 }}>
-              <View style={{ gap: 6 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[400], paddingHorizontal: 4 }}>Sıralama</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 2 }}>
-                  {SORT_OPTIONS.map(opt => {
-                    const active = sortKey === opt.key;
-                    return (
-                      <Pressable key={opt.key} onPress={() => setSortKey(opt.key)} style={{
-                        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
-                        borderWidth: active ? 0 : 1, borderColor: U.fieldBorder,
-                        backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
-                        cursor: 'pointer' as any,
-                      }}>
-                        <Text style={{ fontSize: 11.5, fontWeight: active ? '700' : '500', color: active ? U.onDarkPill : U.ink[700] }} numberOfLines={1}>{opt.label}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-              <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[400], paddingHorizontal: 4 }}>Durum</Text>
-                <Pressable onPress={() => setOverdueOnly(v => !v)} style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 10,
-                  paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12,
-                  backgroundColor: overdueOnly ? U.chipTones.danger.bg : U.plainBtn.bg,
-                  borderWidth: 1, borderColor: overdueOnly ? 'rgba(217,75,75,0.3)' : U.fieldBorder,
-                  cursor: 'pointer' as any,
-                }}>
-                  {/* Dolu kırmızı kare + beyaz ikon: koyu temada chipTones.fg AÇIK pembe
-                      olduğu için dolgu olarak kullanılamaz → doygun kırmızıya düşülür. */}
-                  <View style={{
-                    width: 32, height: 32, borderRadius: 10,
-                    backgroundColor: overdueOnly ? (U.isDark ? '#D94B4B' : '#9C2E2E') : U.ink[100],
-                    alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <Clock size={15} color={overdueOnly ? '#FFFFFF' : U.ink[500]} strokeWidth={2} />
-                  </View>
-                  <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: U.ink[900] }}>Vadesi Geçen</Text>
-                  <View style={{
-                    width: 22, height: 22, borderRadius: 11,
-                    backgroundColor: overdueOnly ? (U.isDark ? '#D94B4B' : '#9C2E2E') : 'transparent',
-                    borderWidth: overdueOnly ? 0 : 1.5, borderColor: U.isDark ? 'rgba(255,255,255,0.24)' : 'rgba(0,0,0,0.18)',
-                    alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {overdueOnly && <Check size={13} color="#FFFFFF" strokeWidth={3} />}
-                  </View>
-                </Pressable>
-              </View>
-            </ScrollView>
-
-            <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
-              <Pressable onPress={() => setFilterOpen(false)} style={{
-                height: 48, borderRadius: 14, backgroundColor: U.ink[900],
-                alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer' as any,
+              {/* Footer — sade (lacivert bant yok) */}
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                paddingHorizontal: isDesktop ? 20 : 16, paddingVertical: 12,
+                borderTopWidth: 1, borderTopColor: U.hairline, backgroundColor: U.surfaceSoft,
               }}>
-                {/* ink[900] zemin koyu temada KREM olur → metin onDarkPill. */}
-                <Text style={{ fontSize: 14, fontWeight: '700', color: U.onDarkPill }}>Uygula</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+                <Text style={{ fontSize: 11, color: U.ink[500] }}>
+                  {new Set(filtered.map(f => f.clinic_id)).size} sağlık kurumu
+                </Text>
+                <View style={{ flex: 1 }} />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[700] }}>Toplam:</Text>
+                <MoneyMultiX slices={balanceByCcy} variant="inline" colorBySign />
+              </View>
+            </>
+          )}
+        </View>
+      </ScrollView>
 
       {/* ── Faturala penceresi (fatura indirimi) ─────────────── */}
       <Modal visible={!!billTarget} transparent animationType="fade" onRequestClose={closeBulkBill}>
@@ -758,7 +770,7 @@ export function ClinicBalanceScreen() {
               <View style={[U.modalCard, { maxWidth: 440 }]}>
                 <View style={U.modalHeaderRow}>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={U.modalTitle} numberOfLines={1}>{autoT('Toplu fatura')}</Text>
+                    <Text style={U.modalTitle} numberOfLines={1}>{autoT('Toplu hizmet bedeli')}</Text>
                     <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2 }} numberOfLines={1}>
                       {`${billTarget.clinicName} · ${bucket?.count ?? 0} ${autoT('sipariş')}`}
                     </Text>
@@ -796,12 +808,12 @@ export function ClinicBalanceScreen() {
                             <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900] }}>{fmtCur(disc.subtotal, pairs[0][0])}</Text>
                           </View>
                           <Text style={{ fontSize: 11, color: U.ink[400] }}>
-                            {autoT('KDV öncesi; tarama ücretleri ve acil farkı faturada eklenir.')}
+                            {autoT('KDV öncesi; tarama ücretleri ve acil farkı hizmet bedelinde eklenir.')}
                           </Text>
                         </View>
                         {disc.subtotal <= 0 ? (
                           <Text style={{ fontSize: 12, fontWeight: '600', color: U.chipTones.warning.fg }}>
-                            {autoT('Fatura tutarı 0 olacak.')}
+                            {autoT('Hizmet bedeli tutarı 0 olacak.')}
                           </Text>
                         ) : null}
                       </>
@@ -825,7 +837,7 @@ export function ClinicBalanceScreen() {
                     }, web]}>
                     <Text style={{ fontSize: 13, fontWeight: '600', color: U.plainBtn.fg }}>{autoT('Vazgeç')}</Text>
                   </Pressable>
-                  <GlassTooltip title={autoT('Faturala')} text={autoT('Faturalanmamış siparişleri tek taslak faturada birleştir')} enabled={!busy}>
+                  <GlassTooltip title={autoT('Hizmet bedeli oluştur')} text={autoT('Hizmet bedeli bekleyen siparişleri tek taslakta birleştir')} enabled={!busy}>
                     <Pressable onPress={() => handleBulkBill(billTarget.clinicId)} disabled={busy}
                       style={[{
                         flexDirection: 'row', alignItems: 'center', gap: 7,
@@ -833,7 +845,7 @@ export function ClinicBalanceScreen() {
                         backgroundColor: U.ink[900], opacity: busy ? 0.6 : 1,
                       }, web]}>
                       {busy ? <ActivityIndicator size="small" color={U.onDarkPill} /> : <Receipt size={14} color={U.onDarkPill} strokeWidth={1.8} />}
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>{autoT('Faturala')}</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>{autoT('Hizmet bedeli oluştur')}</Text>
                     </Pressable>
                   </GlassTooltip>
                 </View>
@@ -856,10 +868,19 @@ export function ClinicBalanceScreen() {
         />
       )}
 
+      <ConfirmDialog state={confirmState} onClose={() => { if (!bulkSending) setConfirmState(null); }} />
+
       {/* Kenardan sağa kaydırınca geri — geri butonuyla AYNI fonksiyon */}
       <EdgeSwipeBack onBack={() => safeBack('/')} />
     </View>
   );
+}
+
+/** Kurum adının baş harfleri ("Dt."/"Dr." öneki atlanır) — satır avatarı. */
+function initialsOf(name: string | null | undefined): string {
+  const words = String(name ?? '').replace(/^(dt|dr|prof|doç)\.?\s+/i, '').trim().split(/\s+/).filter(Boolean);
+  const s = (words[0]?.[0] ?? '') + (words[1]?.[0] ?? '');
+  return (s || '—').toLocaleUpperCase('tr');
 }
 
 // ─── Hero Stat ───────────────────────────────────────────────────────
@@ -897,35 +918,6 @@ function CcyBadge({ currency }: { currency: string }) {
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: U.chipNeutral }}>
       <Text style={{ fontSize: 10, fontWeight: '700', color: U.ink[500] }}>{sym}</Text>
       <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.3, color: U.ink[400] }}>{currency}</Text>
-    </View>
-  );
-}
-
-// Hero alt-stat — per-currency, kanonik hero stat kutucuğu (yarı saydam beyaz
-// zemin + beyaz metin). Hero accent/lacivert zemin üstünde bilinçli olarak
-// beyaz kalır (CLAUDE.md accent istisnası).
-function HeroCcyStat({ label, slices }: { label: string; slices: { currency: Currency; total: number }[] }) {
-  const heroInk = useWhiteHeroInk();
-  return (
-    <View style={{
-      flex: 1, minWidth: 110,
-      paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
-      backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
-    }}>
-      <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }}>
-        {label}
-      </Text>
-      {slices.length === 0 ? (
-        <Text style={{ ...DISPLAY, fontSize: 15, color: heroInk.inkFaint, letterSpacing: -0.3, lineHeight: 19, marginTop: 3 }}>—</Text>
-      ) : (
-        <View style={{ marginTop: 3, gap: 1 }}>
-          {slices.map(s => (
-            <Text key={s.currency} numberOfLines={1} style={{ ...DISPLAY, fontSize: 15, letterSpacing: -0.3, lineHeight: 19, color: heroInk.ink }}>
-              {formatMoney(s.total, s.currency, { fractionDigits: 0 })}
-            </Text>
-          ))}
-        </View>
-      )}
     </View>
   );
 }

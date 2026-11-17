@@ -17,10 +17,19 @@ enum USDZExporter {
         let asset = MDLAsset(url: objURL)
         asset.loadTextures()   // MTL'deki map_Kd PNG'sini yükle (gömme için şart)
 
-        guard MDLAsset.canExportFileExtension("usdz") else {
-            throw NSError(domain: "USDZExporter", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "USDZ export desteklenmiyor"])
+        // 1) ModelIO. Cihazda çoğu zaman "desteklenmiyor" diyor ya da hata veriyor (2026-11-16:
+        //    birleşik taramada USDZ hiç oluşmadı, önizleme bozuk çıktı).
+        if MDLAsset.canExportFileExtension("usdz"), (try? asset.export(to: usdzURL)) != nil,
+           FileManager.default.fileExists(atPath: usdzURL.path) {
+            return
         }
-        try asset.export(to: usdzURL)
+        // 2) SceneKit: sahneyi USDZ olarak yazar (iOS'ta desteklenen yol).
+        try? FileManager.default.removeItem(at: usdzURL)
+        let scene = SCNScene(mdlAsset: asset)
+        let ok = scene.write(to: usdzURL, options: nil, delegate: nil, progressHandler: nil)
+        guard ok, FileManager.default.fileExists(atPath: usdzURL.path) else {
+            throw NSError(domain: "USDZExporter", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "USDZ export başarısız"])
+        }
     }
 }

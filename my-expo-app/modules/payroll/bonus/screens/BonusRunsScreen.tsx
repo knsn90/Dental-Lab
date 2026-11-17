@@ -1,5 +1,6 @@
 import { localeTag, isRTL } from '../../../../core/i18n';
 import { autoT } from '../../../../core/i18n/autoTranslate';
+import { confirmAsync } from '../../../../core/util/confirm';
 /**
  * BonusRunsScreen — design language reset.
  * Hero kicker + Chip filtreler + Liste + Detail modal.
@@ -229,7 +230,7 @@ function BonusRunDetailModal({ run, policy, onClose, onChanged, onOpenTechnician
   const rows: BonusRunBreakdownRow[] = Array.isArray(run.breakdown) ? run.breakdown : (run.breakdown?.rows ?? []);
 
   const guard = async (label: string, action: () => Promise<BonusRun>, confirmMsg?: string) => {
-    if (confirmMsg && !confirm(confirmMsg)) return;
+    if (confirmMsg && !(await confirmAsync(confirmMsg))) return;
     setBusy(label); setErr(null);
     try { onChanged(await action()); }
     catch (e: any) { setErr(String(e?.message ?? e)); }

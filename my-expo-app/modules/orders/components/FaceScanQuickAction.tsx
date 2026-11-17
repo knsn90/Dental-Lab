@@ -19,8 +19,10 @@ import {
 import { ScanFace, X, Search } from '../../../core/ui/icons';
 import { toast } from '../../../core/ui/Toast';
 import { useAuthStore } from '../../../core/store/authStore';
-import { isSupported as arSupported, startScanMode, isFrontScanSupported, isHeadScanSupported, type ScanMode } from 'ar-scanner';
+import { isSupported as arSupported, startScanMode, isFrontScanSupported, isHeadScanSupported, isUnifiedScanSupported, type ScanMode } from 'ar-scanner';
 import i18n from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { uploadFaceScanResult } from '../utils/uploadFaceScanResult';
 import { useOrders } from '../hooks/useOrders';
 import type { WorkOrder } from '../types';
@@ -89,9 +91,16 @@ function FaceScanQuickActionInner({ accentColor, compact, profile, variant = 'pi
   };
   const [pendingOrder, setPendingOrder] = useState<WorkOrder | null>(null);
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<ScanMode>('rearGuided');
+  // Tarama bitti, dosyalar yükleniyor → düğme "Taranıyor" demeye devam etmesin
+  const [uploading, setUploading] = useState(false);
+  // Varsayılan: arka kamerayla yüz + kafa (birleşik). LiDAR'sız telefonda o mod yoktur →
+  // eski arka kamera yüz taraması onun yerine geçer.
+  const [mode, setMode] = useState<ScanMode>(() => {
+    try { return isUnifiedScanSupported() ? 'unified' : 'rearGuided'; } catch { return 'rearGuided'; }
+  });
   const frontAvailable = useMemo(() => { try { return isFrontScanSupported(); } catch { return false; } }, []);
   const headAvailable = useMemo(() => { try { return isHeadScanSupported(); } catch { return false; } }, []);
+  const unifiedAvailable = useMemo(() => { try { return isUnifiedScanSupported(); } catch { return false; } }, []);
 
   // user_type → useOrders scope
   // doctor: kendi siparişleri; lab/clinic_admin/clinic_secretary: tüm (RLS filtreler)
@@ -117,22 +126,26 @@ function FaceScanQuickActionInner({ accentColor, compact, profile, variant = 'pi
 
     setBusy(true);
     try {
-      const result = await startScanMode(mode, i18n.language);   // rearGuided · front · head (360°)
+      const result = await startScanMode(mode, i18n.language, accentColor);   // rearGuided · front · head (360°)
       if (!result) return;
 
+      setUploading(true);
+      // Düğmesiz (navbar) kullanımda ekranda başka gösterge yok → kullanıcı yüklemenin sürdüğünü görsün
+      toast.info(autoT('Tarama yükleniyor…'));
       const { uploadedCount, errors } = await uploadFaceScanResult({
         result, workOrderId: order.id, profile,
       });
 
       if (uploadedCount > 0) {
-        toast.success(`${order.order_number}: ${uploadedCount} dosya yüklendi`);
+        toast.success(`${order.order_number}: ${uploadedCount} ${autoT('dosya yüklendi')}`);
       } else {
-        toast.error('Yükleme başarısız' + (errors[0] ? `: ${errors[0]}` : ''));
+        toast.error(autoT('Yükleme başarısız') + (errors[0] ? `: ${errors[0]}` : ''));
       }
     } catch (err: any) {
-      toast.error(err?.message ?? 'Tarama başarısız');
+      toast.error(err?.message ?? autoT('Tarama başarısız'));
     } finally {
       setBusy(false);
+      setUploading(false);
     }
   }
 
@@ -141,8 +154,8 @@ function FaceScanQuickActionInner({ accentColor, compact, profile, variant = 'pi
       {variant === 'headless'
         ? null
         : variant === 'card'
-          ? <ScanCard accentColor={accentColor} busy={busy} onPress={() => setPickerOpen(true)} />
-          : <ScanPill accentColor={accentColor} busy={busy} compact={compact} onPress={() => setPickerOpen(true)} />}
+          ? <ScanCard accentColor={accentColor} busy={busy} uploading={uploading} onPress={() => setPickerOpen(true)} />
+          : <ScanPill accentColor={accentColor} busy={busy} uploading={uploading} compact={compact} onPress={() => setPickerOpen(true)} />}
 
       <OrderPickerModal
         visible={pickerOpen}
@@ -153,6 +166,7 @@ function FaceScanQuickActionInner({ accentColor, compact, profile, variant = 'pi
         setMode={setMode}
         frontAvailable={frontAvailable}
         headAvailable={headAvailable}
+        unifiedAvailable={unifiedAvailable}
         onSelect={handleSelect}
         onClose={() => setPickerOpen(false)}
         onDismiss={runPendingScan}
@@ -162,8 +176,8 @@ function FaceScanQuickActionInner({ accentColor, compact, profile, variant = 'pi
 }
 
 // ─── Pill variant (floating) ────────────────────────────────────────────────
-function ScanPill({ accentColor, busy, compact, onPress }: {
-  accentColor: string; busy: boolean; compact?: boolean; onPress: () => void;
+function ScanPill({ accentColor, busy, uploading, compact, onPress }: {
+  accentColor: string; busy: boolean; uploading: boolean; compact?: boolean; onPress: () => void;
 }) {
   return (
     <Pressable
@@ -182,7 +196,7 @@ function ScanPill({ accentColor, busy, compact, onPress }: {
         ? <ActivityIndicator size="small" color="#FFFFFF" />
         : <ScanFace size={compact ? 14 : 16} color="#FFFFFF" strokeWidth={1.8} />}
       <Text style={{ fontSize: compact ? 12 : 13, fontWeight: '600', color: '#FFFFFF' }}>
-        {busy ? 'Taranıyor…' : '3D Yüz Tarama'}
+        {busy ? (uploading ? 'Tarama yükleniyor…' : 'Taranıyor…') : '3D Yüz Tarama'}
       </Text>
     </Pressable>
   );
@@ -202,8 +216,8 @@ function isGreenish(hex: string): boolean {
 // "Yeni vaka oluştur" hero kartının yanında ¼ genişlikte dikey kart.
 // NewOrderCTACard ile aynı tasarım dili: accent zemin, beyaz ikon dairesi,
 // kicker + başlık, eşleşen gölge/radius.
-function ScanCard({ accentColor, busy, onPress }: {
-  accentColor: string; busy: boolean; onPress: () => void;
+function ScanCard({ accentColor, busy, uploading, onPress }: {
+  accentColor: string; busy: boolean; uploading: boolean; onPress: () => void;
 }) {
   // NewOrderCTACard'ın BİREBİR görsel dili: dolu accent zemin, radius 20,
   // accent-tonlu gölge, sağ üstte yumuşak beyaz blob, beyaz ikon dairesi (44).
@@ -262,7 +276,7 @@ function ScanCard({ accentColor, busy, onPress }: {
           textAlign: 'center', letterSpacing: -0.2,
         }}
       >
-        {busy ? 'Taranıyor…' : 'Yüz Tara'}
+        {busy ? (uploading ? 'Tarama yükleniyor…' : 'Taranıyor…') : 'Yüz Tara'}
       </Text>
     </Pressable>
   );
@@ -280,13 +294,16 @@ interface PickerProps {
   frontAvailable: boolean;
   /** Tam kafa 360° (LiDAR + iOS 17) — yalnız destekleyen cihazda seçenek görünür */
   headAvailable: boolean;
+  /** Birleşik tarama (yüz + kafa tek akışta) — yeni native derleme + LiDAR */
+  unifiedAvailable: boolean;
   onSelect:    (order: WorkOrder) => void;
   onClose:     () => void;
   /** Modal TAM kapandığında (iOS) — bekleyen taramayı başlatmak için */
   onDismiss?:  () => void;
 }
 
-function OrderPickerModal({ visible, orders, loading, accentColor, mode, setMode, frontAvailable, headAvailable, onSelect, onClose, onDismiss }: PickerProps) {
+function OrderPickerModal({ visible, orders, loading, accentColor, mode, setMode, frontAvailable, headAvailable, unifiedAvailable, onSelect, onClose, onDismiss }: PickerProps) {
+  const U = useInkUI();
   const [query, setQuery] = useState('');
 
   // Aktif siparişler — teslim edilmemiş ve arşivlenmemiş
@@ -305,126 +322,128 @@ function OrderPickerModal({ visible, orders, loading, accentColor, mode, setMode
     ).slice(0, 50);
   }, [activeOrders, query]);
 
+  // İki seçenek: arka kamerayla yüz + kafa (birleşik) ve ön kamerayla hızlı yüz.
+  // Eski "Detaylı yüz" ve "Tam kafa" seçenekleri birleşik moda devredildi. Birleşik mod LiDAR
+  // ister; LiDAR'sız telefonda arka kamera seçeneği eski yüz taramasına düşer (yoksa o
+  // telefonlarda arka kamerayla tarama hiç kalmazdı).
+  const modes = ([
+    unifiedAvailable
+      ? { key: 'unified' as ScanMode,  label: 'Yüz + kafa', hint: 'Arka kamera', show: true }
+      : { key: 'rearGuided' as ScanMode, label: 'Detaylı yüz', hint: 'Arka kamera', show: true },
+    { key: 'front' as ScanMode, label: 'Hızlı yüz', hint: 'Ön kamera', show: frontAvailable },
+  ]).filter(opt => opt.show);
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose} onDismiss={onDismiss}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-        <View style={{
-          backgroundColor: '#FFFFFF',
-          borderTopStartRadius: 24, borderTopEndRadius: 24,
-          paddingTop: 16, paddingBottom: 24, paddingHorizontal: 16,
-          maxHeight: '85%',
-        }}>
-          {/* Header */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: '#0A0A0A', flex: 1 }}>
-              3D Tarama için sipariş seç
-            </Text>
-            <Pressable
-              onPress={onClose}
-              hitSlop={8}
-              style={{ padding: 4 }}
-            >
-              <X size={20} color="#6B6B6B" strokeWidth={1.8} />
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose} onDismiss={onDismiss}>
+      <View style={U.modalOverlay}>
+        <View style={U.modalCard}>
+          <View style={U.modalHeaderRow}>
+            <Text style={U.modalTitle}>3D Tarama için sipariş seç</Text>
+            <Pressable onPress={onClose} hitSlop={10} style={U.modalCloseBtn} accessibilityLabel={autoT('Kapat')}>
+              <X size={16} color={U.ink[500]} strokeWidth={1.8} />
             </Pressable>
           </View>
 
-          {/* Mod seçimi — Rehberli (arka, yüksek kalite) / Ön (hızlı) / Tam kafa (360°) */}
-          {(frontAvailable || headAvailable) && (
-            <View style={{
-              flexDirection: 'row', gap: 6, padding: 4, marginBottom: 12,
-              backgroundColor: '#F1F1F1', borderRadius: 12,
-            }}>
-              {([
-                { key: 'rearGuided' as ScanMode, label: 'Rehberli', hint: 'Yüksek kalite', show: true },
-                { key: 'front' as ScanMode,      label: 'Ön',       hint: 'Hızlı',         show: frontAvailable },
-                { key: 'head' as ScanMode,       label: 'Tam kafa', hint: '360°',          show: headAvailable },
-              ]).filter(opt => opt.show).map(opt => {
-                const active = mode === opt.key;
-                return (
-                  <Pressable
-                    key={opt.key}
-                    onPress={() => setMode(opt.key)}
-                    style={{
-                      flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 9,
-                      backgroundColor: active ? '#FFFFFF' : 'transparent',
-                      ...(active && Platform.OS === 'web' ? { boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } as any : {}),
-                    }}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#0A0A0A' : '#6B6B6B' }}>
-                      {opt.label}
-                    </Text>
-                    <Text style={{ fontSize: 10, color: active ? accentColor : '#9A9A9A', marginTop: 1 }}>
-                      {opt.hint}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-
-          {/* Search */}
-          <View style={{
-            flexDirection: 'row', alignItems: 'center', gap: 8,
-            backgroundColor: '#FFFFFF', borderRadius: 9999,
-            paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12,
-          }}>
-            <Search size={14} color="#9A9A9A" strokeWidth={1.8} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Sipariş no, hasta adı, hekim…"
-              placeholderTextColor="#9A9A9A"
-              style={{ flex: 1, fontSize: 14, color: '#0A0A0A', padding: 0 }}
-            />
-          </View>
-
-          {/* List */}
-          {loading ? (
-            <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-              <ActivityIndicator size="small" color={accentColor} />
-            </View>
-          ) : filtered.length === 0 ? (
-            <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-              <Text style={{ fontSize: 13, color: '#9A9A9A' }}>
-                {query ? 'Eşleşen sipariş bulunamadı' : 'Aktif sipariş yok'}
-              </Text>
-            </View>
-          ) : (
-            <ScrollView style={{ maxHeight: 400 }}>
-              {filtered.map(order => (
-                <Pressable
-                  key={order.id}
-                  onPress={() => onSelect(order)}
-                  style={({ pressed }) => ({
-                    flexDirection: 'row', alignItems: 'center', gap: 12,
-                    paddingVertical: 12, paddingHorizontal: 8,
-                    borderRadius: 10,
-                    backgroundColor: pressed ? '#F5F5F5' : 'transparent',
-                  })}
-                >
-                  <View style={{
-                    width: 8, height: 8, borderRadius: 4,
-                    backgroundColor: statusColor(order.status),
-                  }} />
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A' }}>
-                        {order.order_number}
+          <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16 }}>
+            {/* Mod seçimi — seçili olan daha geniş (pill ölçü kuralı) */}
+            {modes.length > 1 && (
+              <View style={{
+                flexDirection: 'row', gap: 6, padding: 4, marginBottom: 12,
+                backgroundColor: U.chipNeutral, borderRadius: 14,
+              }}>
+                {modes.map(opt => {
+                  const active = mode === opt.key;
+                  return (
+                    <Pressable
+                      key={opt.key}
+                      onPress={() => setMode(opt.key)}
+                      style={{
+                        flex: active ? 1.55 : 1, alignItems: 'center',
+                        paddingVertical: 8, paddingHorizontal: active ? 12 : 8, borderRadius: 10,
+                        backgroundColor: active ? U.segActive : 'transparent',
+                      }}
+                    >
+                      <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '700', color: active ? U.ink[900] : U.ink[500] }}>
+                        {opt.label}
                       </Text>
-                      {order.patient_name && (
-                        <Text style={{ fontSize: 12, color: '#6B6B6B' }} numberOfLines={1}>
-                          · {order.patient_name}
-                        </Text>
-                      )}
-                    </View>
-                    <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 2 }} numberOfLines={1}>
-                      {order.doctor?.full_name ?? '—'} · {statusLabel(order.status)}
-                    </Text>
-                  </View>
+                      <Text numberOfLines={1} style={{ fontSize: 10, color: active ? (U.isDark ? U.ink[700] : accentColor) : U.ink[400], marginTop: 1 }}>
+                        {opt.hint}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Arama */}
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: 8,
+              backgroundColor: U.chipNeutral, borderRadius: 9999,
+              paddingHorizontal: 14, height: 40, marginBottom: 10,
+            }}>
+              <Search size={14} color={U.ink[400]} strokeWidth={1.8} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Sipariş no, hasta adı, hekim…"
+                placeholderTextColor={U.ink[400]}
+                style={{ flex: 1, fontSize: 14, color: U.ink[900], padding: 0 }}
+              />
+              {query.length > 0 && (
+                <Pressable onPress={() => setQuery('')} hitSlop={10}>
+                  <X size={14} color={U.ink[400]} strokeWidth={1.8} />
                 </Pressable>
-              ))}
-            </ScrollView>
-          )}
+              )}
+            </View>
+
+            {/* Liste */}
+            {loading ? (
+              <View style={{ paddingVertical: 32, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color={accentColor} />
+              </View>
+            ) : filtered.length === 0 ? (
+              <View style={{ paddingVertical: 32, alignItems: 'center' }}>
+                <Text style={{ fontSize: 13, color: U.ink[400] }}>
+                  {query ? 'Eşleşen sipariş bulunamadı' : 'Aktif sipariş yok'}
+                </Text>
+              </View>
+            ) : (
+              <ScrollView style={{ maxHeight: 340 }} keyboardShouldPersistTaps="handled">
+                {filtered.map(order => (
+                  <Pressable
+                    key={order.id}
+                    onPress={() => onSelect(order)}
+                    style={({ pressed }) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 12,
+                      paddingVertical: 12, paddingHorizontal: 8,
+                      borderRadius: 10,
+                      backgroundColor: pressed ? U.rowHover : 'transparent',
+                    })}
+                  >
+                    <View style={{
+                      width: 8, height: 8, borderRadius: 4,
+                      backgroundColor: statusColor(order.status),
+                    }} />
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>
+                          {order.order_number}
+                        </Text>
+                        {order.patient_name && (
+                          <Text style={{ fontSize: 12, color: U.ink[500], flexShrink: 1 }} numberOfLines={1}>
+                            · {order.patient_name}
+                          </Text>
+                        )}
+                      </View>
+                      <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 2 }} numberOfLines={1}>
+                        {order.doctor?.full_name ?? '—'} · {statusLabel(order.status)}
+                      </Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
+          </View>
         </View>
       </View>
     </Modal>

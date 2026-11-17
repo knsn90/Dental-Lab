@@ -106,8 +106,8 @@ export function DecisionDialog({ visible, origin, onClose, appointmentId, catalo
     }
     setBusy(false);
     const parts = [
-      invoices.length ? `${invoices.length} ${autoT('taslak fatura açıldı')}` : null,
-      pooled ? `${pooled} ${autoT('kalem aylık faturayı bekliyor')}` : null,
+      invoices.length ? `${invoices.length} ${autoT('taslak hizmet bedeli açıldı')}` : null,
+      pooled ? `${pooled} ${autoT('kalem aylık hizmet bedelini bekliyor')}` : null,
     ].filter(Boolean);
     setDone(parts.length ? parts.join(' · ') : autoT('Kararlar kaydedildi'));
     await load(); onChanged();
@@ -130,12 +130,12 @@ export function DecisionDialog({ visible, origin, onClose, appointmentId, catalo
         footer={(
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Text style={{ flex: 1, fontSize: 12, color: err ? U.chipTones.danger.fg : done ? U.chipTones.success.fg : U.ink[400] }} accessibilityLiveRegion="polite">
-              {err ?? done ?? autoT('Karar sonradan geri alınabilir; kesilmiş faturadaki tarama hariç.')}
+              {err ?? done ?? autoT('Karar sonradan geri alınabilir; kesinleşmiş hizmet bedelindeki tarama hariç.')}
             </Text>
             <Btn kind="ghost" label={autoT('Kapat')} onPress={onClose} />
             {pending.length ? (
               <Btn kind="pri" label={autoT('Kararları kaydet')} onPress={save} busy={busy} disabled={!ready}
-                tip={autoT('Seçilen kararları kaydeder; ücretli taramalar faturaya yönlendirilir')} />
+                tip={autoT('Seçilen kararları kaydeder; ücretli taramalar hizmet bedeline yönlendirilir')} />
             ) : null}
           </View>
         )}
@@ -165,7 +165,7 @@ export function DecisionDialog({ visible, origin, onClose, appointmentId, catalo
                     <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>{p.patient_name ?? '—'}</Text>
                     <Chip tone="success" label={autoT(DECISION_LABEL[p.decision!])} />
                     <Btn kind="sec" label={autoT('Geri al')} onPress={() => undo(p)} busy={busy}
-                      icon={(c) => <Undo2 size={14} color={c} />} tip={autoT('Kararı geri alır; taslaktaki fatura satırı silinir')} />
+                      icon={(c) => <Undo2 size={14} color={c} />} tip={autoT('Kararı geri alır; taslaktaki hizmet bedeli satırı silinir')} />
                   </View>
                 ))}
               </View>
@@ -186,7 +186,7 @@ export function DecisionDialog({ visible, origin, onClose, appointmentId, catalo
                 onCreated={async (orderId: string) => {
                   const r = await decide([newFor.id], 'yeni_siparis', orderId);
                   if (!r.ok) setErr(r.error ?? null);
-                  else setDone((r.invoices?.length ? `${r.invoices.length} ${autoT('taslak fatura açıldı')}` : autoT('Kararlar kaydedildi')));
+                  else setDone((r.invoices?.length ? `${r.invoices.length} ${autoT('taslak hizmet bedeli açıldı')}` : autoT('Kararlar kaydedildi')));
                   await load(); onChanged();
                 }}
               />
@@ -211,7 +211,7 @@ function PatientDecision({ p, row, orders, mode, prices, choice, picked, onChoic
   const opts: { k: Choice; t: string; s: string }[] = [
     { k: 'link', t: autoT('Siparişe bağla'), s: autoT('Kliniğin açık siparişleri') },
     { k: 'new', t: autoT('Yeni sipariş aç'), s: autoT('Klinik ve hasta hazır gelir') },
-    { k: 'only', t: autoT('Yalnız tarama'), s: autoT('Ayrı kalem faturalanır') },
+    { k: 'only', t: autoT('Yalnız tarama'), s: autoT('Ayrı kalem olarak eklenir') },
   ];
   return (
     <View style={{ borderRadius: 18, borderWidth: 1, borderColor: U.hairline, padding: 12, gap: 10 }}>
@@ -265,8 +265,8 @@ function PatientDecision({ p, row, orders, mode, prices, choice, picked, onChoic
         const pr = prices[c.service_id];
         const free = choice !== 'only' && freeIds.has(c.service_id);
         const where = choice === 'only'
-          ? (mode === 'per_order' ? autoT('kliniğe taslak fatura açılır') : autoT('aylık faturaya eklenir'))
-          : autoT('siparişin faturasına eklenir');
+          ? (mode === 'per_order' ? autoT('kliniğe taslak hizmet bedeli açılır') : autoT('aylık hizmet bedeline eklenir'))
+          : autoT('siparişin hizmet bedeline eklenir');
         return (
           <View key={c.service_id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10,
             backgroundColor: free ? U.chipTones.success.bg : U.surfaceSoft }}>

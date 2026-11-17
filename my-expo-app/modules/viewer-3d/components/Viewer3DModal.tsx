@@ -201,10 +201,10 @@ function Viewer3DModal(props: Viewer3DProps) {
   // farklı konum/açıda görünürler ve otomatik hizalama güvenilir değil (exocad
   // dahil). Çözüm: aynı anda TEK format göster; kullanıcı üstteki sekmeden seçer.
   // Tek format içindeki dosyalar aynı sistemde olduğundan doğru çakışır.
-  type Fmt = 'stl' | 'ply' | 'obj';
+  type Fmt = 'stl' | 'ply' | 'obj' | 'usdz';
   const formatsPresent = useMemo<Fmt[]>(() => {
     const s = new Set(files.map(f => f.format));
-    return (['stl', 'ply', 'obj'] as Fmt[]).filter(f => s.has(f));
+    return (['stl', 'ply', 'obj', 'usdz'] as Fmt[]).filter(f => s.has(f));
   }, [files]);
   const multiFormat = formatsPresent.length > 1;
   const [activeFormat, setActiveFormat] = useState<Fmt | null>(null);

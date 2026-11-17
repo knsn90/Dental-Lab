@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, ChevronRight, Menu, X, Check } from '../../../core/ui/icons';
 
 import { HubContext } from '../../../core/ui/HubContext';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useColorThemeStore } from '../../../core/store/colorThemeStore';
@@ -283,7 +284,7 @@ export function SettingsHubScreen({
         <View
           style={{
             paddingTop: Math.max(insets.top, 12) + 72,
-            paddingHorizontal: 12,
+            paddingHorizontal: PAGE_PADDING,
             paddingBottom: 8,
             flexDirection: 'row',
             alignItems: 'center',
@@ -311,7 +312,7 @@ export function SettingsHubScreen({
           const activeOverflowLabel = navItems.some(it => it.key === active) ? navLabel(active) : undefined;
 
           return (
-            <View style={{ paddingHorizontal: 12, paddingVertical: 8, backgroundColor: panelBg }}>
+            <View style={{ paddingHorizontal: PAGE_PADDING, paddingVertical: 8, backgroundColor: panelBg }}>
               <View style={{
                 flexDirection: 'row', gap: 3, padding: 3,
                 backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 9999,

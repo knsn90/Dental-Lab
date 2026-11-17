@@ -88,7 +88,7 @@ export function BulkPayModal({ visible, onClose, onStarted }: {
           ) : rows.length === 0 ? (
             <View style={{ padding: 28 }}>
               <Text style={{ fontSize: 13.5, color: U.ink[500], textAlign: 'center' }}>
-                {autoT('Ödenecek açık faturanız yok.')}
+                {autoT('Ödenecek açık hizmet bedeliniz yok.')}
               </Text>
             </View>
           ) : (
@@ -132,7 +132,7 @@ export function BulkPayModal({ visible, onClose, onStarted }: {
                       {formatMoney(active.balance, active.currency as Currency)}
                     </Text>
                     <Text style={{ fontSize: 11.5, color: U.ink[400], marginTop: 4 }}>
-                      {active.invoice_count} {autoT('açık fatura')}
+                      {active.invoice_count} {autoT('açık hizmet bedeli')}
                     </Text>
                   </View>
 
@@ -173,8 +173,8 @@ export function BulkPayModal({ visible, onClose, onStarted }: {
                     {/* Kısmi ödemede hangi faturaların kapanacağı belirsiz kalmasın. */}
                     <Text style={{ fontSize: 11.5, color: U.ink[400], lineHeight: 17 }}>
                       {isPartial
-                        ? autoT('Kısmi ödeme: tutar en eski faturadan başlayarak dağıtılır.')
-                        : autoT('Tüm açık faturalarınız kapanır.')}
+                        ? autoT('Kısmi ödeme: tutar en eski hizmet bedelinden başlayarak dağıtılır.')
+                        : autoT('Tüm açık hizmet bedelleriniz kapanır.')}
                     </Text>
                     {!amountValid && amountText.trim() !== '' ? (
                       <Text style={{ fontSize: 11.5, color: U.chipTones.danger.fg }}>

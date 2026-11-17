@@ -62,10 +62,21 @@ enum HeadScanGeometry {
     static let highAbove: Float = 22 * .pi / 180
 
     /// Bitirmek için gereken en az bölge (bant başına sektör) + en az kare.
-    static let requiredMid = 11
+    /// (İdeal kapsama. Koltukta oturan hastanın arkasına geçilemediği için tam tur istenmez.)
+    static let requiredMid = 9
+    /// Üst bant 4 iken tepe/saç bölgesi az kareyle kuruluyor, bozuk çıkıyordu → 6.
     static let requiredHigh = 6
-    static let requiredLow = 3
-    static let requiredShots = 45
+    static let requiredLow = 2
+    static let requiredShots = 36
+
+    /// Bu kadarı varsa operatör kendi kararıyla bitirebilir (eksik bölge modelde boş kalır):
+    /// göz hizasında yarım tur + yeterli kare.
+    static let minimumMid = 6
+    static let minimumShots = 24
+
+    /// En iyi sonuç veren mesafe (cm): baş kareyi yeterince doldurur, burundan kulağa her şey net kalır.
+    /// Gösterge bu aralıkta yeşil, dışında kırmızı yanar.
+    static let idealDistanceCM = 40...55
 
     /// Çekim mesafesi aralığı (kamera — kafa merkezi, m)
     static let distanceRange: ClosedRange<Float> = 0.25...1.1

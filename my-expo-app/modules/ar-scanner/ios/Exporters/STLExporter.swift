@@ -57,18 +57,28 @@ enum OBJCropper {
         let lowW = avgWidth(0..<max(1, N / 5))                 // vmin tarafı
         let highW = avgWidth((N - N / 5)..<N)                  // vmax tarafı
         let headAtHigh = lowW > highW
+        let bodyW = max(lowW, highW)                           // gövde (omuz) ucu
 
-        // Boyun: kafa tarafından [0.18,0.72] aralığında min genişlik dilimi
+        // Boyun: kafa tarafından [0.35,0.80] aralığında min genişlik dilimi.
+        // (Boyun kafanın altındadır; üst %35'te aranırsa yüzün ortası boyun sanılır.)
         let order: [Int] = headAtHigh ? Array((0..<N).reversed()) : Array(0..<N)
-        var neckPos = -1; var neckW = Float.greatestFiniteMagnitude
+        var neckPos = -1; var neckW = Float.greatestFiniteMagnitude; var neckK = 0
         for k in 0..<N {
             let frac = Float(k) / Float(N)
-            if frac < 0.18 || frac > 0.72 { continue }
+            if frac < 0.35 || frac > 0.80 { continue }
             let s = order[k]
             let w = width(s)
-            if w > 0 && w < neckW { neckW = w; neckPos = s }
+            if w > 0 && w < neckW { neckW = w; neckPos = s; neckK = k }
         }
         guard neckPos >= 0 else { return false }
+
+        // KESMEDEN ÖNCE KANIT: gerçekten "kafa + boyun + omuz" biçimi mi?
+        // Yalnız yüzü içeren taramada (omuz yok) en dar dilim yüzün içine denk gelir ve kesim
+        // yüzün bir kısmını atar. O yüzden boyun, hem üstündeki kafadan hem altındaki gövdeden
+        // belirgin biçimde dar değilse hiç kesilmez.
+        var headW: Float = 0
+        for k in 0..<neckK { headW = max(headW, width(order[k])) }
+        guard bodyW >= neckW * 1.35, headW >= neckW * 1.12 else { return false }
 
         var cutoff = vmin + (Float(neckPos) + 0.5) / Float(N) * vrange
         let margin = 0.04 * vrange   // biraz fazla boyun bırak
@@ -100,8 +110,8 @@ enum OBJCropper {
                 out.append(line)
             }
         }
-        // Güvenlik: çok agresif kestiyse (kafa da gitti) dokunma
-        guard keptFaces > totalFaces / 12, totalFaces > 0 else { return false }
+        // Güvenlik: modelin yarısından fazlası gidiyorsa kesim yanlıştır (kafa da gidiyor) → dokunma
+        guard totalFaces > 0, keptFaces * 2 >= totalFaces else { return false }
 
         let result = out.joined(separator: "\n")
         return (try? result.write(to: objURL, atomically: true, encoding: .utf8)) != nil

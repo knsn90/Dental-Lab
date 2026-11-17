@@ -24,6 +24,7 @@ import { useMobileTokens } from '../../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../../core/store/themeModeStore';
 import { isRTL } from '../../../../core/i18n';
 import { autoT } from '../../../../core/i18n/autoTranslate';
+import { confirmAsync } from '../../../../core/util/confirm';
 import { CURRENCY_META, type Currency } from '../../../../core/money/currency';
 import { baseSymbol } from '../../../../core/money/baseCurrency';
 import {
@@ -974,7 +975,7 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
 
   const handleDelete = async () => {
     if (!full) return;
-    if (typeof confirm === 'function' && !confirm(`"${full.policy.name}" ${autoT('silinsin mi? Geri alınamaz.')}`)) return;
+    if (!(await confirmAsync(`"${full.policy.name}" ${autoT('silinsin mi? Geri alınamaz.')}`, undefined, { destructive: true, confirmText: 'Sil' }))) return;
     try {
       await deletePolicy(full.policy.id);
       goBack();

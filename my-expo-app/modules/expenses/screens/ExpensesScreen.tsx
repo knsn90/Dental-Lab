@@ -1,11 +1,15 @@
 import { localeTag } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 /**
- * ExpensesScreen — Giderler (Patterns Design Language)
+ * ExpensesScreen — Giderler
  *
- * §10 Hero (glassmorphism), §09 tableCard, §05 cardSolid,
- * §04 CHIP_TONES, §05.5 form, §08 dialog, §03 pill buttons,
- * Lucide icons.
+ * Yapı (Hizmet bedelleri / Tedarikçiler ile aynı dil):
+ *   • BEYAZ HERO: seçili dönemin gideri (baş döviz) + önceki döneme göre değişim
+ *     → kategori dağılım çubuğu → düğme şeridi (Gider ekle · Satın alma · …)
+ *   • Tek kart: dönem sekmeleri (Bu ay/Geçen ay/Son 3 ay/Tümü/Özel) + arama +
+ *     kategori + sıralama → satırlar → döviz döviz alt toplam
+ *   • Satır eylemleri tek ⋯ menüsünde: Aç · Düzenle · Sil
+ *   • Faturalı gider silinirken TEK açık pencere: yalnız fatura / fatura + stok
  */
 import React, { useState, useMemo, useContext, useEffect } from 'react';
 import { useRouter, useSegments } from 'expo-router';
@@ -23,30 +27,22 @@ import {
   EXPENSE_CATEGORY_LABELS, EXPENSE_CATEGORY_COLORS,
   type Expense, type ExpenseCategory, type ExpensePaymentMethod, type CreateExpenseParams,
 } from '../api';
-import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { DatePicker } from '../../../core/ui/DatePicker';
-// Phase 3: Multi-currency
 import { MoneyInput } from '../../../core/money/MoneyInput';
-import { MoneyDisplay } from '../../../core/money/MoneyDisplay';
-// Katı per-currency (groupByCurrency + MoneyMultiX)
 import { groupByCurrency, type CurrencyTotal } from '../../../core/money/aggregations';
 import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
 import { formatMoney, useBaseCurrency, type Currency } from '../../../core/money/currency';
-// Form: yabancı para gider girişinde kur yakalama (snapshot) için
 import { baseSymbol } from '../../../core/money/baseCurrency';
-// Material purchase / inventory intake
 import { PurchaseFormModal } from '../../purchases/components/PurchaseFormModal';
 import { IncomingEFaturaModal } from '../../purchases/components/IncomingEFaturaModal';
 import type { PurchasePrefill } from '../../purchases/lib/incomingPrefill';
 import { getActiveProvider } from '../../efatura/providers';
-import { PurchaseInvoicePreviewModal } from '../../purchases/components/PurchaseInvoicePreviewModal';
 import { PurchaseInvoiceDetailScreen } from '../../purchases/screens/PurchaseInvoiceDetailScreen';
 import { ExpenseDetailScreen } from './ExpenseDetailScreen';
 import { RecurringExpensesPanel } from '../components/RecurringExpensesPanel';
-import { ExpenseMobileTable } from '../components/ExpenseMobileTable';
-// Kategori ikonu, ödeme yöntemleri, biçimleyiciler — mobil tabloyla ortak
-import { CAT_ICON, PAY_METHODS, fmtMoney, fmtDate, rowStyle } from '../lib/expenseDisplay';
+import { CAT_ICON, PAY_METHODS, fmtDate, rowStyle } from '../lib/expenseDisplay';
 import { downloadCsv, csvMoney, csvDate } from '../../../core/util/csvExport';
 import { buildExpensesReportHtml, downloadExpensesReport } from '../../../core/util/buildExpensesReportHtml';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -54,11 +50,13 @@ import { toast } from '../../../core/ui/Toast';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useInkUI } from '../../../core/theme/inkScale';
+import { FilterMenu } from '../../../core/ui/FilterMenu';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { AnchorMenu } from '../../invoices/components/AnchorMenu';
 import {
   Plus, Search, X, Inbox, Pencil, Trash2,
-  Package, Building, Users, Wrench, Receipt, MoreHorizontal, Truck,
-  Repeat, FileSpreadsheet, Banknote, CreditCard, Landmark,
-  FileText, CircleDot, FileUp, Sparkles, Check, SlidersHorizontal,
+  MoreHorizontal, Repeat, FileSpreadsheet, Receipt,
+  FileText, FileUp, Sparkles, Check, ArrowUpRight,
 } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { confirmAsync } from '../../../core/util/confirm';
@@ -70,17 +68,64 @@ const DISPLAY = {
   fontWeight: '300' as const,
 };
 
-// Yüzeyler (kart / tablo / chip tonları) tema-farkında `useInkUI()`'den gelir —
-// modül seviyesinde beyaz sabit BIRAKILMAZ (koyu temada hook çağıramaz).
-
 const modalShadow = '0 8px 40px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08)';
 
-// Malzeme alımları artık Stok > Satın Alma akışından otomatik gider kaydı
-// olarak buraya yansır. Yine de manuel ekleme için kategori görünür kalır.
+// Malzeme alımları Stok > Satın Alma akışından otomatik gider kaydı olarak yansır.
 const CATEGORIES: ExpenseCategory[] = ['malzeme', 'kira', 'personel', 'ekipman', 'vergi', 'kurye', 'diger'];
 // Genel gider formunda görünen kategoriler — sarf/demirbaş Stok › Satın Alma'dan girilir
 const FORM_CATEGORIES: ExpenseCategory[] = ['kira', 'personel', 'vergi', 'diger'];
 
+type DateRangeKey = 'this_month' | 'last_month' | 'last_3m' | 'all' | 'custom';
+type ExpSortKey = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
+type Bounds = { from?: string; to?: string };
+type RowMenuItem = { key: string; label: string; icon?: React.ComponentType<any>; onPress: () => void };
+
+const isoDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * Dönemin [başlangıç, bitiş] sınırları + kıyas için ÖNCEKİ eşdeğer dönem.
+ * `expense_date` 'YYYY-MM-DD' metni; karşılaştırma string üzerinden yapılır
+ * (Date'e çevirmek saat dilimi kayması riski getirirdi).
+ */
+function rangeBounds(key: DateRangeKey, customFrom: string, customTo: string): { cur: Bounds; prev: Bounds | null } {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const monthStart = (k: number) => isoDay(new Date(y, m + k, 1));
+  const monthEnd = (k: number) => isoDay(new Date(y, m + k + 1, 0));
+  switch (key) {
+    case 'this_month': {
+      // Bu ay, ayın BUGÜNÜNE kadar; kıyas: geçen ayın aynı gününe kadar (adil kıyas).
+      const prevTo = isoDay(new Date(y, m - 1, Math.min(now.getDate(), new Date(y, m, 0).getDate())));
+      return { cur: { from: monthStart(0) }, prev: { from: monthStart(-1), to: prevTo } };
+    }
+    case 'last_month': return { cur: { from: monthStart(-1), to: monthEnd(-1) }, prev: { from: monthStart(-2), to: monthEnd(-2) } };
+    case 'last_3m':    return { cur: { from: monthStart(-2) }, prev: { from: monthStart(-5), to: monthEnd(-3) } };
+    case 'custom':     return { cur: { from: customFrom || undefined, to: customTo || undefined }, prev: null };
+    default:           return { cur: {}, prev: null };
+  }
+}
+
+function inBounds(d: string | null | undefined, b: Bounds): boolean {
+  if (!b.from && !b.to) return true;
+  const v = d ?? '';
+  if (!v) return false;                       // tarihsiz kayıt aralığa giremez
+  if (b.from && v < b.from) return false;
+  if (b.to && v > b.to) return false;
+  return true;
+}
+
+/**
+ * Otomatik açıklamaları ("Kurye · Teslimat · Lab → Klinik · #NEX-… · Banabikurye")
+ * iki satıra böler: başlık = anlamlı ilk iki parça, alt = kalanlar.
+ * Kategori adıyla başlayan ön ek (zaten ikonda görünüyor) atılır.
+ */
+function splitDescription(e: Expense): { title: string; sub: string | null } {
+  const parts = (e.description ?? '').split(' · ').map(s => s.trim()).filter(Boolean);
+  if (parts.length > 1 && parts[0].toLocaleLowerCase('tr-TR') === EXPENSE_CATEGORY_LABELS[e.category].toLocaleLowerCase('tr-TR')) parts.shift();
+  if (parts.length <= 2) return { title: parts.join(' · ') || '—', sub: null };
+  return { title: parts.slice(0, 2).join(' · '), sub: parts.slice(2).join(' · ') };
+}
 
 // ═════════════════════════════════════════════════════════════════════
 // MAIN
@@ -90,242 +135,159 @@ export function ExpensesScreen() {
   const segments = useSegments();
   const panel    = (segments?.[0] as string) ?? '(lab)';
   const theme = usePanelTheme();
-  // Koyu tema: nötr yüzeyler + hero lacivert gradyanı (açık temada birebir aynı kalır)
   const U = useInkUI();
-  const heroInk = useWhiteHeroInk();
-  // Tablo kartı başlığı düz panel accent'i (uygulama genelinde aynı dil).
-  const tblAccent = theme.primary;
-  const tblInk = onAccentInk(tblAccent);
+  const T = useMobileTokens();
+  const heroInk = useWhiteHeroInk(theme.primary);
   const isEmbedded = useContext(HubContext);
 
-  /**
-   * Fatura bu ekranın içinde açılır — hub içeriğini değiştirmek yerine.
-   * Böylece geri dönünce filtre/kaydırma konumu korunur.
-   */
+  /** Fatura / gider detayı bu ekranın içinde açılır — geri dönünce filtre korunur. */
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const openInvoice = (id: string) => {
     if (isEmbedded) setInvoiceId(id);
     else router.push(`/${panel}/purchase-invoice/${id}` as any);
   };
-
-  /**
-   * Gider detayı da aynı şekilde bu ekranın içinde açılır.
-   * Satın alma faturasından doğan giderler doğrudan faturaya gider (içerik zaten
-   * orada); diğer her satır — kurye, kira, maaş — detay sayfasını açar.
-   */
   const [detailId, setDetailId] = useState<string | null>(null);
   const openExpense = (e: Expense) => {
     if (e.purchase_invoice_id) { openInvoice(e.purchase_invoice_id); return; }
     if (isEmbedded) setDetailId(e.id);
     else router.push(`/${panel}/expense/${e.id}` as any);
   };
+
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const insets = useSafeAreaInsets();
   const topPad = isEmbedded || isDesktop ? 0 : Math.max(insets.top, 8) + 72;
+
   const [catFilter, setCatFilter] = useState<ExpenseCategory | 'all'>('all');
   const [search, setSearch] = useState('');
-  const [filterOpen, setFilterOpen] = useState(false);
-  const filterBtnRef = React.useRef<any>(null);
-  /** Popup'ın üstten konumu — Filtre düğmesinin altı (masaüstü). */
-  const [filterAnchor, setFilterAnchor] = useState<{ y: number }>({ y: 120 });
-  type ExpSortKey = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
   const [sortKey, setSortKey] = useState<ExpSortKey>('date_desc');
-  const SORT_OPTIONS: { key: ExpSortKey; label: string }[] = [
-    { key: 'date_desc',   label: 'En Yeni' },
-    { key: 'date_asc',    label: 'En Eski' },
-    { key: 'amount_desc', label: 'Tutar ↓' },
-    { key: 'amount_asc',  label: 'Tutar ↑' },
-  ];
-
-  // ── Tarih aralığı filtresi ────────────────────────────────────────────────
-  // Liste tüm geçmişi tek akışta gösteriyordu; "bu ay ne kadar gider yaptık"
-  // sorusunun cevabı yoktu. Üstteki TOPLAM GİDER kutusu `filtered`'dan
-  // türediği için aralık seçilince toplamlar da o aralığa daralır.
-  type DateRangeKey = 'all' | 'this_month' | 'last_month' | 'last_3m' | 'custom';
-  const [dateRange, setDateRange] = useState<DateRangeKey>('all');
+  // Varsayılan "Bu ay": tüm zamanların toplamı karar vermeye yaramıyordu.
+  const [dateRange, setDateRange] = useState<DateRangeKey>('this_month');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo]     = useState('');
 
   const DATE_OPTIONS: { key: DateRangeKey; label: string }[] = [
-    { key: 'all',        label: 'Tümü' },
-    { key: 'this_month', label: 'Bu ay' },
-    { key: 'last_month', label: 'Geçen ay' },
-    { key: 'last_3m',    label: 'Son 3 ay' },
-    { key: 'custom',     label: 'Özel' },
+    { key: 'this_month', label: autoT('Bu ay') },
+    { key: 'last_month', label: autoT('Geçen ay') },
+    { key: 'last_3m',    label: autoT('Son 3 ay') },
+    { key: 'all',        label: autoT('Tümü') },
+    { key: 'custom',     label: autoT('Özel') },
   ];
 
-  /**
-   * Seçili aralığın [başlangıç, bitiş] sınırları — 'YYYY-MM-DD'.
-   *
-   * `expense_date` zaten bu formatta bir metin olduğu için karşılaştırma
-   * doğrudan string üzerinden yapılır: Date'e çevirmek saat dilimi kayması
-   * riski getirirdi (UTC'ye çevrilen yerel gece yarısı bir gün geriye kayar).
-   */
-  const dateBounds = useMemo((): { from?: string; to?: string } => {
-    const iso = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const now = new Date();
-    switch (dateRange) {
-      case 'this_month':
-        return { from: iso(new Date(now.getFullYear(), now.getMonth(), 1)) };
-      case 'last_month':
-        return {
-          from: iso(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
-          to:   iso(new Date(now.getFullYear(), now.getMonth(), 0)),   // önceki ayın son günü
-        };
-      case 'last_3m':
-        return { from: iso(new Date(now.getFullYear(), now.getMonth() - 2, 1)) };
-      case 'custom':
-        return { from: customFrom || undefined, to: customTo || undefined };
-      default:
-        return {};
-    }
-  }, [dateRange, customFrom, customTo]);
+  const bounds = useMemo(() => rangeBounds(dateRange, customFrom, customTo), [dateRange, customFrom, customTo]);
 
-  const inDateRange = (d: string | null | undefined): boolean => {
-    if (!dateBounds.from && !dateBounds.to) return true;
-    const v = d ?? '';
-    if (!v) return false;                       // tarihsiz kayıt aralığa giremez
-    if (dateBounds.from && v < dateBounds.from) return false;
-    if (dateBounds.to   && v > dateBounds.to)   return false;
-    return true;
-  };
-  const [modalOpen, setModalOpen] = useState(false);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
-  // Gelen e-faturalar (Luca) → alış faturası ön dolumu. Yalnız aktif e-fatura sağlayıcı Luca ise.
   const [incomingOpen, setIncomingOpen] = useState(false);
   const [purchasePrefill, setPurchasePrefill] = useState<PurchasePrefill | null>(null);
   const [lucaActive, setLucaActive] = useState(false);
   useEffect(() => { getActiveProvider().then((p) => setLucaActive(p.key === 'luca')).catch(() => {}); }, []);
+  const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
-  // Satın alma faturası önizleme — gider satırı bir purchase_invoice'a bağlıysa tıklanır
-  const [previewInvoiceId, setPreviewInvoiceId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<Expense | null>(null);
 
-  const { expenses, loading, refetch } = useExpenses(
-    catFilter !== 'all' ? { category: catFilter } : undefined,
-  );
+  // Hepsi tek seferde gelir; kategori/dönem süzgeci istemcide — hero, sekme
+  // sayıları ve liste aynı kümeden beslenir (rakamlar birbirini tutar).
+  const { expenses, loading, refetch } = useExpenses();
+
+  const ccyOf = (e: Expense) => ((e.currency ?? 'TRY') as Currency);
+  const amt = (e: Expense) => Number(e.amount) || 0;
+
+  /** Dönem içindeki giderler (kategori/arama hariç) — hero bunu özetler. */
+  const inPeriod = useMemo(() => expenses.filter(e => inBounds(e.expense_date, bounds.cur)), [expenses, bounds]);
+  const prevPeriod = useMemo(() => bounds.prev ? expenses.filter(e => inBounds(e.expense_date, bounds.prev!)) : null, [expenses, bounds]);
 
   const filtered = useMemo(() => {
-    const sl = search.toLowerCase();
-    const byDate = expenses.filter(e => inDateRange(e.expense_date));
-    const list = search
-      ? byDate.filter(e =>
-          e.description.toLowerCase().includes(sl) ||
-          EXPENSE_CATEGORY_LABELS[e.category].toLowerCase().includes(sl),
-        )
-      : byDate;
-    return [...list].sort((a, b) => {
+    const sl = search.trim().toLocaleLowerCase('tr-TR');
+    const list = inPeriod.filter(e => {
+      if (catFilter !== 'all' && e.category !== catFilter) return false;
+      if (sl && !e.description.toLocaleLowerCase('tr-TR').includes(sl)
+             && !EXPENSE_CATEGORY_LABELS[e.category].toLocaleLowerCase('tr-TR').includes(sl)) return false;
+      return true;
+    });
+    return list.sort((a, b) => {
       switch (sortKey) {
-        case 'date_desc':   return (b.expense_date ?? '').localeCompare(a.expense_date ?? '');
         case 'date_asc':    return (a.expense_date ?? '').localeCompare(b.expense_date ?? '');
-        case 'amount_desc': return Number(b.amount ?? 0) - Number(a.amount ?? 0);
-        case 'amount_asc':  return Number(a.amount ?? 0) - Number(b.amount ?? 0);
-        default:            return 0;
+        case 'amount_desc': return amt(b) - amt(a);
+        case 'amount_asc':  return amt(a) - amt(b);
+        default:            return (b.expense_date ?? '').localeCompare(a.expense_date ?? '');
       }
     });
-  }, [expenses, search, sortKey, dateBounds]);   // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inPeriod, search, sortKey, catFilter]);
 
-  const baseCurrency = useBaseCurrency();   // lab baz para birimi (Excel export / form kur yakalama)
-  // Katı per-currency: gider toplamları para birimine göre BAĞIMSIZ (asla toplanmaz).
-  const ccyOf = (e: any) => ((e.currency ?? 'TRY') as Currency);
-  const expByCcy = useMemo(
-    () => groupByCurrency(filtered, e => ({ amount: Number((e as any).amount) || 0, currency: ccyOf(e) })),
-    [filtered],
-  );
+  const baseCurrency = useBaseCurrency();
+  // Katı per-currency: döviz toplamları BAĞIMSIZ (asla toplanmaz).
+  const periodByCcy = useMemo(() => groupByCurrency(inPeriod, e => ({ amount: amt(e), currency: ccyOf(e) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inPeriod]);
+  const listByCcy = useMemo(() => groupByCurrency(filtered, e => ({ amount: amt(e), currency: ccyOf(e) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtered]);
 
-  // Kategori başına per-currency kırılım
-  const catByCcy = useMemo(() => {
-    const buckets: Record<string, Expense[]> = {};
-    // Aralık dışındakiler hariç: üstteki TOPLAM GİDER aralığa göre
-    // hesaplanırken kategori kırılımı tüm geçmişi gösterirse iki rakam
-    // birbirini tutmaz ve kullanıcı hangisine güveneceğini bilemez.
-    for (const e of expenses) { if (inDateRange(e.expense_date)) (buckets[e.category] ??= []).push(e); }
-    const map: Record<string, CurrencyTotal[]> = {};
-    for (const cat of Object.keys(buckets)) {
-      map[cat] = groupByCurrency(buckets[cat], e => ({ amount: Number((e as any).amount) || 0, currency: ccyOf(e) }));
-    }
-    return map;
-  }, [expenses]);
+  const lead = periodByCcy[0] ?? null;
+  const rest = periodByCcy.slice(1);
 
-  // ── Hero özeti (beyaz hero) ──
-  // Çoklu-döviz kuralı: TOPLAMA YOK. Başlıkta en büyük dilim ("lead") durur,
-  // kalanlar (`rest`) altında inline chip olarak listelenir.
-  const lead = expByCcy[0] ?? null;
-  const rest = expByCcy.slice(1);
-  const catCount = Object.keys(catByCcy).length;
-  // En büyük kalem: lead para birimindeki en yüksek kategori.
-  const topCat = useMemo(() => {
-    if (!lead) return null;
-    let best: { cat: ExpenseCategory; total: number; currency: Currency } | null = null;
-    for (const [cat, slices] of Object.entries(catByCcy)) {
-      const sl = slices.find(x => x.currency === lead.currency);
-      if (sl && (!best || sl.total > best.total)) best = { cat: cat as ExpenseCategory, total: sl.total, currency: sl.currency };
-    }
-    return best;
-  }, [catByCcy, lead]);
+  // Önceki eşdeğer döneme göre değişim — yalnız baş dövizde.
+  const delta = useMemo(() => {
+    if (!lead || !prevPeriod) return null;
+    const prev = prevPeriod.filter(e => ccyOf(e) === lead.currency).reduce((t, e) => t + amt(e), 0);
+    if (prev <= 0) return null;
+    return Math.round(((lead.total - prev) / prev) * 100);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead?.total, lead?.currency, prevPeriod]);
+
+  // Kategori dağılımı (baş dövizde) — dönem değişince BİRLİKTE güncellenir.
+  const catDist = useMemo(() => {
+    if (!lead) return [];
+    const by: Partial<Record<ExpenseCategory, number>> = {};
+    for (const e of inPeriod) if (ccyOf(e) === lead.currency) by[e.category] = (by[e.category] ?? 0) + amt(e);
+    return CATEGORIES
+      .map(cat => ({ cat, value: by[cat] ?? 0 }))
+      .filter(x => x.value > 0)
+      .sort((a, b) => b.value - a.value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inPeriod, lead?.currency]);
+
+  const catCounts = useMemo(() => {
+    const c: Partial<Record<ExpenseCategory, number>> = {};
+    for (const e of inPeriod) c[e.category] = (c[e.category] ?? 0) + 1;
+    return c;
+  }, [inPeriod]);
+  const usedCats = CATEGORIES.filter(c => (catCounts[c] ?? 0) > 0);
+
+  const periodLabel = DATE_OPTIONS.find(o => o.key === dateRange)?.label ?? '';
+  const fmt0 = (n: number, c: Currency) => formatMoney(n, c, { fractionDigits: 0 });
 
   const openAdd = () => { setEditing(null); setModalOpen(true); };
   const openEdit = (e: Expense) => { setEditing(e); setModalOpen(true); };
 
   const handleDelete = async (e: Expense) => {
-    const linkedInvoiceId = e.purchase_invoice_id ?? null;
-    const isWeb = Platform.OS === 'web';
-
-    const confirm1 = (msg: string): boolean | Promise<boolean> => {
-      if (isWeb && typeof window !== 'undefined') return window.confirm(msg);
-      return new Promise<boolean>(resolve => {
-        Alert.alert('Gider Sil', msg, [
-          { text: 'Vazgeç', style: 'cancel', onPress: () => resolve(false) },
-          { text: 'Sil', style: 'destructive', onPress: () => resolve(true) },
-        ]);
-      });
-    };
-
-    if (linkedInvoiceId) {
-      // Bu gider satın alma faturasından otomatik gelmiş — fatura + stok'u soracağız
-      const ok = await confirm1(
-        `"${e.description}" satın alma faturasından oluşmuş bir giderdir.\n\n` +
-        `DEVAM EDERSEN: fatura kaydı + cari hesap işlemi + bu gider silinecek.`
-      );
-      if (!ok) return;
-
-      // İkinci soru: stoğu da geri al?
-      let revertStock = false;
-      if (isWeb && typeof window !== 'undefined') {
-        revertStock = window.confirm(
-          'Bu faturayla eklenen STOK ürünleri de stokta düşülsün mü?\n\n' +
-          'TAMAM = Evet, stoktan düş (faturadaki tüm hareketler geri alınır)\n' +
-          'İPTAL = Hayır, sadece faturayı sil (stok olduğu gibi kalsın)'
-        );
-      } else {
-        // Alert.alert web'de NO-OP → Promise hiç resolve olmuyor ve akış
-        // burada donuyordu. confirmAsync iki platformda da cevap döndürür.
-        revertStock = await confirmAsync(
-          'Stok düşülsün mü?',
-          'Bu faturayla eklenen ürünler stoktan da düşülsün mü?',
-          { confirmText: 'Evet, stoğu da geri al', cancelText: 'Hayır, sadece fatura', destructive: true },
-        );
-      }
-
-      const { error } = await deletePurchaseInvoice(linkedInvoiceId, revertStock);
-      if (error) { toast.error('Silinemedi: ' + (error as any).message); return; }
-      toast.success(revertStock ? 'Fatura silindi + stoğa düşüldü' : 'Fatura silindi (stok korundu)');
-      refetch();
-      return;
-    }
-
-    // Manuel gider — standart sil
-    const ok = await confirm1(`"${e.description}" ${autoT('kaydını silmek istediğine emin misin?')}`);
+    // Faturalı gider: tek açık pencere (yalnız fatura / fatura + stok).
+    if (e.purchase_invoice_id) { setDeleting(e); return; }
+    const ok = await confirmAsync(
+      autoT('Gideri sil'),
+      `"${e.description}" ${autoT('kaydını silmek istediğine emin misin?')}`,
+      { confirmText: autoT('Sil'), destructive: true },
+    );
     if (!ok) return;
     const { error } = await deleteExpense(e.id);
-    if (error) { toast.error('Silinemedi: ' + (error as any).message); return; }
-    toast.success('Gider silindi');
+    if (error) { toast.error(autoT('Silinemedi:') + ' ' + (error as any).message); return; }
+    toast.success(autoT('Gider silindi'));
     refetch();
   };
 
-  // Lab bilgisini header için tek seferlik çek (rapora yansıyacak)
+  const deleteLinked = async (revertStock: boolean) => {
+    const e = deleting;
+    if (!e?.purchase_invoice_id) return;
+    setDeleting(null);
+    const { error } = await deletePurchaseInvoice(e.purchase_invoice_id, revertStock);
+    if (error) { toast.error(autoT('Silinemedi:') + ' ' + (error as any).message); return; }
+    toast.success(autoT(revertStock ? 'Fatura silindi + stoğa düşüldü' : 'Fatura silindi (stok korundu)'));
+    refetch();
+  };
+
+  // Lab bilgisi — Excel raporunun başlığına yansır
   const profile = useAuthStore(s => s.profile);
   const labId = (profile as any)?.lab_id ?? null;
   const [labMeta, setLabMeta] = useState<{ name: string; address?: string | null; phone?: string | null; taxNo?: string | null } | null>(null);
@@ -340,7 +302,6 @@ export function ExpensesScreen() {
 
   const handleExcel = async () => {
     if (Platform.OS !== 'web') {
-      // Native: eski CSV akışı (paylaş)
       const res = await downloadCsv(
         `Giderler-${new Date().toISOString().slice(0, 10)}`,
         filtered,
@@ -354,11 +315,9 @@ export function ExpensesScreen() {
         ],
       );
       if (!res.ok && res.error) toast.error(res.error);
-      else toast.success('CSV indirildi');
+      else toast.success(autoT('CSV indirildi'));
       return;
     }
-
-    // Web: stillenmiş Excel uyumlu rapor (HTML→.xls)
     const html = buildExpensesReportHtml({
       labName:    labMeta?.name    ?? 'Laboratuvar',
       labAddress: labMeta?.address ?? null,
@@ -369,21 +328,30 @@ export function ExpensesScreen() {
       expenses: filtered,
       primaryCurrency: baseCurrency,
     });
-    const fn = `GiderRaporu-${new Date().toISOString().slice(0, 10)}.xls`;
-    const res = downloadExpensesReport(html, fn);
+    const res = downloadExpensesReport(html, `GiderRaporu-${new Date().toISOString().slice(0, 10)}.xls`);
     if (!res.ok && res.error) toast.error(res.error);
-    else toast.success('Excel raporu indirildi');
+    else toast.success(autoT('Excel raporu indirildi'));
   };
 
-  if (invoiceId) {
-    return (
-      <PurchaseInvoiceDetailScreen
-        invoiceId={invoiceId}
-        onBack={() => { setInvoiceId(null); refetch(); }}
-      />
-    );
-  }
+  const rowMenu = (e: Expense): RowMenuItem[] => [
+    e.purchase_invoice_id
+      ? { key: 'open', label: autoT('Faturayı aç'), icon: ArrowUpRight, onPress: () => openInvoice(e.purchase_invoice_id!) }
+      : { key: 'open', label: autoT('Detayı aç'), icon: ArrowUpRight, onPress: () => openExpense(e) },
+    { key: 'edit', label: autoT('Düzenle'), icon: Pencil, onPress: () => openEdit(e) },
+    { key: 'del',  label: autoT('Sil'),     icon: Trash2, onPress: () => { void handleDelete(e); } },
+  ];
 
+  const heroButtons: (RowMenuItem & { primary?: boolean })[] = [
+    { key: 'add', label: autoT('Gider ekle'), icon: Plus, primary: true, onPress: openAdd },
+    { key: 'buy', label: autoT('Satın alma'), icon: Receipt, onPress: () => { setPurchasePrefill(null); setPurchaseOpen(true); } },
+    ...(lucaActive ? [{ key: 'inc', label: autoT('Gelen e-Fatura'), icon: Inbox, onPress: () => setIncomingOpen(true) }] : []),
+    { key: 'rec', label: autoT('Otomatik giderler'), icon: Repeat, onPress: () => setRecurringOpen(true) },
+    { key: 'xls', label: autoT("Excel'e aktar"), icon: FileSpreadsheet, onPress: () => { void handleExcel(); } },
+  ];
+
+  if (invoiceId) {
+    return <PurchaseInvoiceDetailScreen invoiceId={invoiceId} onBack={() => { setInvoiceId(null); refetch(); }} />;
+  }
   if (detailId) {
     return (
       <ExpenseDetailScreen
@@ -394,434 +362,238 @@ export function ExpensesScreen() {
     );
   }
 
+  const deltaTone = delta === null ? null : delta > 0 ? (heroInk.isDark ? '#FCA5A5' : '#B42318') : (heroInk.isDark ? '#6EE7B7' : '#0F6E56');
+  const distTotal = catDist.reduce((t, x) => t + x.value, 0);
+  const distTop = catDist.slice(0, 4);
+  const distOthers = catDist.slice(4).reduce((t, x) => t + x.value, 0);
+
   return (
-    <View style={{ flex: 1, backgroundColor: isEmbedded ? 'transparent' : (U.isDark ? '#0E0E0E' : '#F5F1EB'), paddingTop: topPad }}>
+    <View style={{ flex: 1, backgroundColor: isEmbedded ? 'transparent' : T.bg, paddingTop: topPad }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 48, gap: 14 }}
+        contentContainerStyle={{ paddingTop: 4, paddingBottom: 48 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={U.ink[300]} />}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
-            Prim Motoru panosunun bilgi hiyerarşisi birebir: kicker → 44px
-            tek büyük rakam → bağlam cümlesi → sağda 40px stat'lar → pill şeridi.
-            Rakam TOPLANMAZ (çoklu-döviz kuralı): başlık ana para biriminin
-            dilimini gösterir, diğer dövizler altında inline chip olarak durur. */}
-        <WhiteHero
-          kicker="Giderler"
-          accent={theme.primary}
-          title={
-            lead ? (
-              <>Toplam <Text style={{ color: heroInk.accentInk }}>{formatMoney(lead.total, lead.currency, { fractionDigits: 0 })}</Text></>
-            ) : '—'
-          }
-          description={
-            `${filtered.length} gider kaydı` +
-            (rest.length ? ` · ${rest.length + 1} para birimi` : '') +
-            (topCat ? ` · en büyük kalem ${EXPENSE_CATEGORY_LABELS[topCat.cat]}` : '')
-          }
-          stats={[
-            { value: String(filtered.length),  label: 'Kayıt' },
-            { value: String(catCount),         label: 'Kategori' },
-            ...(rest.length ? [{ value: String(rest.length + 1), label: 'Para Birimi' }] : []),
-          ]}
-          actions={
-            <>
-              <PillBtn icon={Repeat} label="Otomatik" onPress={() => setRecurringOpen(true)} variant="ghost" onHero heroAccent={theme.primary} />
-              <PillBtn icon={FileSpreadsheet} label="Excel" onPress={handleExcel} variant="ghost" onHero heroAccent={theme.primary} />
-              {lucaActive && (
-                <PillBtn icon={Inbox} label="Gelen e-Fatura" onPress={() => setIncomingOpen(true)} variant="ghost" onHero heroAccent={theme.primary} />
-              )}
-              <PillBtn icon={Receipt} label="Satın Alma" onPress={() => { setPurchasePrefill(null); setPurchaseOpen(true); }} variant="ghost" onHero heroAccent={theme.primary} />
-              <PillBtn icon={Plus} label="Gider Ekle" onPress={openAdd} onHero heroAccent={theme.primary} />
-            </>
-          }
-        >
-          {rest.length > 0 && (
-            <View style={{ marginTop: 10 }}>
-              <MoneyMultiX slices={rest} variant="inline" onAccent={heroInk.moneyOnAccent} />
-            </View>
-          )}
-
-          {/* Kategori kırılımı — HER kalem ayrı ayrı. Başlıktaki tek büyük rakam
-              "toplam"ı verir, bu şerit onu nereye harcadığını açar; yalnız en
-              büyük kalemi göstermek bilgiyi kaybediyordu. Tile (flex + minWidth)
-              tutar uzayınca satırı kaydırmaz. */}
-          {(() => {
-            const tiles = CATEGORIES
-              .map(cat => ({ cat, slices: catByCcy[cat] ?? [] }))
-              .filter(t => t.slices.length > 0);
-            if (tiles.length === 0) return null;
-            return (
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-                {tiles.map(({ cat, slices }) => {
-                  const Icon = CAT_ICON[cat];
-                  return (
-                    <View key={cat} style={{
-                      flex: 1, minWidth: 110,
-                      paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
-                      backgroundColor: heroInk.tileBg,
-                      borderWidth: 1, borderColor: heroInk.tileBorder,
-                    }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Icon size={10} color={heroInk.inkSoft} strokeWidth={1.8} />
-                        <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }} numberOfLines={1}>
-                          {EXPENSE_CATEGORY_LABELS[cat]}
-                        </Text>
-                      </View>
-                      <View style={{ marginTop: 3, gap: 1 }}>
-                        {slices.map(sl => (
-                          <Text
-                            key={sl.currency}
-                            style={{ ...DISPLAY, fontSize: 15, letterSpacing: -0.3, lineHeight: 19, color: heroInk.ink }}
-                            numberOfLines={1}
-                          >
-                            {formatMoney(sl.total, sl.currency, { fractionDigits: 0 })}
-                          </Text>
-                        ))}
-                      </View>
-                    </View>
-                  );
-                })}
+        {/* ── BEYAZ HERO ─────────────────────────────────────────────
+            Dönemin gideri (baş döviz) → sağda önceki döneme göre değişim →
+            kategori dağılımı → düğme şeridi. Döviz TOPLANMAZ. */}
+        <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 10, paddingBottom: 12 }}>
+          <WhiteHero
+            kicker={periodLabel}
+            accent={theme.primary}
+            title={lead ? (
+              <>{autoT('Gider')} <Text style={{ color: heroInk.accentInk }}>{fmt0(lead.total, lead.currency)}</Text></>
+            ) : autoT('Bu dönemde gider yok')}
+            description={`${inPeriod.length} ${autoT('gider kaydı')}`}
+            stats={[
+              ...(delta !== null && deltaTone ? [{
+                value: `${delta > 0 ? '+' : ''}${delta}%`,
+                label: autoT(dateRange === 'this_month' ? 'Geçen aya göre' : 'Önceki döneme göre'),
+                color: deltaTone,
+              }] : []),
+              ...(catDist[0] ? [{ value: autoT(EXPENSE_CATEGORY_LABELS[catDist[0].cat]), label: autoT('En büyük kalem') }] : []),
+            ]}
+            actions={
+              <>
+                {heroButtons.map((it) => (
+                  <Pressable
+                    key={it.key}
+                    onPress={it.onPress}
+                    accessibilityRole="button"
+                    accessibilityLabel={it.label}
+                    style={({ pressed, hovered }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 6,
+                      height: 36, paddingHorizontal: 14, borderRadius: 999,
+                      backgroundColor: it.primary ? U.ink[900] : (hovered ? U.rowHover : U.plainBtn.bg),
+                      borderWidth: it.primary ? 0 : 1, borderColor: U.plainBtn.border,
+                      opacity: pressed ? 0.8 : 1,
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer', outlineStyle: 'none' } as any : {}),
+                    })}
+                  >
+                    {it.icon ? <it.icon size={15} color={it.primary ? U.onDarkPill : U.plainBtn.fg} strokeWidth={1.8} /> : null}
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: it.primary ? U.onDarkPill : U.plainBtn.fg }}>{it.label}</Text>
+                  </Pressable>
+                ))}
+              </>
+            }
+          >
+            {rest.length > 0 && (
+              <View style={{ marginTop: 10 }}>
+                <MoneyMultiX slices={rest} variant="inline" onAccent={heroInk.moneyOnAccent} />
               </View>
-            );
-          })()}
-        </WhiteHero>
-
-        {/* ── Search + Filtre butonu ─────────────────────────── */}
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{
-            flex: 1,
-            flexDirection: 'row', alignItems: 'center', gap: 10,
-            height: 44, paddingHorizontal: 14, borderRadius: 9999,
-            borderWidth: 1, borderColor: U.fieldBorder, backgroundColor: U.surface,
-          }}>
-            <Search size={15} color={U.ink[400]} strokeWidth={1.8} />
-            <TextInput
-              style={{ flex: 1, fontSize: 14, color: U.ink[900], outline: 'none' as any }}
-              placeholder="Açıklama ara..."
-              placeholderTextColor={U.ink[400]}
-              value={search}
-              onChangeText={setSearch}
-            />
-            {search.length > 0 && (
-              <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
-                <X size={14} color={U.ink[400]} strokeWidth={2} />
-              </Pressable>
             )}
-          </View>
-          {(() => {
-            const activeCount =
-              (catFilter !== 'all' ? 1 : 0)
-              + (sortKey !== 'date_desc' ? 1 : 0)
-              + (dateRange !== 'all' ? 1 : 0);
-            const hasFilter = activeCount > 0;
-            return (
-              <Pressable
-                ref={filterBtnRef}
-                // Popup düğmenin ALTINDA açılsın diye konumu ölçülür; ölçüm
-                // yapılmazsa panel ekranın tepesine yapışır ve tetikleyiciyle
-                // görsel bağı kopar.
-                onPress={() => {
-                  filterBtnRef.current?.measureInWindow?.((_x: number, y: number, _w: number, h: number) => {
-                    setFilterAnchor({ y: y + h + 8 });
-                  });
-                  setFilterOpen(true);
-                }}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  height: 44, paddingHorizontal: 14, borderRadius: 9999,
-                  backgroundColor: hasFilter ? U.ink[900] : U.plainBtn.bg,
-                  borderWidth: hasFilter ? 0 : 1, borderColor: U.plainBtn.border,
-                  cursor: 'pointer' as any,
-                }}
-              >
-                <SlidersHorizontal size={14} strokeWidth={1.8} color={hasFilter ? U.onDarkPill : U.plainBtn.fg} />
-                <Text style={{ fontSize: 12, fontWeight: hasFilter ? '700' : '600', color: hasFilter ? U.onDarkPill : U.plainBtn.fg }}>
-                  Filtre{hasFilter ? ` (${activeCount})` : ''}
-                </Text>
-              </Pressable>
-            );
-          })()}
+            {lead && distTop.length > 1 && (
+              <View style={{ marginTop: 16, gap: 8 }}>
+                <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: heroInk.tileBg, gap: 2 }}>
+                  {distTop.map(d => <View key={d.cat} style={{ flex: d.value / distTotal, backgroundColor: EXPENSE_CATEGORY_COLORS[d.cat] }} />)}
+                  {distOthers > 0 && <View style={{ flex: distOthers / distTotal, backgroundColor: heroInk.isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.10)' }} />}
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 4 }}>
+                  {distTop.map(d => (
+                    <HeroLegend key={d.cat} color={EXPENSE_CATEGORY_COLORS[d.cat]} label={autoT(EXPENSE_CATEGORY_LABELS[d.cat])} value={fmt0(d.value, lead.currency)} />
+                  ))}
+                  {distOthers > 0 && (
+                    <HeroLegend color={heroInk.isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.10)'} label={autoT('Diğer')} value={fmt0(distOthers, lead.currency)} />
+                  )}
+                </View>
+              </View>
+            )}
+          </WhiteHero>
         </View>
 
-        {/* ── Filtre — masaüstünde tetikleyiciye ankrajlı POPUP, mobilde sheet ──
-            Tam genişlik alt-sheet masaüstünde yanlış: ekranın altından kalkan
-            2400px genişliğinde bir panel, sağ üstteki küçük "Filtre" düğmesiyle
-            hiçbir görsel bağ kurmuyor ve tüm sayfayı örtüyor. Mobilde sheet
-            doğru kalıp, orada korunuyor. */}
-        <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
-          <Pressable
-            onPress={() => setFilterOpen(false)}
-            style={{
-              flex: 1,
-              backgroundColor: isDesktop ? 'rgba(15,23,42,0.18)' : 'rgba(15,23,42,0.55)',
-              justifyContent: isDesktop ? 'flex-start' : 'flex-end',
-              alignItems: isDesktop ? 'flex-end' : 'stretch',
-              ...(isDesktop ? { paddingTop: filterAnchor.y, paddingEnd: 24 } : {}),
-            }}
-          >
-            <Pressable
-              onPress={(e) => e.stopPropagation()}
-              style={{
-                backgroundColor: U.surface,
-                ...(isDesktop
-                  ? {
-                      width: 460, borderRadius: 18, paddingTop: 16, paddingBottom: 16,
-                      maxHeight: 520,
-                      borderWidth: 1, borderColor: U.hairline,
-                      shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 28, shadowOffset: { width: 0, height: 12 },
-                      elevation: 12,
-                    }
-                  : {
-                      borderTopStartRadius: 24, borderTopEndRadius: 24,
-                      paddingTop: 12, paddingBottom: Math.max(insets.bottom, 16) + 12,
-                      maxHeight: '85%',
-                    }),
-              }}
-            >
-              {/* Sheet tutamacı yalnız mobilde — masaüstü popup'ta anlamsız */}
-              {!isDesktop && (
-                <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: U.ink[200], marginBottom: 14 }} />
-              )}
-              <View style={{ paddingHorizontal: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={{ fontSize: 18, fontWeight: '700', color: U.ink[900], flex: 1 }}>Filtrele</Text>
-                <Pressable onPress={() => { setCatFilter('all'); setSortKey('date_desc'); setDateRange('all'); setCustomFrom(''); setCustomTo(''); }} style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[500] }}>Temizle</Text>
-                </Pressable>
-                <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: U.chipNeutral, alignItems: 'center', justifyContent: 'center', marginStart: 4 }}>
-                  <X size={16} color={U.ink[700]} strokeWidth={2} />
-                </Pressable>
-              </View>
-
-              <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, gap: 18 }}>
-                {/* Sıralama */}
-                <View style={{ gap: 6 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[400], paddingHorizontal: 4 }}>Tarih Aralığı</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, marginBottom: 16 }}>
-                    {DATE_OPTIONS.map(opt => {
-                      const active = dateRange === opt.key;
-                      return (
-                        <Pressable
-                          key={opt.key}
-                          onPress={() => setDateRange(opt.key)}
-                          style={{
-                            paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
-                            backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
-                            borderWidth: active ? 0 : 1, borderColor: U.plainBtn.border,
-                            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                          }}
-                        >
-                          <Text style={{ fontSize: 12.5, fontWeight: active ? '700' : '500', color: active ? U.onDarkPill : U.plainBtn.fg }}>{opt.label}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                  {dateRange === 'custom' && (
-                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 11, color: U.ink[500], marginBottom: 6 }}>Başlangıç</Text>
-                        <DatePicker value={customFrom} onChange={setCustomFrom} placeholder="Seç" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 11, color: U.ink[500], marginBottom: 6 }}>Bitiş</Text>
-                        <DatePicker value={customTo} onChange={setCustomTo} placeholder="Seç" />
-                      </View>
-                    </View>
-                  )}
-                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[400], paddingHorizontal: 4 }}>Sıralama</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 2 }}>
-                    {SORT_OPTIONS.map(opt => {
-                      const active = sortKey === opt.key;
-                      return (
-                        <Pressable key={opt.key} onPress={() => setSortKey(opt.key)} style={{
-                          paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
-                          borderWidth: active ? 0 : 1, borderColor: U.plainBtn.border,
-                          backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
-                          cursor: 'pointer' as any,
-                        }}>
-                          <Text style={{ fontSize: 11.5, fontWeight: active ? '700' : '500', color: active ? U.onDarkPill : U.plainBtn.fg }} numberOfLines={1}>{opt.label}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-                {/* Kategori */}
-                <View style={{ gap: 8 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[400], paddingHorizontal: 4 }}>Kategori</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    <Pressable onPress={() => setCatFilter('all')} style={{
-                      paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
-                      borderWidth: catFilter === 'all' ? 0 : 1, borderColor: U.plainBtn.border,
-                      backgroundColor: catFilter === 'all' ? U.ink[900] : U.plainBtn.bg,
-                      cursor: 'pointer' as any,
-                    }}>
-                      <Text style={{ fontSize: 12.5, fontWeight: catFilter === 'all' ? '700' : '500', color: catFilter === 'all' ? U.onDarkPill : U.plainBtn.fg }}>Tümü</Text>
+        {/* ── Gider kartı: dönem sekmeleri + arama/kategori/sıralama kartın içinde ── */}
+        <View style={{ paddingHorizontal: PAGE_PADDING }}>
+          <View style={U.tableCard}>
+            <View style={{
+              paddingHorizontal: isDesktop ? 20 : 16, paddingTop: isDesktop ? 18 : 14, paddingBottom: 14, gap: 12,
+              borderBottomWidth: 1, borderBottomColor: U.hairline,
+            }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}
+                          contentContainerStyle={{ flexDirection: 'row', padding: 3, borderRadius: 999, backgroundColor: U.ink[100] }}>
+                {DATE_OPTIONS.map(o => {
+                  const active = dateRange === o.key;
+                  return (
+                    <Pressable
+                      key={o.key}
+                      onPress={() => setDateRange(o.key)}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: active }}
+                      style={{
+                        paddingHorizontal: active ? 18 : 12, paddingVertical: 8, borderRadius: 999,
+                        backgroundColor: active ? U.segActive : 'transparent',
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer', outlineStyle: 'none' } as any : {}),
+                      }}
+                    >
+                      <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? U.ink[900] : U.ink[500] }}>
+                        {o.label}
+                      </Text>
                     </Pressable>
-                    {CATEGORIES.map(cat => {
-                      const active = catFilter === cat;
-                      const Icon = CAT_ICON[cat];
-                      return (
-                        <Pressable key={cat} onPress={() => setCatFilter(cat)} style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 6,
-                          paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
-                          borderWidth: active ? 0 : 1, borderColor: U.plainBtn.border,
-                          backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
-                          cursor: 'pointer' as any,
-                        }}>
-                          <Icon size={13} color={active ? U.onDarkPill : U.ink[400]} strokeWidth={1.8} />
-                          <Text style={{ fontSize: 12.5, fontWeight: active ? '700' : '500', color: active ? U.onDarkPill : U.plainBtn.fg }}>
-                            {EXPENSE_CATEGORY_LABELS[cat]}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
+                  );
+                })}
               </ScrollView>
 
-              <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
-                <Pressable onPress={() => setFilterOpen(false)} style={{
-                  height: 48, borderRadius: 14, backgroundColor: U.ink[900],
-                  alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer' as any,
+              {dateRange === 'custom' && (
+                <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+                  <View style={{ flexGrow: 1, flexBasis: 160 }}>
+                    <Text style={{ fontSize: 11, color: U.ink[500], marginBottom: 6 }}>Başlangıç</Text>
+                    <DatePicker value={customFrom} onChange={setCustomFrom} placeholder="Seç" />
+                  </View>
+                  <View style={{ flexGrow: 1, flexBasis: 160 }}>
+                    <Text style={{ fontSize: 11, color: U.ink[500], marginBottom: 6 }}>Bitiş</Text>
+                    <DatePicker value={customTo} onChange={setCustomTo} placeholder="Seç" />
+                  </View>
+                </View>
+              )}
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', rowGap: 8 }}>
+                <View style={{
+                  flexGrow: 1, flexShrink: 1, flexBasis: 220, minWidth: 180,
+                  flexDirection: 'row', alignItems: 'center', gap: 8,
+                  height: 40, paddingHorizontal: 14, borderRadius: 9999,
+                  borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
                 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: U.onDarkPill }}>Uygula</Text>
-                </Pressable>
+                  <Search size={14} color={U.ink[400]} strokeWidth={1.8} />
+                  <TextInput
+                    value={search}
+                    onChangeText={setSearch}
+                    placeholder="Açıklama, sipariş no ara"
+                    placeholderTextColor={U.ink[400]}
+                    style={{ flex: 1, fontSize: 13.5, color: U.ink[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }}
+                  />
+                  {search.length > 0 && (
+                    <Pressable onPress={() => setSearch('')} accessibilityLabel={autoT('Aramayı temizle')} style={{ cursor: 'pointer' as any }}>
+                      <X size={13} color={U.ink[400]} strokeWidth={2} />
+                    </Pressable>
+                  )}
+                </View>
+                {usedCats.length > 1 && (
+                  <FilterMenu
+                    label={autoT('Kategori')}
+                    items={[
+                      { key: 'all', label: autoT('Tümü') },
+                      ...usedCats.map(c => ({ key: c, label: `${autoT(EXPENSE_CATEGORY_LABELS[c])} · ${catCounts[c] ?? 0}` })),
+                    ]}
+                    active={catFilter}
+                    onChange={(k) => setCatFilter(k as typeof catFilter)}
+                  />
+                )}
+                <FilterMenu
+                  label={autoT('Sırala')}
+                  items={[
+                    { key: 'date_desc',   label: autoT('En yeni') },
+                    { key: 'date_asc',    label: autoT('En eski') },
+                    { key: 'amount_desc', label: autoT('Tutar (yüksek)') },
+                    { key: 'amount_asc',  label: autoT('Tutar (düşük)') },
+                  ]}
+                  active={sortKey}
+                  onChange={(k) => setSortKey(k as ExpSortKey)}
+                />
               </View>
-            </Pressable>
-          </Pressable>
-        </Modal>
-
-        {/* ── Expense list ────────────────────────────────────── */}
-        {filtered.length === 0 ? (
-          <View style={{ ...U.cardSolid, alignItems: 'center', paddingVertical: 48, gap: 10 }}>
-            <Inbox size={32} color={U.ink[300]} strokeWidth={1.4} />
-            <Text style={{ fontSize: 14, fontWeight: '500', color: U.ink[400] }}>Gider kaydı bulunamadı</Text>
-          </View>
-        ) : isDesktop ? (
-          /* ── Desktop: tableCard §09 ──────────────────────── */
-          <View style={U.tableCard}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, backgroundColor: tblAccent }}>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: tblInk }}>Gider Listesi</Text>
-              <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, color: tblInk, opacity: 0.75 }}>{filtered.length} kayıt</Text>
             </View>
 
-            {/* Header */}
-            <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: U.surfaceSoft, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
-              {[
-                { label: 'KATEGORİ', flex: 1.2 },
-                { label: 'AÇIKLAMA', flex: 3 },
-                { label: 'TARİH',   flex: 1.2 },
-                { label: 'ÖDEME',   flex: 1 },
-                { label: 'TUTAR',   flex: 1.2, align: 'end' as const },
-                { label: 'İŞLEM',   flex: 0.8 },
-              ].map((h, i) => (
-                <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: U.ink[500], textAlign: h.align as any }}>
-                  {h.label}
+            {loading && filtered.length === 0 ? (
+              <View style={{ paddingVertical: 64, alignItems: 'center' }}>
+                <Text style={{ fontSize: 13, color: U.ink[400] }}>Yükleniyor…</Text>
+              </View>
+            ) : filtered.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 56, paddingHorizontal: 16, gap: 12 }}>
+                <Inbox size={36} strokeWidth={1.4} color={U.ink[300]} />
+                <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }}>
+                  {search || catFilter !== 'all' ? 'Sonuç bulunamadı' : 'Bu dönemde gider yok'}
                 </Text>
-              ))}
-            </View>
-
-            {/* Rows */}
-            {filtered.map((e, i) => {
-              const Icon = CAT_ICON[e.category];
-              return (
-                <Pressable
-                  key={e.id}
-                  onPress={() => openExpense(e)}
-                  style={rowStyle(({ hovered }: any) => ({
-                    flexDirection: 'row', alignItems: 'center',
-                    paddingHorizontal: 20, paddingVertical: 14,
-                    borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
-                    borderBottomColor: U.hairlineSoft,
-                    backgroundColor: hovered ? U.rowHover : 'transparent',
-                    cursor: 'pointer' as any,
-                  }))}
-                >
-                  {/* Category */}
-                  <View style={{ flex: 1.2, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: U.chipNeutral, alignItems: 'center', justifyContent: 'center' }}>
-                      <Icon size={13} color={U.ink[500]} strokeWidth={1.8} />
-                    </View>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[700] }}>{EXPENSE_CATEGORY_LABELS[e.category]}</Text>
+                <Text style={{ fontSize: 13, color: U.ink[400], textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>
+                  {search || catFilter !== 'all' ? 'Arama veya filtre kriterlerini değiştirin.' : 'Başka bir dönem seçin ya da yeni gider ekleyin.'}
+                </Text>
+              </View>
+            ) : (
+              <>
+                {isDesktop ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+                    <Text style={{ ...colHeader(U), flex: 1 }}>Gider</Text>
+                    <Text style={{ ...colHeader(U), width: COL.date }}>Tarih</Text>
+                    <Text style={{ ...colHeader(U), width: COL.amt, textAlign: 'right' }}>Tutar</Text>
+                    <View style={{ width: COL.menu }} />
                   </View>
-
-                  {/* Description */}
-                  <Text style={{ flex: 3, fontSize: 13, color: U.ink[800] }} numberOfLines={1}>
-                    {e.description}
-                  </Text>
-
-                  {/* Date */}
-                  <Text style={{ flex: 1.2, fontSize: 12, color: U.ink[500] }}>
-                    {fmtDate(e.expense_date)}
-                  </Text>
-
-                  {/* Payment method */}
-                  <Text style={{ flex: 1, fontSize: 11, color: U.ink[400] }}>
-                    {PAY_METHODS.find(m => m.v === e.payment_method)?.l ?? e.payment_method}
-                  </Text>
-
-                  {/* Amount + currency (Phase 3 — orijinal + base preview) */}
-                  <View style={{ flex: 1.2, alignItems: 'flex-end' }}>
-                    <MoneyDisplay
-                      amount={Number(e.amount)}
-                      currency={(((e as any).currency as any) ?? 'TRY')}
-                      baseAmount={null}
-                      mode="original"
-                      style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}
-                    />
+                ) : null}
+                {filtered.map((e, i) => (
+                  <ExpenseRow
+                    key={e.id}
+                    expense={e}
+                    desktop={isDesktop}
+                    isLast={i === filtered.length - 1}
+                    menu={rowMenu(e)}
+                    onPress={() => openExpense(e)}
+                  />
+                ))}
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
+                  paddingHorizontal: isDesktop ? 20 : 16, paddingVertical: 12,
+                  borderTopWidth: 1, borderTopColor: U.hairline, backgroundColor: U.surfaceSoft,
+                  borderBottomLeftRadius: 16, borderBottomRightRadius: 16,
+                }}>
+                  <Text style={{ fontSize: 12, color: U.ink[500] }}>{`${filtered.length} ${autoT('kayıt')}`}</Text>
+                  <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                    {listByCcy.map(d => (
+                      <Text key={d.currency} style={{ fontSize: 12, color: U.ink[500], fontVariant: ['tabular-nums'] }}>
+                        {`${autoT('Toplam')} `}<Text style={{ fontWeight: '700', color: U.ink[900] }}>{fmt0(d.total, d.currency)}</Text>
+                      </Text>
+                    ))}
                   </View>
-
-                  {/* Actions */}
-                  <View style={{ flex: 0.8, flexDirection: 'row', gap: 4, justifyContent: 'flex-end' }}>
-                    <Pressable
-                      onPress={(ev: any) => { ev?.stopPropagation?.(); openEdit(e); }}
-                      style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: U.chipNeutral, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                    >
-                      <Pencil size={12} color={U.ink[500]} strokeWidth={1.8} />
-                    </Pressable>
-                    <Pressable
-                      onPress={(ev: any) => { ev?.stopPropagation?.(); handleDelete(e); }}
-                      style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: U.chipTones.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                    >
-                      <Trash2 size={12} color={U.chipTones.danger.fg} strokeWidth={1.8} />
-                    </Pressable>
-                  </View>
-                </Pressable>
-              );
-            })}
-
-            {/* Footer */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: tblAccent, gap: 10, paddingEnd: 76 }}>
-              <Text style={{ fontSize: 11, color: tblInk, opacity: 0.75 }}>{filtered.length} kayıt</Text>
-              <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: tblInk }}>Toplam:</Text>
-              <MoneyMultiX slices={expByCcy} variant="inline" onAccent={tblInk} />
-            </View>
+                </View>
+              </>
+            )}
           </View>
-        ) : (
-          /* ── Mobile: tableCard — ekstre mobil tablosuyla aynı kalıp ── */
-          <ExpenseMobileTable
-            rows={filtered}
-            totals={expByCcy}
-            accent={tblAccent}
-            onOpen={openExpense}
-            onEdit={openEdit}
-            onDelete={handleDelete}
-          />
-        )}
+        </View>
       </ScrollView>
 
-      {/* Recurring panel */}
       <RecurringExpensesPanel
         visible={recurringOpen}
         onClose={() => setRecurringOpen(false)}
         onAfterGenerate={() => refetch()}
       />
 
-      {/* Material purchase / inventory intake — Stok > Satın Alma akışıyla aynı */}
       <PurchaseFormModal
         visible={purchaseOpen}
         accentColor="#DC2626"
@@ -836,23 +608,192 @@ export function ExpensesScreen() {
         onPick={(p) => { setIncomingOpen(false); setPurchasePrefill(p); setPurchaseOpen(true); }}
       />
 
-      {/* E-Fatura tarzı satın alma faturası önizleme — purchase_invoice_id'li giderlere */}
-      <PurchaseInvoicePreviewModal
-        visible={!!previewInvoiceId}
-        onClose={() => setPreviewInvoiceId(null)}
-        purchaseInvoiceId={previewInvoiceId}
-      />
-
-      {/* ── Add/Edit modal — §08 dialog ───────────────────── */}
       <ExpenseFormModal
         visible={modalOpen}
         expense={editing}
         onClose={() => setModalOpen(false)}
         onSaved={() => { setModalOpen(false); refetch(); }}
       />
+
+      <LinkedDeleteDialog
+        expense={deleting}
+        onCancel={() => setDeleting(null)}
+        onConfirm={(revert) => { void deleteLinked(revert); }}
+      />
     </View>
   );
 }
+
+// ─── Satır (masaüstü: sütunlu · mobil: iki kolonlu) ─────────────────
+const COL = { date: 170, amt: 140, menu: 36 };
+
+function colHeader(U: ReturnType<typeof useInkUI>) {
+  return { fontSize: 10, fontWeight: '600' as const, letterSpacing: 0.8, textTransform: 'uppercase' as const, color: U.ink[500] };
+}
+
+function ExpenseRow({ expense: e, desktop, isLast, menu, onPress }: {
+  expense: Expense; desktop: boolean; isLast: boolean; menu: RowMenuItem[]; onPress: () => void;
+}) {
+  const U = useInkUI();
+  const Icon = CAT_ICON[e.category];
+  const { title, sub } = splitDescription(e);
+  const pay = PAY_METHODS.find(m => m.v === e.payment_method)?.l ?? e.payment_method;
+  const money = formatMoney(Number(e.amount) || 0, ((e.currency ?? 'TRY') as Currency), { fractionDigits: 2 });
+  const catLabel = autoT(EXPENSE_CATEGORY_LABELS[e.category]);
+
+  const menuBtn = (
+    <AnchorMenu
+      width={220}
+      items={menu}
+      renderTrigger={(open) => (
+        <Pressable
+          onPress={(ev: any) => { ev?.stopPropagation?.(); open(); }}
+          accessibilityRole="button"
+          accessibilityLabel={autoT('Gider işlemleri')}
+          style={({ pressed, hovered }: any) => ({
+            width: desktop ? 32 : 44, height: desktop ? 32 : 44, borderRadius: 999,
+            alignItems: 'center', justifyContent: 'center',
+            backgroundColor: hovered || pressed ? U.rowHover : 'transparent',
+            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+          })}
+        >
+          <MoreHorizontal size={16} color={U.ink[500]} strokeWidth={1.8} />
+        </Pressable>
+      )}
+    />
+  );
+
+  const icon = (
+    <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: U.ink[100] }}>
+      <Icon size={15} color={U.ink[700]} strokeWidth={1.8} />
+    </View>
+  );
+
+  const invoiceTag = e.purchase_invoice_id ? (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 999, backgroundColor: U.chipTones.info.bg }}>
+      <FileText size={9} color={U.chipTones.info.fg} strokeWidth={2} />
+      <Text style={{ fontSize: 9.5, fontWeight: '700', color: U.chipTones.info.fg }}>{autoT('Fatura')}</Text>
+    </View>
+  ) : null;
+
+  if (!desktop) {
+    return (
+      <Pressable
+        onPress={onPress}
+        style={rowStyle(({ pressed }: any) => ({
+          flexDirection: 'row', alignItems: 'center', gap: 10,
+          paddingStart: 16, paddingEnd: 6, paddingVertical: 12,
+          borderBottomWidth: isLast ? 0 : 1, borderBottomColor: U.hairline,
+          backgroundColor: pressed ? U.rowHover : 'transparent',
+        }))}
+      >
+        {icon}
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>{title}</Text>
+          <Text style={{ fontSize: 11.5, color: U.ink[400] }} numberOfLines={1}>{`${catLabel} · ${fmtDate(e.expense_date)}`}</Text>
+        </View>
+        <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900], fontVariant: ['tabular-nums'] }}>{money}</Text>
+        {menuBtn}
+      </Pressable>
+    );
+  }
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={rowStyle(({ hovered }: any) => ({
+        flexDirection: 'row', alignItems: 'center', gap: 10,
+        paddingStart: 20, paddingEnd: 14, paddingVertical: 12,
+        borderBottomWidth: isLast ? 0 : 1, borderBottomColor: U.hairline,
+        backgroundColor: hovered ? U.rowHover : 'transparent',
+        cursor: 'pointer' as any,
+      }))}
+    >
+      <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        {icon}
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontSize: 13.5, fontWeight: '600', color: U.ink[900], flexShrink: 1 }} numberOfLines={1}>{title}</Text>
+            {invoiceTag}
+          </View>
+          <Text style={{ fontSize: 11.5, color: U.ink[400] }} numberOfLines={1}>{sub ? `${catLabel} · ${sub}` : catLabel}</Text>
+        </View>
+      </View>
+      <View style={{ width: COL.date, gap: 2 }}>
+        <Text style={{ fontSize: 12.5, color: U.ink[700] }}>{fmtDate(e.expense_date)}</Text>
+        <Text style={{ fontSize: 11, color: U.ink[400] }} numberOfLines={1}>{autoT(pay)}</Text>
+      </View>
+      <Text style={{ width: COL.amt, textAlign: 'right', fontSize: 14, fontWeight: '600', color: U.ink[900], fontVariant: ['tabular-nums'] }}>{money}</Text>
+      {menuBtn}
+    </Pressable>
+  );
+}
+
+function HeroLegend({ color, label, value }: { color: string; label: string; value: string }) {
+  const heroInk = useWhiteHeroInk();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, maxWidth: 280 }}>
+      <View style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: color }} />
+      <Text style={{ fontSize: 11.5, color: heroInk.inkSoft, flexShrink: 1 }} numberOfLines={1}>{label}</Text>
+      <Text style={{ fontSize: 11.5, fontWeight: '700', color: heroInk.ink }}>{value}</Text>
+    </View>
+  );
+}
+
+/**
+ * Satın alma faturasından doğan gideri silme — TEK açık pencere.
+ * Eski akış art arda iki tarayıcı confirm'i açıyor ve "TAMAM = stoktan düş,
+ * İPTAL = düşme" gibi anlamı belirsiz düğmelere dayanıyordu.
+ */
+function LinkedDeleteDialog({ expense, onCancel, onConfirm }: {
+  expense: Expense | null; onCancel: () => void; onConfirm: (revertStock: boolean) => void;
+}) {
+  const U = useInkUI();
+  const [revert, setRevert] = useState(false);
+  useEffect(() => { if (expense) setRevert(false); }, [expense]);
+  return (
+    <Modal visible={!!expense} transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={U.modalOverlay}>
+        <View style={{ ...U.modalCard, maxWidth: 440, width: '100%', padding: 22, gap: 14 }}>
+          <Text style={{ fontSize: 17, fontWeight: '700', color: U.ink[900] }}>Faturalı gideri sil</Text>
+          <Text style={{ fontSize: 13, lineHeight: 19, color: U.ink[500] }}>
+            {`"${expense?.description ?? ''}" ${autoT('satın alma faturasından oluşmuş bir gider. Silinirse fatura kaydı, cari hesap hareketi ve bu gider birlikte silinir.')}`}
+          </Text>
+          <Pressable
+            onPress={() => setRevert(v => !v)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: revert }}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12,
+              borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            }}
+          >
+            <View style={{
+              width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
+              borderWidth: revert ? 0 : 1.5, borderColor: U.ink[300], backgroundColor: revert ? U.ink[900] : 'transparent',
+            }}>
+              {revert ? <Check size={12} color={U.onDarkPill} strokeWidth={2.4} /> : null}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>Stoğu da geri al</Text>
+              <Text style={{ fontSize: 11.5, color: U.ink[400] }}>Faturayla eklenen ürünler stoktan düşülür</Text>
+            </View>
+          </Pressable>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+            <Pressable onPress={onCancel} style={{ height: 40, paddingHorizontal: 16, borderRadius: 999, justifyContent: 'center', borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg, cursor: 'pointer' as any }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.plainBtn.fg }}>Vazgeç</Text>
+            </Pressable>
+            <Pressable onPress={() => onConfirm(revert)} style={{ height: 40, paddingHorizontal: 16, borderRadius: 999, justifyContent: 'center', backgroundColor: '#D94B4B', cursor: 'pointer' as any }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Sil</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 
 // ═════════════════════════════════════════════════════════════════════
 // FORM MODAL — §08 dialog + §05.5 form

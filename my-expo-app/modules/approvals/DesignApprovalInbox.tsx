@@ -1,8 +1,11 @@
 // Tasarım (hekim) onayları gelen kutusu — hekim + klinik panellerinde paylaşılır.
 // Lab tasarımı onaya gönderince burada listelenir; onay/red + not verilir.
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, Pressable, ScrollView, ActivityIndicator, TextInput, Platform, RefreshControl, Image, Modal } from 'react-native';
-import { BadgeCheck, Check, X, Clock, FileSearch, MessageSquare } from '../../core/ui/icons';
+import { View, Text, Pressable, ScrollView, ActivityIndicator, TextInput, Platform, RefreshControl, Image, Modal, useWindowDimensions } from 'react-native';
+import { PAGE_PADDING } from '../../core/ui/pageMetrics';
+import { BadgeCheck, Check, X, Clock, FileSearch, MessageSquare, ChevronRight } from '../../core/ui/icons';
+import { useRouter } from 'expo-router';
+import { useThemeModeStore } from '../../core/store/themeModeStore';
 import { usePanelTheme } from '../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
 import { hexA } from '../../core/theme/stationPalette';
@@ -38,6 +41,11 @@ function expiresLabel(iso: string | null): { text: string; urgent: boolean } {
 export function DesignApprovalInbox({ routePrefix = '/(doctor)' }: { routePrefix?: string }) {
   const theme = usePanelTheme();
   const T = useMobileTokens();
+  const router = useRouter();
+  // Geniş ekranda kartlar iki sütun — tek 760px sütun masaüstünde boş kalıyordu
+  const { width: winW } = useWindowDimensions();
+  const wide = winW >= 1100;
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const accent = theme.primary;
   const deep = theme.primaryDeep;
   // Koyu temada panel krem/açık zemini kalıyordu → token zemin.
@@ -117,7 +125,7 @@ export function DesignApprovalInbox({ routePrefix = '/(doctor)' }: { routePrefix
   return (
     <View style={{ flex: 1, backgroundColor: pageBg }}>
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 24, paddingBottom: 48, maxWidth: 760, width: '100%', alignSelf: 'center' }}
+        contentContainerStyle={{ paddingHorizontal: PAGE_PADDING, paddingTop: 24, paddingBottom: 48, maxWidth: wide ? 1180 : 760, width: '100%', alignSelf: 'center' }}
         refreshControl={<RefreshControl refreshing={false} onRefresh={load} tintColor={accent} />}
         showsVerticalScrollIndicator={false}
       >
@@ -156,7 +164,8 @@ export function DesignApprovalInbox({ routePrefix = '/(doctor)' }: { routePrefix
             </Text>
           </View>
         ) : (
-          items.map(o => {
+          <View style={wide ? { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start' } : undefined}>
+          {items.map(o => {
             const exp = expiresLabel(o.doctor_approval_expires_at);
             const noteOpen = noteFor === o.id;
             const busy = busyId === o.id;
@@ -166,6 +175,7 @@ export function DesignApprovalInbox({ routePrefix = '/(doctor)' }: { routePrefix
               <View key={o.id} style={{
                 backgroundColor: T.card, borderRadius: 20, borderWidth: 1, borderColor: T.hairline,
                 marginBottom: 14, overflow: 'hidden', ...shadow,
+                ...(wide ? { width: '49%' as any } : {}),
               }}>
                 {/* Üst accent şeridi */}
                 <View style={{ height: 4, backgroundColor: accent }} />
@@ -176,9 +186,24 @@ export function DesignApprovalInbox({ routePrefix = '/(doctor)' }: { routePrefix
                       <Text style={{ fontSize: 17, fontWeight: '700', color: T.ink, ...(F_SERIF ? { fontFamily: F_SERIF } : {}) }} numberOfLines={1}>
                         {o.patient_name || 'Hasta'}
                       </Text>
-                      {!!o.order_number && (
-                        <Text style={{ fontSize: 12, fontWeight: '600', color: hexA(deep, 0.55), marginTop: 1, letterSpacing: 0.2 }}>#{o.order_number}</Text>
-                      )}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 1, flexWrap: 'wrap' }}>
+                        {!!o.order_number && (
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: hexA(deep, 0.55), letterSpacing: 0.2 }}>#{o.order_number}</Text>
+                        )}
+                        <Pressable
+                          onPress={() => router.push(`${routePrefix}/order/${o.id}` as any)}
+                          hitSlop={8}
+                          style={({ hovered }: any) => ({
+                            flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 32,
+                            paddingHorizontal: 10, marginStart: -10, borderRadius: 999,
+                            backgroundColor: hovered ? hexA(accent, 0.10) : 'transparent',
+                            ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
+                          })}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? accent : deep }}>Siparişi aç</Text>
+                          <ChevronRight size={13} color={isDark ? accent : deep} strokeWidth={2} />
+                        </Pressable>
+                      </View>
                     </View>
                     {!!exp.text && (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: expBg }}>
@@ -217,7 +242,19 @@ export function DesignApprovalInbox({ routePrefix = '/(doctor)' }: { routePrefix
                     <View style={{ marginTop: 12 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                         <MessageSquare size={13} color={T.ink3} strokeWidth={1.8} />
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: T.ink3, letterSpacing: 0.3, textTransform: 'uppercase' }}>Değişiklik notu</Text>
+                        <Text style={{ flex: 1, fontSize: 11, fontWeight: '700', color: T.ink3, letterSpacing: 0.3, textTransform: 'uppercase' }}>Değişiklik notu</Text>
+                        <Pressable
+                          onPress={() => { setNoteFor(null); setNoteText(''); }}
+                          disabled={busy}
+                          hitSlop={8}
+                          style={({ hovered }: any) => ({
+                            minHeight: 32, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 999,
+                            backgroundColor: hovered ? T.hairline : 'transparent',
+                            ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
+                          })}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: T.ink2 }}>Vazgeç</Text>
+                        </Pressable>
                       </View>
                       <TextInput
                         value={noteText}
@@ -269,7 +306,8 @@ export function DesignApprovalInbox({ routePrefix = '/(doctor)' }: { routePrefix
                 </View>
               </View>
             );
-          })
+          })}
+          </View>
         )}
       </ScrollView>
 
@@ -279,7 +317,7 @@ export function DesignApprovalInbox({ routePrefix = '/(doctor)' }: { routePrefix
           visible
           onClose={() => setFilesFor(null)}
           accentColor={accent}
-          title={filesFor.patient_name ? `${filesFor.patient_name} · Dosyalar` : 'Sipariş Dosyaları'}
+          title={filesFor.patient_name ? `${filesFor.patient_name} · ${autoT('Dosyalar')}` : autoT('Sipariş Dosyaları')}
           splitView
           showImplant={false}
           extraGroups={allStationFileCategories()}
@@ -305,7 +343,7 @@ export function DesignApprovalInbox({ routePrefix = '/(doctor)' }: { routePrefix
           <Viewer3DModalLazy
             visible
             files={viewer3DFiles}
-            title={viewer3DFiles.length > 1 ? `${viewer3DFiles.length} tarama birlikte` : viewer3DFiles[0]?.name}
+            title={viewer3DFiles.length > 1 ? `${viewer3DFiles.length} ${autoT('tarama birlikte')}` : viewer3DFiles[0]?.name}
             orderId={filesFor?.id ?? null}
             onClose={() => setViewer3DFiles(null)}
           />

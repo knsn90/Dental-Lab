@@ -334,7 +334,7 @@
       "emailNotif": "اعلان ایمیلی",
       "finance": "مالی",
       "stock": "موجودی و انبار",
-      "invoices": "فاکتورها",
+      "invoices": "هزینه‌های خدمات",
       "expenses": "هزینه‌ها",
       "staff": "کارکنان",
       "users": "کاربران",
@@ -487,7 +487,7 @@
         "sub": "جریان تحویل"
       },
       "finance": {
-        "sub": "صندوق · فاکتور · هزینه · چک"
+        "sub": "صندوق · هزینه خدمات · هزینه · چک"
       },
       "team": {
         "sub": "کارکنان · حقوق · عملکرد"
@@ -570,14 +570,14 @@
       "recentOrders": "سفارش‌های اخیر",
       "viewAll": "مشاهده همه ←",
       "noOrders": "هنوز سفارشی نیست",
-      "unbilledDeliveries": "تحویل‌های فاکتورنشده وجود دارد",
+      "unbilledDeliveries": "تحویل در انتظار هزینه خدمات وجود دارد",
       "orders": "سفارش · ",
       "clinicEstimated": "کلینیک · برآورد ",
-      "invoice": "فاکتور ←",
+      "invoice": "ایجاد هزینه خدمات ←",
       "financialSummary": "خلاصه مالی",
       "monthlyCollection": "وصولی این ماه",
       "pendingInvoice": "مطالبات",
-      "paidInvoiceCount": "تعداد فاکتورهای پرداخت‌شده",
+      "paidInvoiceCount": "تعداد هزینه خدمات پرداخت‌شده",
       "statusDistribution": "توزیع وضعیت",
       "workTypeDistribution": "توزیع نوع کار",
       "totalMembers": "واحد",
@@ -675,7 +675,11 @@
     "moreMenu": {
       "courierSub": "جریان تحویل",
       "settingsSub": "پروفایل · اعلان‌ها · تم",
-      "title": "منوی کامل"
+      "title": "منوی کامل",
+      "approvalsSub": "طرح‌های در انتظار تأیید",
+      "messagesSub": "گفتگوهای سفارش با لابراتوار",
+      "financeSub": "حساب · هزینه‌های خدمات · پرداخت‌ها",
+      "supportSub": "درخواست‌ها · راهنما"
     },
     "screens": {
       "home": "خانه",
@@ -866,7 +870,7 @@
         "statement": "صورت‌حساب",
         "statementHint": "همه تراکنش‌ها",
         "open": "در انتظار",
-        "openHint": "فاکتورهای پرداخت‌نشده",
+        "openHint": "هزینه‌های خدمات پرداخت‌نشده",
         "overdue": "عقب‌افتاده",
         "overdueHint": "وصول‌های فوری",
         "pos": "POS آنلاین",
@@ -874,7 +878,7 @@
         "payments": "پرداخت‌ها",
         "paymentsHint": "تاریخچه وصول",
         "preStatement": "پیش‌صورت‌حساب",
-        "preStatementHint": "فاکتورهای در انتظار تأیید"
+        "preStatementHint": "هزینه‌های خدمات در انتظار تأیید"
       },
       "error": {
         "clinicNotFound": "اطلاعات کلینیک یافت نشد. تنظیمات پروفایل خود را بررسی کنید."

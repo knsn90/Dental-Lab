@@ -248,7 +248,7 @@ export function SubmitPaymentModal({
                 </FormSection>
 
                 {/* ─── Fatura (opsiyonel) ─── */}
-                <FormSection label="Fatura (opsiyonel)">
+                <FormSection label="Hizmet bedeli (opsiyonel)">
                   <View style={{ position: 'relative', zIndex: invoiceOpen ? 100 : 1 }}>
                     <Pressable
                       onPress={() => setInvoiceOpen(o => !o)}
@@ -262,8 +262,8 @@ export function SubmitPaymentModal({
                       <FileText size={14} color={isDark ? (T.ink3 as string) : DS.ink[500]} />
                       <Text style={{ flex: 1, fontSize: 13, color: selectedInvoice ? (isDark ? T.ink : DS.ink[900]) : (isDark ? (T.ink3 as string) : DS.ink[400]) }}>
                         {selectedInvoice
-                          ? `Fatura ${selectedInvoice.invoice_no ?? '—'}${selectedInvoice.patient_name ? ' · ' + selectedInvoice.patient_name : ''} · Kalan ${M(selectedInvoice.remaining, selectedInvoice.currency)}`
-                          : 'Fatura seçilmedi (genel ödeme)'}
+                          ? `${autoT('Hizmet bedeli')} ${selectedInvoice.invoice_no ?? '—'}${selectedInvoice.patient_name ? ' · ' + selectedInvoice.patient_name : ''} · Kalan ${M(selectedInvoice.remaining, selectedInvoice.currency)}`
+                          : 'Hizmet bedeli seçilmedi (genel ödeme)'}
                       </Text>
                       <Text style={{ fontSize: 10, color: isDark ? (T.ink3 as string) : DS.ink[400] }}>▼</Text>
                     </Pressable>
@@ -280,12 +280,12 @@ export function SubmitPaymentModal({
                             style={{ paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: isDark ? T.hairline : DS.ink[100] }}
                           >
                             <Text style={{ fontSize: 12, color: invoiceId === null ? TH.primary : (isDark ? (T.ink2 as string) : DS.ink[800]) }}>
-                              Fatura seçme (genel ödeme)
+                              Hizmet bedeli seçme (genel ödeme)
                             </Text>
                           </Pressable>
                           {invoices.length === 0 ? (
                             <View style={{ padding: 14 }}>
-                              <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[400] }}>Açık fatura yok.</Text>
+                              <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[400] }}>Açık hizmet bedeli yok.</Text>
                             </View>
                           ) : invoices.map((inv, i) => {
                             const active = inv.id === invoiceId;
@@ -302,7 +302,7 @@ export function SubmitPaymentModal({
                               >
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                                   <Text style={{ fontSize: 12, fontWeight: '600', color: active ? TH.primary : (isDark ? T.ink : DS.ink[900]) }} numberOfLines={1}>
-                                    Fatura {inv.invoice_no ?? '—'}
+                                    Hizmet bedeli {inv.invoice_no ?? '—'}
                                   </Text>
                                   <Text style={{ ...DISPLAY, fontSize: 14, color: inv.days_overdue > 0 ? '#9C2E2E' : (isDark ? T.ink : DS.ink[900]) }}>
                                     {M(inv.remaining, inv.currency)}

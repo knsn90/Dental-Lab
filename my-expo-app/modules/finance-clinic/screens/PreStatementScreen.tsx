@@ -163,12 +163,12 @@ export function PreStatementScreen({ clinicId }: { clinicId: string }) {
         </Text>
         <Text style={{ ...DISPLAY, fontSize: 26, letterSpacing: -0.5, color: U.ink[900] }}>{autoT('Ön ekstre')}</Text>
         <Text style={{ fontSize: 13, color: U.ink[500], lineHeight: 18 }}>
-          {autoT('Lab\'ın kesmeden önce onayınıza sunduğu taslak faturalar')}
+          {autoT('Lab\'ın kesinleştirmeden önce onayınıza sunduğu taslak hizmet bedelleri')}
         </Text>
       </View>
 
       {!data.enabled ? (
-        <EmptyCard icon={CheckCircle2} title={autoT('Onay bekleyen fatura yok')} />
+        <EmptyCard icon={CheckCircle2} title={autoT('Onay bekleyen hizmet bedeli yok')} />
       ) : (
         <>
           {ownScope ? (
@@ -196,14 +196,14 @@ export function PreStatementScreen({ clinicId }: { clinicId: string }) {
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
                   <ActionPill
                     label={`${autoT('İtirazsız kalemleri onayla')} (${undisputed})`}
-                    tip={autoT('İtirazlı kalem içeren faturalar taslakta kalır')}
+                    tip={autoT('İtirazlı kalem içeren hizmet bedelleri taslakta kalır')}
                     disabled={undisputed === 0 || approving}
                     primary
                     onPress={() => { setApproveError(null); setResult(null); setConfirmMode('undisputed'); }}
                   />
                   <ActionPill
                     label={autoT('Tümünü onayla')}
-                    tip={autoT('İtirazlılar dahil tüm taslak faturaları kesinleştirir')}
+                    tip={autoT('İtirazlılar dahil tüm taslak hizmet bedellerini kesinleştirir')}
                     disabled={approving}
                     onPress={() => { setApproveError(null); setResult(null); setConfirmMode('all'); }}
                   />
@@ -242,7 +242,7 @@ export function PreStatementScreen({ clinicId }: { clinicId: string }) {
 
           {/* Taslak listesi */}
           {invoices.length === 0 ? (
-            <EmptyCard icon={CheckCircle2} title={autoT('Onay bekleyen fatura yok')} />
+            <EmptyCard icon={CheckCircle2} title={autoT('Onay bekleyen hizmet bedeli yok')} />
           ) : (
             <>
               <StatementFilterBar view={view} />
@@ -315,17 +315,17 @@ export function ResultBanner({ r }: { r: ResultMsg }) {
           ? <AlertTriangle size={14} color={tone.fg} strokeWidth={1.8} />
           : <CheckCircle2 size={14} color={tone.fg} strokeWidth={1.8} />}
         <Text style={{ fontSize: 13, fontWeight: '700', color: tone.fg }}>
-          {`${r.issued} ${autoT('fatura kesinleşti')}`}
+          {`${r.issued} ${autoT('hizmet bedeli kesinleşti')}`}
         </Text>
       </View>
       {r.changed > 0 ? (
         <Text style={{ fontSize: 12.5, color: tone.fg }}>
-          {autoT('Bazı faturalar siz bakarken değişti; yeniden gözden geçirin')}
+          {autoT('Bazı hizmet bedelleri siz bakarken değişti; yeniden gözden geçirin')}
         </Text>
       ) : null}
       {r.disputed > 0 ? (
         <Text style={{ fontSize: 12.5, color: tone.fg }}>
-          {`${r.disputed} ${autoT('itirazlı fatura onay bekliyor')}`}
+          {`${r.disputed} ${autoT('itirazlı hizmet bedeli onay bekliyor')}`}
         </Text>
       ) : null}
     </View>
@@ -393,7 +393,7 @@ export function InvoiceBlock({ inv, desktop, expanded, onToggle, onItem, filtere
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
-              {inv.invoice_number || autoT('Taslak fatura')}
+              {inv.invoice_number || autoT('Taslak hizmet bedeli')}
             </Text>
             {disputeStatus ? <DisputeChip status={disputeStatus} /> : null}
           </View>
@@ -686,14 +686,14 @@ export function ConfirmDialog({ mode, total, undisputed, busy, error, onCancel, 
               <View style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: U.chipTones.success.bg }}>
                 <FileCheck size={18} color={U.chipTones.success.fg} strokeWidth={1.8} />
               </View>
-              <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: U.ink[900] }}>{autoT('Faturaları onayla')}</Text>
+              <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: U.ink[900] }}>{autoT('Hizmet bedellerini onayla')}</Text>
             </View>
             <Text style={{ fontSize: 13, color: U.ink[700], lineHeight: 19 }}>
-              {`${n} ${autoT('taslak fatura kesinleşecek; bu işlem geri alınamaz.')}`}
+              {`${n} ${autoT('taslak hizmet bedeli kesinleşecek; bu işlem geri alınamaz.')}`}
             </Text>
             <Text style={{ fontSize: 12.5, color: U.ink[500], lineHeight: 18 }}>
               {mode === 'undisputed'
-                ? autoT('İtirazlı kalem içeren faturalar taslakta kalır')
+                ? autoT('İtirazlı kalem içeren hizmet bedelleri taslakta kalır')
                 : autoT('İtirazlı kalemler de onaylanır')}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end', marginTop: 4 }}>

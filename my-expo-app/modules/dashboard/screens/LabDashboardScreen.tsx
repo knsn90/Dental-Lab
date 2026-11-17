@@ -20,7 +20,6 @@ import {
   useWindowDimensions, RefreshControl,
   Animated, Platform, Easing, StyleSheet,
 } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -28,7 +27,7 @@ import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import {
   Plus, ClipboardList, TrendingUp, AlertTriangle, Package,
   Calendar, ShieldCheck, Inbox, Activity, CheckCircle,
-  ChevronRight, ArrowUpRight, ArrowUpLeft, ArrowRight, ArrowLeft, Clock, Trophy,
+  ChevronRight, ChevronLeft, ArrowUpRight, ArrowUpLeft, ArrowRight, ArrowLeft, Clock, Trophy,
   Check, Clipboard, Box, Settings, ListChecks, CornerDownRight,
   Receipt, Wallet, Pause,
 } from '../../../core/ui/icons';
@@ -61,8 +60,8 @@ import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { useDashboardCache } from '../../../core/store/dashboardCacheStore';
 import { useUiOverlayStore } from '../../../core/store/uiOverlayStore';
 import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
-import { useNeonNavy, NeonPulse, useAccentTones } from '../../../core/ui/HeroGlow';
-import { PipelineFlowRow } from '../../../core/ui/PipelineFlowRow';
+import { useNeonNavy } from '../../../core/ui/HeroGlow';
+import { LiveProductionCard } from '../../admin/components/AdminMobileDashboard';
 import { FaceScanQuickAction } from '../../orders/components/FaceScanQuickAction';
 import { resolveOrderStatus, richOrderFields } from '../components/RecentOrdersMobile';
 import { mapRevisionCases, flattenRevisionCases } from '../../orders/revisionGroups';
@@ -73,6 +72,7 @@ import { statusBuckets } from '../lib/distributions';
 import { StatusDistCard, WorkTypeCard, STATUS_CFG as DIST_STATUS_CFG, STATUS_KEYS as DIST_STATUS_KEYS, STATUS_BUCKET as DIST_STATUS_BUCKET } from '../components/DistributionCards';
 import { useManagerDistributions } from '../hooks/useManagerDistributions';
 import { TopClinicsCard } from '../../clinicSummary/components/TopClinicsCard';
+import { TechWorkloadCard } from '../components/TechWorkloadCard';
 
 // Display font — Patterns: Inter Tight Light (300), tight tracking
 const SERIF = {
@@ -89,156 +89,6 @@ const CLR = {
   red: DS.lab.danger, purple: '#7C3AED',
 };
 
-// ── CountUp hook — 0'dan target'e ease-out ──
-function useCountUp(target: number, duration = 1400) {
-  const [v, setV] = useState(0);
-  useEffect(() => {
-    if (duration === 0) { setV(target); return; }
-    const start = Date.now();
-    let raf: any;
-    const tick = () => {
-      const elapsed = Date.now() - start;
-      const t = Math.min(1, elapsed / duration);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setV(target * eased);
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => raf && cancelAnimationFrame(raf);
-  }, [target, duration]);
-  return v;
-}
-
-// ── Pulse animasyon hook ──
-function usePulse({ duration = 1600 }: { duration?: number } = {}) {
-  const v = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(v, { toValue: 1, duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(v, { toValue: 0, duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [v, duration]);
-  const scale = v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.5] });
-  const opacity = v.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0] });
-  return { scale, opacity };
-}
-
-// ── PulseDot — knob için animasyonlu halo ──
-function PulseDot({ color, size, x, y }: { color: string; size: number; x: number; y: number }) {
-  const { scale, opacity } = usePulse({ duration: 1400 });
-  return (
-    <Animated.View style={{
-      position: 'absolute',
-      left: x - size / 2, top: y - size / 2,
-      width: size, height: size, borderRadius: size / 2,
-      backgroundColor: color,
-      transform: [{ scale }],
-      opacity,
-    }} pointerEvents="none" />
-  );
-}
-
-// ── PercentRingHero — gradient arc + knob + pulse (Patterns 11.7) ──
-function PercentRingHero({
-  value: targetValue, size = 200, weight = '300', animate = true, darkText = false,
-}: { value: number; size?: number; weight?: '200' | '300' | '400' | '500' | '600' | '700'; animate?: boolean; darkText?: boolean }) {
-  const T = useMobileTokens();
-  const isDark = useThemeModeStore(s => s.resolvedDark);
-  const animatedValue = useCountUp(targetValue, animate ? 1400 : 0);
-  const value = animate ? animatedValue : targetValue;
-
-  const outerStroke = Math.max(8, Math.round(size * 0.12));
-  const innerStroke = outerStroke - 6;
-  const r = (size - outerStroke - Math.max(3, size * 0.04)) / 2;
-  const c = 2 * Math.PI * r;
-  const dash = (value / 100) * c;
-
-  const lightColor = DS.lab.primary;
-  const deepColor = DS.lab.primaryDeep;
-  const id = `pr-hero-lab-${targetValue}-${size}`;
-
-  // Light bg: daha belirgin track; dark bg: soluk track
-  const outerPillColor = darkText ? lightColor + '30' : lightColor + '22';
-  const innerTrackColor = darkText ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') : lightColor + '15';
-
-  const angleDeg = (value / 100) * 360 - 90;
-  const angleRad = (angleDeg * Math.PI) / 180;
-  const knobX = size / 2 + r * Math.cos(angleRad);
-  const knobY = size / 2 + r * Math.sin(angleRad);
-  const knobR = innerStroke * 0.85;
-  const showKnob = size >= 56;
-  const showPulse = size >= 100;
-  const displayValue = Math.round(value);
-
-  // Knob & pulse color based on bg
-  const knobColor = darkText ? (isDark ? T.ink : INK) : '#FFFFFF';
-  const textColor = darkText ? (isDark ? T.ink : INK) : '#FFFFFF';
-  const pctColor = darkText ? T.ink3 : lightColor;
-
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Svg width={size} height={size}>
-        <Defs>
-          <LinearGradient id={id} x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0%" stopColor={lightColor} stopOpacity="0.95" />
-            <Stop offset="100%" stopColor={deepColor} stopOpacity="1" />
-          </LinearGradient>
-        </Defs>
-        <Circle cx={size / 2} cy={size / 2} r={r}
-                stroke={outerPillColor} strokeWidth={outerStroke} fill="none" />
-        <Circle cx={size / 2} cy={size / 2} r={r}
-                stroke={innerTrackColor} strokeWidth={innerStroke} fill="none" />
-        {value > 0 && (
-          <Circle cx={size / 2} cy={size / 2} r={r}
-                  stroke={`url(#${id})`} strokeWidth={innerStroke} fill="none"
-                  strokeDasharray={`${dash} ${c}`} strokeLinecap="round"
-                  transform={`rotate(-90 ${size / 2} ${size / 2})`} />
-        )}
-        {value > 0 && value < 100 && showKnob && (
-          <Circle cx={knobX} cy={knobY} r={knobR + Math.max(2, innerStroke * 0.4)}
-                  fill={knobColor} fillOpacity={0.18} />
-        )}
-        {value > 0 && value < 100 && showKnob && (
-          <Circle cx={knobX} cy={knobY} r={knobR}
-                  fill={knobColor} />
-        )}
-      </Svg>
-      {value > 0 && value < 100 && showPulse && (
-        <PulseDot color={knobColor} size={knobR * 2.6} x={knobX} y={knobY} />
-      )}
-      <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-          <Text style={{
-            fontFamily: DS.font.display as string,
-            fontWeight: weight,
-            fontSize: size * 0.28,
-            color: textColor,
-            letterSpacing: size * 0.28 * -0.04,
-            lineHeight: size * 0.28,
-          }}>
-            {displayValue}
-          </Text>
-          {size >= 56 && (
-            <Text style={{
-              fontFamily: DS.font.display as string,
-              fontWeight: '400',
-              fontSize: size * 0.13,
-              color: pctColor,
-              marginStart: 3,
-              lineHeight: size * 0.13,
-            }}>
-              %
-            </Text>
-          )}
-        </View>
-      </View>
-    </View>
-  );
-}
 
 // ── Types ──
 interface TodayProva {
@@ -349,200 +199,38 @@ function CardHeader({ title, right, display }: { title: string; right?: React.Re
   );
 }
 
-// ── Animated Aktif Vaka Card — "CANLI" üretim şeridi ──
-/**
- * Yönetim/klinik/hekim Özet'teki CANLI kartıyla AYNI kart (kullanıcı kararı,
- * 19.09.2026). Buradaki eski sürümde safran ışık lekeleri, nefes alan daireler
- * ve sürekli parlayan bir disk vardı; hiçbiri veri taşımıyordu.
- *
- * Şerit tek kaynaktan gelir: `PipelineFlowRow` — ışık izi işin BEKLEDİĞİ
- * aşamada duraklar, bir aşamanın sayısı değişince yalnız o daire parlar, iş
- * yoksa hiç kıpırdamaz. Renk panelden (safran) gelir, hero bandı bilinçli
- * olarak iki temada da siyahtır.
- */
-function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, planningCount = 0, router }: {
-  isDesktop: boolean;
-  pipelineCounts: Record<string, number>;
-  latestOrder: any;
-  planningCount?: number;
-  router: any;
+// ── Canlı üretim — Admin Özet'teki LiveProductionCard'ın AYNISI ──
+// Tek tanım (modules/admin/components/AdminMobileDashboard): görünüm, sayılar ve
+// hareket iki panelde birlikte değişir. Renk panelden gelir: useNeonNavy(P) açık
+// temada düz safran + mürekkep siyah metin, koyu temada safranın derin tonu.
+function LabLiveProductionCard({ pipelineCounts, active, delivered, total, pct, router }: {
+  pipelineCounts: Record<string, number>; active: number; delivered: number; total: number; pct: number; router: any;
 }) {
-  const T = useMobileTokens();
-  const isDark = useThemeModeStore(s => s.resolvedDark);
-  // Akış izi rengi PANELE uyar: safranın açılmış tonu (siyah bantta okunur).
-  const accentTone = useAccentTones(P);
-  // Tek kalan kart-içi hareket: CANLI rozetinin nabzı.
-  const dotAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(dotAnim, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(dotAnim, { toValue: 0, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.delay(400),
-      ]),
-    ).start();
-  }, [dotAnim]);
-
-  const dotOpacity = dotAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
-
+  const { t } = useTranslation();
+  const nn = useNeonNavy(P);
+  const go = (status: string) => () => router.push(`/(lab)/all-orders?status=${status}` as any);
   return (
-    <Card style={{ flex: isDesktop ? 1.1 : undefined, marginBottom: isDesktop ? 0 : 14 }}>
-      {/* Koyu hero bandı — iki temada da siyah (T.ink koyuda krem olur). */}
-      <View style={{
-        flex: 1,
-        // @ts-ignore web gradient
-        backgroundImage: 'linear-gradient(180deg, #1A1A1A 0%, #0A0A0A 100%)',
-        backgroundColor: '#0A0A0A',
-        alignItems: 'center', justifyContent: 'center',
-        minHeight: 160, position: 'relative', overflow: 'hidden',
-      }}>
-        <View className="absolute" style={{
-          top: 14, ...(isRTL() ? { right: 14 } : { left: 14 }),
-          flexDirection: 'row', alignItems: 'center', gap: 6,
-        }}>
-          {/* CANLI rozeti — safran zeminde mürekkep siyah (luminans). */}
-          <View className="rounded-full" style={{
-            paddingHorizontal: 10, paddingVertical: 4,
-            backgroundColor: `${P}E6`, flexDirection: 'row', alignItems: 'center', gap: 6,
-          }}>
-            <Animated.View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: INK, opacity: dotOpacity }} />
-            <Text style={{ fontSize: 10, fontWeight: '500', color: INK, letterSpacing: 0.5 }}>CANLI</Text>
-          </View>
-
-          {/* Planlama bekleyen işler — laba özel, CANLI'nın yanında durur. */}
-          {planningCount > 0 && (
-            <Pressable
-              onPress={() => router.push('/(lab)/all-orders?status=alindi' as any)}
-              className="rounded-full"
-              style={{
-                paddingHorizontal: 10, paddingVertical: 4,
-                backgroundColor: 'rgba(255,255,255,0.12)',
-                borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
-                flexDirection: 'row', alignItems: 'center', gap: 5,
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              }}
-            >
-              <Inbox size={11} color={P} strokeWidth={2} />
-              <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFF', fontVariant: ['tabular-nums'] as any }}>
-                {planningCount}
-              </Text>
-              <Text style={{ fontSize: 9.5, fontWeight: '500', color: 'rgba(255,255,255,0.85)', letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                planlama
-              </Text>
-            </Pressable>
-          )}
-        </View>
-
-        <PipelineFlowRow
-          stages={PIPELINE_STAGES.slice(0, 4).map(st => ({ key: st.key, label: st.label }))}
-          counts={pipelineCounts}
-          accent={P}
-          flowColor={accentTone.ink}
-          cardMid={isDark ? '#141312' : '#1B1B1B'}
-          onPressStage={() => router.push('/(lab)/all-orders' as any)}
-          renderValue={(count, active) => (
-            <NumberTickerX
-              value={count}
-              duration={800}
-              style={{ ...SERIF, fontSize: 16, letterSpacing: -0.5, color: active ? '#FFF' : 'rgba(255,255,255,0.3)' } as any}
-            />
-          )}
-        />
-      </View>
-
-      {/* White section — latest order info */}
-      <View style={{ padding: 16 }}>
-        {latestOrder ? (
-          <Pressable
-            onPress={() => router.push(`/(lab)/order/${latestOrder.id}` as any)}
-            style={{ gap: 2 }}
-          >
-            <Text style={{ fontSize: 15, fontWeight: '500', color: T.ink }} numberOfLines={1}>
-              {latestOrder.patient_name ?? (latestOrder.doctor as any)?.full_name ?? 'Sipariş'}
-            </Text>
-            <Text style={{ fontSize: 11, color: T.ink3, marginBottom: 10 }} numberOfLines={1}>
-              #{latestOrder.order_number} · {latestOrder.work_type ?? ''}
-            </Text>
-            <StatusBadge status={latestOrder.status} />
-          </Pressable>
-        ) : (
-          <Text style={{ fontSize: 13, color: T.ink3 }}>Yükleniyor...</Text>
-        )}
-      </View>
-    </Card>
+    <LiveProductionCard
+      fill
+      nn={nn}
+      active={active}
+      delivered={delivered}
+      total={total}
+      pct={pct}
+      title={t('admin.dashboard.liveProduction')}
+      activeLabel={t('admin.dashboard.activeOrders')}
+      rateLabel={t('admin.dashboard.deliveryRate')}
+      onOpenAll={() => router.push('/(lab)/all-orders' as any)}
+      stages={[
+        { key: 'alindi', label: t('admin.status.received'), n: pipelineCounts['alindi'] ?? 0, tone: 'strong', onPress: go('alindi') },
+        { key: 'uretimde', label: t('admin.status.production'), n: pipelineCounts['uretimde'] ?? 0, tone: 'mid', onPress: go('uretimde') },
+        { key: 'kalite_kontrol', label: autoT('Kalite Kontrol'), n: pipelineCounts['kalite_kontrol'] ?? 0, tone: 'soft', onPress: go('kalite_kontrol') },
+        { key: 'teslimata_hazir', label: t('admin.status.ready'), n: pipelineCounts['teslimata_hazir'] ?? 0, tone: 'ready', onPress: go('teslimata_hazir') },
+      ]}
+    />
   );
 }
 
-// ── Animated CTA Card ──
-/**
- * "Hızlı işlem" kartı — zemin TEK kaynaktan: `useNeonNavy` (neon navy).
- *
- * Eskiden burada safran gradyan + dört animasyonlu bulanık ışık lekesi vardı;
- * açık temada kart alacalı görünüyordu. Kullanıcı kararı (19.09.2026): açık
- * temada DÜZ panel rengi, koyu temada neon yüzey + nabız. Diğer panellerin
- * (yönetim, klinik, hekim) CTA kartları zaten bu kaynağı kullanıyor.
- *
- * Metin/pill renkleri de hook'tan gelir: safran açık bir zemin olduğu için
- * mürekkep siyaha düşer (luminans kuralı) — sabit yazılsaydı koyu temada
- * siyah-üstüne-siyah kalırdı.
- */
-function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDesktop: boolean }) {
-  const spotlight = useNeonNavy(P);
-  // Ok ucu periyodik olarak ileri doğru dürtülür (tek kalan hareket).
-  const arrowAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    Animated.loop(Animated.sequence([
-      Animated.delay(2000),
-      Animated.timing(arrowAnim, { toValue: 1, duration: 400, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-      Animated.timing(arrowAnim, { toValue: 0, duration: 400, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-    ])).start();
-  }, [arrowAnim]);
-
-  // RTL'de "ileri" hareketi sola doğrudur.
-  const arrowX = arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, isRTL() ? -6 : 6] });
-
-  return (
-    <Pressable onPress={onPress}
-      onHoverIn={() => Animated.spring(scaleAnim, { toValue: 1.02, friction: 8, tension: 200, useNativeDriver: true }).start()}
-      onHoverOut={() => Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 200, useNativeDriver: true }).start()}
-      style={{ flex: 1 }}>
-      <Animated.View style={{
-        flex: 1, borderRadius: DS.radius.xl, padding: 22, position: 'relative', overflow: 'hidden',
-        minHeight: isDesktop ? undefined : 160,
-        ...spotlight.surface,
-        transform: [{ scale: scaleAnim }],
-      }}>
-        {!spotlight.flat && <NeonPulse radius={DS.radius.xl} color={spotlight.glow} />}
-        <View style={{ position: 'relative' }}>
-          <Text style={{
-            fontSize: 11, fontWeight: '500', letterSpacing: 1.1,
-            textTransform: 'uppercase', color: spotlight.inkSoft, marginBottom: 14,
-          }}>
-            Hızlı işlem
-          </Text>
-          <Text style={{
-            ...SERIF, fontSize: 32, letterSpacing: -0.64, lineHeight: 35,
-            color: spotlight.ink, marginBottom: 16,
-          }}>
-            Yeni sipariş{'\n'}oluştur
-          </Text>
-          <View
-            className="flex-row items-center self-end rounded-full"
-            style={{ paddingHorizontal: 18, paddingVertical: 10, backgroundColor: spotlight.pillBg, gap: 8 }}
-          >
-            <Text style={{ fontSize: 13, fontWeight: '500', color: spotlight.pillInk }}>Başla</Text>
-            <Animated.View style={{ transform: [{ translateX: arrowX }] }}>
-              {isRTL() ? <ArrowLeft size={14} color={spotlight.pillInk} strokeWidth={2} /> : <ArrowRight size={14} color={spotlight.pillInk} strokeWidth={2} />}
-            </Animated.View>
-          </View>
-        </View>
-      </Animated.View>
-    </Pressable>
-  );
-}
 
 /** Status badge with dot. hold_status='on_hold' → Siparişler sayfasıyla aynı "Duraklatıldı" (warning); prova beklemesi "Provada". */
 function StatusBadge({ status, holdStatus, holdCategory }: { status: string; holdStatus?: string | null; holdCategory?: string | null }) {
@@ -818,11 +506,16 @@ type TaskItem = {
 };
 
 function TasksCard({
-  tasks,
+  tasks, max,
 }: {
   tasks: TaskItem[];
+  /** İlk N görev görünür, fazlası "N görev daha" satırıyla açılır (Admin Özet ile aynı) */
+  max?: number;
 }) {
   const doneCount = tasks.filter(t => t.done).length;
+  const [showAll, setShowAll] = useState(false);
+  const visibleTasks = max && !showAll ? tasks.slice(0, max) : tasks;
+  const hiddenCount = tasks.length - visibleTasks.length;
   return (
     <View style={{
       backgroundColor: TASKS_SURFACE,
@@ -836,7 +529,7 @@ function TasksCard({
         <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{doneCount}/{tasks.length}</Text>
       </View>
       <View style={{ gap: 10, flex: 1 }}>
-        {tasks.map((t, i) => {
+        {visibleTasks.map((t, i) => {
           const IconComp = t.icon;
           return (
             <Pressable
@@ -845,7 +538,7 @@ function TasksCard({
               className="flex-row items-center"
               style={{
                 gap: 10, paddingBottom: 10,
-                borderBottomWidth: i < tasks.length - 1 ? 1 : 0,
+                borderBottomWidth: i < visibleTasks.length - 1 ? 1 : 0,
                 borderBottomColor: 'rgba(255,255,255,0.08)',
               }}
             >
@@ -857,17 +550,18 @@ function TasksCard({
                 <IconComp size={14} color="#FFF" strokeWidth={1.8} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
+                {/* Admin Özet ile aynı okunurluk: başlık iki satıra açılır, açıklama tek satır */}
                 <Text
-                  numberOfLines={1}
+                  numberOfLines={2}
                   style={{
-                    fontSize: 12, fontWeight: '500', color: '#FFF',
+                    fontSize: 13, fontWeight: '500', color: '#FFF', lineHeight: 17,
                     textDecorationLine: t.done ? 'line-through' : 'none',
                     opacity: t.done ? 0.4 : 1,
                   }}
                 >
                   {t.label}
                 </Text>
-                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{t.time}</Text>
+                <Text numberOfLines={1} style={{ fontSize: 11.5, lineHeight: 15, color: 'rgba(255,255,255,0.62)', marginTop: 1 }}>{t.time}</Text>
               </View>
               {t.action ? (
                 // Kart her iki temada koyu → kapsül beyaz-alfa zemin + beyaz metin
@@ -877,7 +571,7 @@ function TasksCard({
                     accessibilityRole="button"
                     accessibilityLabel={t.action.label}
                     style={({ pressed }: any) => ({
-                      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+                      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, flexShrink: 0,
                       backgroundColor: pressed ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)',
                       borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
                       ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
@@ -886,20 +580,34 @@ function TasksCard({
                     <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: '#FFF' }}>{t.action.label}</Text>
                   </Pressable>
                 </GlassTooltip>
-              ) : (
+              ) : t.done ? (
                 <View style={{
-                  width: 18, height: 18, borderRadius: 9,
-                  backgroundColor: t.done ? P : 'transparent',
-                  borderWidth: t.done ? 0 : 1.5,
-                  borderColor: t.done ? undefined : 'rgba(255,255,255,0.2)',
+                  width: 18, height: 18, borderRadius: 9, backgroundColor: P,
                   alignItems: 'center', justifyContent: 'center',
                 }}>
-                  {t.done && <Check size={10} color={INK} strokeWidth={2.5} />}
+                  <Check size={10} color={INK} strokeWidth={2.5} />
                 </View>
+              ) : (
+                // Boş daire onay kutusu sanılıyordu (Admin Özet'teki karar) → siparişi açtığını gösteren ok
+                isRTL()
+                  ? <ChevronLeft size={15} color="rgba(255,255,255,0.45)" strokeWidth={2} />
+                  : <ChevronRight size={15} color="rgba(255,255,255,0.45)" strokeWidth={2} />
               )}
             </Pressable>
           );
         })}
+        {(hiddenCount > 0 || (max && showAll && tasks.length > max)) ? (
+          <Pressable
+            onPress={() => setShowAll(v => !v)}
+            accessibilityRole="button"
+            style={{ paddingTop: 2, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) }}
+          >
+            {/* Safran vurgu — lab panelinin accent'i (koyu kart iki temada da koyu) */}
+            <Text style={{ fontSize: 12, fontWeight: '600', color: P }}>
+              {hiddenCount > 0 ? `${hiddenCount} ${autoT('görev daha')}` : autoT('Daha az göster')}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -1406,13 +1114,14 @@ export function LabDashboardScreen() {
   const weekDays = getWeekDays();
 
   // Pipeline percentages for hero stat pills
-  const totalPipe = Object.values(pipelineCounts).reduce((s, v) => s + v, 0) || 1;
+  // pipeTotalCount: yüzdenin gerçek paydası (0 olabilir) — Canlı üretim kartındaki "1 / 9" bağlamı.
+  const pipeTotalCount = Object.values(pipelineCounts).reduce((s, v) => s + v, 0);
+  const totalPipe = pipeTotalCount || 1;
   const productionPct = Math.round(((pipelineCounts['uretimde'] ?? 0) / totalPipe) * 100);
   const deliveryPct   = Math.round(((pipelineCounts['teslim_edildi'] ?? 0) / totalPipe) * 100);
   const readyPct      = Math.round(((pipelineCounts['teslimata_hazir'] ?? 0) / totalPipe) * 100);
 
   // Latest active order for "Aktif Vaka" card
-  const latestOrder = recentOrders.find(o => o.status !== 'teslim_edildi') ?? recentOrders[0];
 
   // Revizyon alt-listesi: penceredeki revizyonun ebeveyni pencere dışındaysa
   // ek sorguyla tamamlanır (hook koşulsuz çağrılmalı — erken return'lerden önce).
@@ -1494,10 +1203,10 @@ export function LabDashboardScreen() {
     // Teslim edildi ama faturası kesilmedi → doğrudan sipariş detayına (fatura kes)
     ...financeActions.unbilled.slice(0, 2).map((u: any) => ({
       icon: Receipt as React.FC<any>,
-      label: `Fatura kes · ${shortNo(u.order_number)}`,
+      label: `${autoT('Hizmet bedeli oluştur')} · ${shortNo(u.order_number)}`,
       time: u.delivered_at
         ? `${fmtDate(String(u.delivered_at).slice(0, 10))} ${autoT('tarihinde teslim edildi')}`
-        : 'Teslim edildi, faturası yok',
+        : 'Teslim edildi, hizmet bedeli yok',
       done: false,
       onPress: () => router.push(`/(lab)/order/${u.work_order_id}` as any),
     })),
@@ -1553,24 +1262,6 @@ export function LabDashboardScreen() {
     const totalPipe = Object.values(pipelineCounts).reduce((s, v) => s + v, 0) || 1;
     const deliveredPct = Math.round(((pipelineCounts['teslim_edildi'] ?? 0) / totalPipe) * 100);
 
-    // Bu haftanın tamamlananları (KPI "Bu hafta N") — weekDone tüm veriden hesaplanır
-    const wdays = getWeekDays();
-    const weekDoneBars: number[] = wdays.map(d => weekDone[d.date] ?? 0);
-
-    // Delayed cases — overdue + critical
-    const delayedItems = overdueOrders.slice(0, 3).map((o: any) => {
-      const due = new Date(o.delivery_date + 'T00:00:00').getTime();
-      const days = Math.max(1, Math.floor((Date.now() - due) / 86400000));
-      return {
-        id: String(o.order_number ?? o.id).slice(-6),
-        _id: o.id,
-        patient: o.patient_name ?? 'Hasta',
-        workType: o.work_type ?? '—',
-        remain: `${days}g geç`,
-        kind: 'delay' as const,
-      };
-    });
-
     // Uzun bekleyenler — geciken listesinin altında (kendi kotası) ve bildirimlerde
     const holdItems = longHolds.slice(0, 5).map(r => ({
       id: String(r.order_number ?? r.id).slice(-6),
@@ -1581,7 +1272,6 @@ export function LabDashboardScreen() {
       kind: 'hold' as const,
       days: holdAgeOf(r),
     }));
-    const mobileDelayed = [...delayedItems, ...holdItems];
 
     // Notification buckets
     const notifApprovals = recentOrders
@@ -1647,27 +1337,16 @@ export function LabDashboardScreen() {
           liveActive={totalActiveCount}
           liveTotal={Object.values(pipelineCounts).reduce((a, b) => a + b, 0)}
           liveStages={stageCounts}
-          // Halka = masaüstü "Üretim" kartının teslim oranı; başlık teslim edilen / toplam
           liveDelivered={pipelineCounts['teslim_edildi'] ?? 0}
           livePercent={deliveredPct}
-          activeOrders={totalActiveCount}
-          todayCompleted={todayDeliveredCount}
-          weekCompleted={weekDoneBars.reduce((a, b) => a + b, 0)}
+          liveDueToday={todayDeliverable.length}
           overdueCount={overdueTotal}
           heldCount={heldCount}
           pendingApprovalsCount={pendingCount}
           orderTrend={monthly.map((m) => ({ label: m.month, count: m.count, teeth: m.teeth }))}
-          delayed={mobileDelayed}
+          showTopClinics={isManager}
           recentOrders={recentForMobile}
-          onNewOrder={() => useNewOrderModalStore.getState().setOpen(true)}
-          onScan={() => require('../../../core/store/scanStore').useScanStore.getState().setOpen(true)}
           onApprovals={() => router.push('/(lab)/approvals' as any)}
-          onNotifications={() => setNotificationsOpen(true)}
-          onProfile={() => router.push('/(lab)/profile' as any)}
-          onOpenOrder={(id: string) => {
-            const found = mobileDelayed.find((x: any) => x.id === id);
-            if (found) router.push(`/(lab)/order/${(found as any)._id}` as any);
-          }}
           onOpenOrderById={(dbId: string) => router.push(`/(lab)/order/${dbId}` as any)}
           onAllOrders={() => router.push('/(lab)/all-orders' as any)}
           refreshing={refreshing || loading}
@@ -1929,35 +1608,17 @@ export function LabDashboardScreen() {
         </View>
       )}
 
-      {/* ════════ 4-CARD GRID — eşit sütunlar; alt sıra aynı ızgarada hizalı (DashGrid) ════════ */}
-      <DashRow gap={14} style={{ marginBottom: 14 }}>
-        <DashHalf gap={14}>
-        {/* Card 1: Aktif Vaka — dark top + white bottom + animations */}
-        <DashCell>
-        <AnimatedAktifVakaCard
-          isDesktop={isDesktop}
-          pipelineCounts={{
-            ...pipelineCounts,
-            // Gruplandırılmış sayımlar — tek statüs yerine birleşik göster
-            alindi:          (pipelineCounts['alindi'] ?? 0)
-                           + (pipelineCounts['kutu_atandi'] ?? 0)
-                           + (pipelineCounts['atama_bekleniyor'] ?? 0)
-                           + (pipelineCounts['tasarim_onayi_bekleniyor'] ?? 0),
-            uretimde:        (pipelineCounts['uretimde'] ?? 0)
-                           + (pipelineCounts['asamada'] ?? 0),
-            teslimata_hazir: (pipelineCounts['teslimata_hazir'] ?? 0)
-                           + (pipelineCounts['kurye_bekleniyor'] ?? 0)
-                           + (pipelineCounts['kuryede'] ?? 0),
-          }}
-          latestOrder={latestOrder}
-          planningCount={triagePending.length}
-          router={router}
-        />
-        </DashCell>
-
-        {/* Card 2: Sipariş Trendi (admin paneliyle aynı hatched pill chart) */}
-        <DashCell>
-        <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 14 }}>
+      {/* ════════ BİRİNCİ SIRA — Admin Özet düzeni (kullanıcı kararı 2026-11-17):
+          aksiyonlar · aylık trend · canlı hat · teknisyen iş yükü. Koyu (aksiyonlar) ile
+          safran (canlı) kart yan yana gelmesin diye araya açık trend kartı girer.
+          Eski "Üretim" halkası ve "Yeni sipariş" kartı kaldırıldı (admin'de de kalktı:
+          halka karar verdirmiyordu, yeni sipariş kenar menüde var). ════════ */}
+      <DashRow gap={16} style={{ marginBottom: 16 }}>
+        <DashHalf gap={16}>
+          <DashCell motion={0}><TasksCard tasks={taskItems} max={3} /></DashCell>
+          {/* Sipariş trendi (admin paneliyle aynı taralı kapsül grafik) */}
+          <DashCell motion={1}>
+        <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 16 }}>
           <View className="flex-row items-start justify-between" style={{ marginBottom: 12 }}>
             <View>
               <Text style={{ fontSize: 18, fontWeight: '500', letterSpacing: -0.015 * 18, color: T.ink }}>Sipariş Trendi</Text>
@@ -1984,78 +1645,68 @@ export function LabDashboardScreen() {
             <ProductionBarChart data={monthly} />
           </View>
         </Card>
-        </DashCell>
+          </DashCell>
         </DashHalf>
-
-        <DashHalf gap={14}>
-        {/* Card 3: Üretim Ring — PercentRingHero (Patterns 11.7) on white bg */}
-        <DashCell>
-        <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, alignItems: 'center', marginBottom: isDesktop ? 0 : 14 }}>
-          <View className="w-full flex-row items-center justify-between" style={{ marginBottom: 8 }}>
-            <Text style={{ fontSize: 14, fontWeight: '500', color: T.ink }}>Üretim</Text>
-            <Pressable onPress={() => router.push('/(lab)/all-orders' as any)}>
-              {isRTL() ? <ArrowUpLeft size={14} color={T.ink3} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={T.ink3} strokeWidth={1.8} />}
-            </Pressable>
-          </View>
-          {/* PercentRingHero — card bg (no dark container) */}
-          <PercentRingHero value={deliveryPct} size={140} darkText />
-          {/* Label */}
-          <Text style={{ fontSize: 9, color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.08 * 9, marginTop: 10 }}>
-            Teslim
-          </Text>
-          {/* Mini pipeline stats */}
-          <View className="flex-row" style={{ gap: 8, marginTop: 12 }}>
-            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: T.cardSoft }}>
-              <Text style={{ fontSize: 10, fontWeight: '500', color: T.ink3 }}>
-                {pipelineCounts['uretimde'] ?? 0} üretimde
-              </Text>
-            </View>
-            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: hexA(P, 0.15) }}>
-              <Text style={{ fontSize: 10, fontWeight: '500', color: '#9C5E0E' }}>
-                {pipelineCounts['teslimata_hazir'] ?? 0} hazır
-              </Text>
-            </View>
-          </View>
-        </Card>
-        </DashCell>
-
-        {/* Card 4: Hızlı İşlem CTA — "Yeni sipariş oluştur" (görevler ile yer değişti) */}
-        <DashCell>
-        <View style={{ flex: 1 }}>
-          <AnimatedCTACard onPress={() => router.push('/(lab)/new-order' as any)} isDesktop={isDesktop} />
-        </View>
-        </DashCell>
+        <DashHalf gap={16}>
+          <DashCell motion={2}>
+        <LabLiveProductionCard
+          pipelineCounts={{
+            ...pipelineCounts,
+            // Gruplandırılmış sayımlar — tek statüs yerine birleşik göster
+            alindi:          (pipelineCounts['alindi'] ?? 0)
+                           + (pipelineCounts['kutu_atandi'] ?? 0)
+                           + (pipelineCounts['atama_bekleniyor'] ?? 0)
+                           + (pipelineCounts['tasarim_onayi_bekleniyor'] ?? 0),
+            uretimde:        (pipelineCounts['uretimde'] ?? 0)
+                           + (pipelineCounts['asamada'] ?? 0),
+            teslimata_hazir: (pipelineCounts['teslimata_hazir'] ?? 0)
+                           + (pipelineCounts['kurye_bekleniyor'] ?? 0)
+                           + (pipelineCounts['kuryede'] ?? 0),
+          }}
+          active={totalActiveCount}
+          delivered={pipelineCounts['teslim_edildi'] ?? 0}
+          total={pipeTotalCount}
+          pct={deliveryPct}
+          router={router}
+        />
+          </DashCell>
+          {/* Teknisyen iş yükü — ekibi gören yöneticiye; lab renkleri (safran) */}
+          {isManager ? (
+            <DashCell motion={3}>
+              <TechWorkloadCard
+                accent={P}
+                accentText={isDark ? '#F0C078' : '#9C5E0E'}
+                href="/(lab)/performance"
+              />
+            </DashCell>
+          ) : null}
         </DashHalf>
       </DashRow>
 
-      {/* ════════ İKİNCİ SIRA — Bugünkü Görevler + tarama widget'ı (yarımlar), Admin Özet ile aynı düzen.
-          "Bu hafta" en alta indi (kullanıcı isteği, 2026-11-09: "admin panelindeki gibi"). ════════ */}
+      {/* ════════ İKİNCİ SIRA — tarama programı · klinikler · iş tipi dağılımı (Admin Özet ile aynı) ════════ */}
       {isManager ? (
-        // Yönetici: Admin Özet gibi üçte birler — Görevler · Tarama · En çok iş gönderenler
-        <DashRow gap={14} style={{ marginBottom: 14 }}>
-          <DashThird><TasksCard tasks={taskItems} /></DashThird>
-          {scanCard ? <DashThird><ScanCalendarCard style={{ flex: 1 }} /></DashThird> : null}
-          <DashThird><TopClinicsCard fill scoreMode={false} /></DashThird>
+        <DashRow gap={16} style={{ marginBottom: 16 }}>
+          {scanCard ? <DashThird motion={4}><ScanCalendarCard style={{ flex: 1 }} /></DashThird> : null}
+          <DashThird motion={5}><TopClinicsCard fill scoreMode={false} limit={3} /></DashThird>
+          {mgrDist.byWorkType.length > 0 ? (
+            <DashThird motion={6}><WorkTypeCard data={mgrDist.byWorkType} /></DashThird>
+          ) : null}
         </DashRow>
-      ) : (
-      <DashRow gap={14} style={{ marginBottom: 14 }}>
-        <DashHalf gap={14}>
-          {/* Bugünkü Görevler — Dark (CTA ile yer değişti) */}
-          <DashCell><TasksCard tasks={taskItems} /></DashCell>
-        </DashHalf>
-        {scanCard ? (
-          <DashHalf gap={14}>
-            <DashCell><ScanCalendarCard style={{ flex: 1 }} /></DashCell>
+      ) : scanCard ? (
+        <DashRow gap={16} style={{ marginBottom: 16 }}>
+          <DashHalf gap={16}>
+            <DashCell motion={4}><ScanCalendarCard style={{ flex: 1 }} /></DashCell>
           </DashHalf>
-        ) : <DashHalfSpacer gap={14} />}
-      </DashRow>
-      )}
+          <DashHalfSpacer gap={16} />
+        </DashRow>
+      ) : null}
 
       {/* ════════ EXTRA SECTIONS (below fold) ════════ */}
 
       {/* Son Siparişler — Patterns section 09 table */}
-      <Card style={{ marginBottom: 14 }}>
-        <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
+      <Card style={{ marginBottom: 16 }}>
+        {/* Kart başlığı sade (Admin Özet ile aynı): altındaki kolon şeridiyle çift çizgi oluşmasın */}
+        <View className="flex-row items-center justify-between" style={{ paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14 }}>
           <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>Son Siparişler</Text>
           <Pressable onPress={() => router.push('/(lab)/all-orders' as any)}>
             <Text style={{ fontSize: 13, color: P, fontWeight: '700' }}>Tümünü Gör →</Text>
@@ -2067,7 +1718,7 @@ export function LabDashboardScreen() {
           className="flex-row items-center"
           style={{
             paddingHorizontal: 20, paddingVertical: 11,
-            borderTopWidth: 1, borderTopColor: T.hairline,
+            borderBottomWidth: 1, borderBottomColor: T.hairline,
             backgroundColor: T.cardSoft,
           }}
         >
@@ -2096,7 +1747,7 @@ export function LabDashboardScreen() {
                     backgroundColor: overdue
                       ? 'rgba(217,75,75,0.06)'
                       : hovered === order.id
-                        ? 'rgba(74,143,201,0.06)'
+                        ? hexA(P, 0.10)   // mavi yerine panel accent'i (safran)
                         : undefined,
                   }}
                   onPress={() => router.push(`/(lab)/order/${order.id}` as any)}
@@ -2113,9 +1764,9 @@ export function LabDashboardScreen() {
                     <View style={{ minWidth: 0 }}>
                       <Text style={{ fontSize: 12, fontWeight: '800', color: P }} numberOfLines={1}>#{order.order_number}</Text>
                       {(order as any).__revChild ? (
-                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E', letterSpacing: 0.4 }}>{(order as any).__continuation ? 'DEVAM' : 'REVİZYON'}</Text>
+                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E', letterSpacing: 0.4 }}>{(order as any).__continuation ? autoT('Devam') : autoT('Revizyon')}</Text>
                       ) : (order as any).__revParent ? (
-                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: T.ink3, letterSpacing: 0.4 }}>ORİJİNAL</Text>
+                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: T.ink3, letterSpacing: 0.4 }}>{autoT('Orijinal')}</Text>
                       ) : null}
                     </View>
                     {(order as any).is_urgent && (
@@ -2148,7 +1799,7 @@ export function LabDashboardScreen() {
                   </View>
                   {isDesktop && (
                     <Text style={{ flex: 2, fontSize: 11, color: T.ink3 }} numberOfLines={1}>{(order as any).__revChild && (
-                      <Text style={{ fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E' }}>{(order as any).__continuation ? 'Devam - ' : 'Revizyon - '}</Text>
+                      <Text style={{ fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E' }}>{`${(order as any).__continuation ? autoT('Devam') : autoT('Revizyon')} - `}</Text>
                     )}{order.work_type || '--'}</Text>
                   )}
                   <View style={{ flex: 1.4 }}>
@@ -2170,7 +1821,7 @@ export function LabDashboardScreen() {
 
       {/* Stok & Maliyet — müdür panelinde gösterilmez (yönetici stoğu ayrı sayfadan yönetir) */}
       {stockSummary && !isManager && (
-        <Card style={{ marginBottom: 14 }}>
+        <Card style={{ marginBottom: 16 }}>
           <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
             <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>Stok & Maliyet</Text>
             <Pressable onPress={() => router.push('/(lab)/stock' as any)}>
@@ -2224,9 +1875,9 @@ export function LabDashboardScreen() {
 
       {/* İstasyon & Teknisyen */}
       {(stationStats.length > 0 || topTechs.length > 0) && (
-        <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 14, marginBottom: 14 }}>
+        <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 16, marginBottom: 16 }}>
           {stationStats.length > 0 && (
-            <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 14 }}>
+            <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 16 }}>
               <CardHeader title="İstasyon Yoğunluğu" display />
               <StationBottleneck data={stationStats} />
             </Card>
@@ -2240,24 +1891,15 @@ export function LabDashboardScreen() {
         </View>
       )}
 
-      {/* Yönetici: Statü + İş tipi dağılımı (Admin Özet'teki kartlar) */}
-      {isManager ? (
-        <DashRow gap={14} style={{ marginBottom: 14 }}>
-          <DashHalf gap={14}>
-            <DashCell><StatusDistCard byStatus={mgrByStatus} /></DashCell>
+      {/* ════════ EN ALT — Statü dağılımı · Bu hafta (Admin Özet'teki alt sıra) ════════ */}
+      <DashRow gap={16} style={{ marginBottom: 16 }}>
+        {isManager ? (
+          <DashHalf gap={16}>
+            <DashCell motion={0}><StatusDistCard byStatus={mgrByStatus} /></DashCell>
           </DashHalf>
-          {mgrDist.byWorkType.length > 0 ? (
-            <DashHalf gap={14}>
-              <DashCell><WorkTypeCard data={mgrDist.byWorkType} /></DashCell>
-            </DashHalf>
-          ) : <DashHalfSpacer gap={14} />}
-        </DashRow>
-      ) : null}
-
-      {/* ════════ EN ALT — Bu hafta (Admin Özet'teki gibi sayfanın sonunda) ════════ */}
-      <DashRow gap={14} style={{ marginBottom: 14 }}>
-        <DashHalf gap={14}>
-          <DashCell>
+        ) : null}
+        <DashHalf gap={16}>
+          <DashCell motion={1}>
             <WeeklyStrip
               weekDays={weekDays}
               weekCounts={weekCounts}
@@ -2267,7 +1909,7 @@ export function LabDashboardScreen() {
             />
           </DashCell>
         </DashHalf>
-        <DashHalfSpacer gap={14} />
+        {isManager ? null : <DashHalfSpacer gap={16} />}
       </DashRow>
 
       <View style={{ height: 40 }} />

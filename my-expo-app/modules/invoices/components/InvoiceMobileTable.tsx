@@ -26,7 +26,7 @@ export function InvoiceMobileTable({ invoices, accent, onOpen }: {
   onOpen: (inv: Invoice) => void;
 }) {
   return (
-    <MobileTableX title="Faturalar" count={invoices.length} countLabel="fatura" accent={accent}>
+    <MobileTableX title="Hizmet bedelleri" count={invoices.length} countLabel="hizmet bedeli" accent={accent}>
       {invoices.map((inv, i) => (
         <InvoiceMobileRow key={inv.id} invoice={inv} isLast={i === invoices.length - 1} onPress={() => onOpen(inv)} />
       ))}

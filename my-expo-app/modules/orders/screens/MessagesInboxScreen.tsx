@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import React, { useMemo, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
@@ -91,20 +92,20 @@ function lastPreview(item: {
 }, currentUserId: string | null): { text: string; isMine: boolean } {
   const isMine = !!item.last_sender_id && item.last_sender_id === currentUserId;
   if (!item.last_content && !item.last_attachment_type) {
-    return { text: 'Henüz mesaj yok', isMine: false };
+    return { text: autoT('Henüz mesaj yok'), isMine: false };
   }
   const senderName = isMine
-    ? 'Siz'
+    ? autoT('Siz')
     : (item.last_sender_name ? String(item.last_sender_name).split(' ')[0] : null);
   const prefix = senderName ? `${senderName}: ` : '';
   if (item.last_attachment_type === 'image') {
-    return { text: `${prefix}📷 Fotoğraf${item.last_content ? ` · ${item.last_content}` : ''}`, isMine };
+    return { text: `${prefix}${autoT('Fotoğraf')}${item.last_content ? ` · ${item.last_content}` : ''}`, isMine };
   }
   if (item.last_attachment_type === 'audio') {
-    return { text: `${prefix}🎙️ Sesli mesaj`, isMine };
+    return { text: `${prefix}${autoT('Sesli mesaj')}`, isMine };
   }
   if (item.last_attachment_type === 'file') {
-    return { text: `${prefix}📎 Dosya${item.last_content ? ` · ${item.last_content}` : ''}`, isMine };
+    return { text: `${prefix}${autoT('Dosya')}${item.last_content ? ` · ${item.last_content}` : ''}`, isMine };
   }
   return { text: `${prefix}${item.last_content ?? ''}`, isMine };
 }
@@ -292,12 +293,18 @@ interface Props {
   accentColor?: string;
   routePrefix:  string;
   currentUserId?: string | null;
+  /** Masaüstünde listeyi bu genişlikte ortalar (verilmezse eski tam-genişlik davranış) */
+  desktopMaxWidth?: number;
+  /** Açık tema sayfa zemini — panel bgPage'i (verilmezse eski #F7F9FB) */
+  pageBg?: string;
 }
 
 export function MessagesInboxScreen({
   accentColor = '#2563EB',
   routePrefix,
   currentUserId = null,
+  desktopMaxWidth,
+  pageBg,
 }: Props) {
   const router = useRouter();
   const T = useMobileTokens();
@@ -305,6 +312,8 @@ export function MessagesInboxScreen({
   const { items, loading, totalUnread, refetch } = useOrderChatInbox();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
+  // Masaüstünde liste tam genişliğe uzuyordu; prop verilmişse ortalı sütun + kısa üst boşluk
+  const centered = isDesktop && !!desktopMaxWidth;
 
   // Panel tarafı: lab/admin/teknisyen(station) → klinik+hekim başlık · klinik/hekim → hasta başlık
   const side: 'lab' | 'client' =
@@ -335,7 +344,7 @@ export function MessagesInboxScreen({
   const ListHeader = (
     <View>
       {/* Title block */}
-      <View style={s.titleRow}>
+      <View style={[s.titleRow, centered && { paddingTop: 24 }]}>
         <Text style={[s.title, { color: isDark ? T.ink : '#0F172A' }]}>Mesajlar</Text>
         {totalUnread > 0 && (
           <View style={[s.totalBadge, { backgroundColor: accentColor }]}>
@@ -373,7 +382,7 @@ export function MessagesInboxScreen({
   );
 
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: isDark ? T.bg : BG }]} edges={['top']}>
+    <SafeAreaView style={[s.safe, { backgroundColor: isDark ? T.bg : (pageBg ?? BG) }]} edges={['top']}>
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.work_order_id}
@@ -390,7 +399,7 @@ export function MessagesInboxScreen({
             {index < filtered.length - 1 && <View style={[s.divider, { backgroundColor: isDark ? T.hairline : '#F1F5F9' }]} />}
           </View>
         )}
-        contentContainerStyle={s.list}
+        contentContainerStyle={[s.list, centered && { width: '100%', maxWidth: desktopMaxWidth, alignSelf: 'center' as const }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={accentColor} />}
         ListEmptyComponent={

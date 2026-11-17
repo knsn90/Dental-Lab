@@ -45,16 +45,16 @@ type Props = {
  */
 const VIEW_TEXTS = {
   open: {
-    eyebrow: 'Açık Faturalar',
+    eyebrow: 'Açık hizmet bedelleri',
     title: 'Bekleyen Ödemeler',
     emptyTitle: 'Bekleyen ödeme yok',
-    emptyDescription: 'Tüm açık faturalar tahsil edilmiş.',
+    emptyDescription: 'Tüm açık hizmet bedelleri tahsil edilmiş.',
   },
   overdue: {
     eyebrow: 'Acil Tahsilat',
     title: 'Vadesi Geçen',
-    emptyTitle: 'Vadesi geçen fatura yok',
-    emptyDescription: 'Tüm faturalarınız zamanında ödeniyor.',
+    emptyTitle: 'Vadesi geçen hizmet bedeli yok',
+    emptyDescription: 'Tüm hizmet bedelleriniz zamanında ödeniyor.',
   },
 } as const;
 
@@ -132,10 +132,10 @@ export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
         kicker={texts.eyebrow}
         title={texts.title}
         description={overdueCount > 0 && filter !== 'overdue'
-          ? `${overdueCount} ${autoT('faturanın vadesi geçmiş')}`
+          ? `${overdueCount} ${autoT('hizmet bedelinin vadesi geçmiş')}`
           : undefined}
         stats={[
-          { value: String(filtered.length), label: autoT('Fatura') },
+          { value: String(filtered.length), label: autoT('Hizmet bedeli') },
           /* Para birimleri ASLA toplanmaz: her biri kendi kutucuğunda durur.
              İkiden fazlası hero'yu taşırıyor, kalanı listede zaten görünür. */
           ...remByCcy.slice(0, 2).map(sum => ({
@@ -207,7 +207,7 @@ export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
       ) : (
         /* Ekstre / giderler mobil tablosuyla aynı kalıp */
         <MobileTableX
-          title={texts.title} count={filtered.length} countLabel="fatura"
+          title={texts.title} count={filtered.length} countLabel="hizmet bedeli"
           accent={filter === 'overdue' ? '#D94B4B' : undefined}
           footer={<>
             <Text style={MT.footNote}>{filtered.length} fatura</Text>
@@ -261,7 +261,7 @@ export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
                       Kalan
                     </Text>
                   </View>
-                  <GlassTooltip title={autoT('Öde')} text={autoT('Faturayı kartla öder')}>
+                  <GlassTooltip title={autoT('Öde')} text={autoT('Hizmet bedelini kartla öder')}>
                     <PillButton
                       variant={isOverdue ? 'danger' : 'dark'}
                       size="sm"

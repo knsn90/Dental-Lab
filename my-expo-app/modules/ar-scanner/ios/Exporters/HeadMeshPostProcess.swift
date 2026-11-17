@@ -137,13 +137,18 @@ enum HeadMeshPostProcess {
                    translation: a.scale * (a.rotation * b.translation) + a.translation)
     }
 
-    /// Kafa çerçevesinde (m) tutulacak hacim: kafa küresi ∪ boyun silindiri.
+    /// Kafa çerçevesinde (m) tutulacak hacim: kafa elipsoidi ∪ boyun silindiri.
+    /// Küre (r 16,5 cm) başın yanlarında boşluk bırakıyor, dışarı fırlayan ince levhalar içinde
+    /// kalıyordu (2026-11-16). Elipsoit başa oturur: yarı eksenler sağ-sol 11,5 · dikey 15 · ön-arka 13,5 cm.
     static let keepHeadRadius: Float = 0.165
+    static let keepHeadSemiAxes = SIMD3<Float>(0.115, 0.150, 0.135)
+    static let keepHeadCenterY: Float = 0.005
     static let keepNeckRadius: Float = 0.095
     static let keepNeckBelow: Float = 0.23
 
     @inline(__always) static func keep(_ p: SIMD3<Float>) -> Bool {
-        if simd_length(p) < keepHeadRadius { return true }
+        let e = SIMD3<Float>(p.x, p.y - keepHeadCenterY, p.z) / keepHeadSemiAxes
+        if simd_length_squared(e) < 1 { return true }
         return p.y < 0 && p.y > -keepNeckBelow && simd_length(SIMD2<Float>(p.x, p.z)) < keepNeckRadius
     }
 
@@ -244,6 +249,44 @@ enum HeadMeshPostProcess {
                 if !keep(c / Float(f.idx.count)) { continue }
             }
             keptFaces.append(f)
+        }
+        // Alt kapak: model kurucu, kutunun tabanının omuzları kestiği yeri düz bir levhayla
+        // kapatıyor. En alttaki 12 mm'lik dilimde yatay yüzler çoksa o dilim atılır.
+        if crop, keptFaces.count > 100 {
+            var minY = Float.greatestFiniteMagnitude
+            for f in keptFaces { for t in f.idx { minY = min(minY, headPts[t.0].y) } }
+            let limit = minY + 0.012
+            func centerY(_ f: (g: Int, idx: [(Int, Int, Int)])) -> Float {
+                f.idx.reduce(Float(0)) { $0 + headPts[$1.0].y } / Float(f.idx.count)
+            }
+            var flat = 0
+            for f in keptFaces where centerY(f) < limit {
+                let a = headPts[f.idx[0].0], b = headPts[f.idx[1].0], c = headPts[f.idx[2].0]
+                let n = simd_cross(b - a, c - a), len = simd_length(n)
+                if len > 0, abs(n.y) / len > 0.85 { flat += 1 }
+            }
+            if flat >= 100 { keptFaces = keptFaces.filter { centerY($0) >= limit } }
+        }
+        // Başa bağlı olmayan parçaları at: kesim hacmine giren komşu eşya kırıntıları (arkadaki
+        // yüzey, yandaki nesne) baştan ayrı adacıklardır. En büyük adacık baştır; ona yakın
+        // büyüklükte olmayanlar (en büyüğün %30'undan küçükler) çıkarılır.
+        if crop, keptFaces.count > 100 {
+            var parent = Array(0..<v.count)
+            func find(_ x: Int) -> Int {
+                var r = x
+                while parent[r] != r { r = parent[r] }
+                var c = x
+                while parent[c] != r { let n = parent[c]; parent[c] = r; c = n }
+                return r
+            }
+            for f in keptFaces {
+                let a = find(f.idx[0].0)
+                for t in f.idx.dropFirst() { let b = find(t.0); if a != b { parent[b] = a } }
+            }
+            var size: [Int: Int] = [:]
+            for f in keptFaces { size[find(f.idx[0].0), default: 0] += 1 }
+            let largest = size.values.max() ?? 0
+            keptFaces = keptFaces.filter { size[find($0.idx[0].0)]! * 10 >= largest * 3 }
         }
         // Çok agresif kestiyse (yanlış hizalama) kesmeden devam et
         if crop, keptFaces.count < faces.count / 10 {
