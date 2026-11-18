@@ -575,9 +575,10 @@ export function OrdersListScreenV2() {
     }
   }, [panelGroup, router]);
 
-  // ── Hekim masaüstü split view ──
-  // Yalnız hekim paneli + masaüstü + liste görünümü. Diğer paneller satıra
-  // tıklayınca eskisi gibi detay sayfasına gider.
+  // Arama hep görünür ("/" ile odaklanır): hekim + lab + admin (+ istasyon; detectPanel'de 'lab').
+  const splitPanel = panel === 'doctor' || panel === 'lab' || panel === 'admin';
+  // ── Masaüstü split view — YALNIZ hekim ──
+  // Lab/admin satırları detayı zaten taşıyor; orada satır eskisi gibi detay sayfasına gider.
   const splitView = isDesktop && panel === 'doctor' && viewMode === 'list' && statusFilter !== 'manual';
   // Panelin ↑ ↓ ile gezdiği sıra = ekrandaki sıra (planlama bloğu önce, sonra ana tablo).
   const visualOrder = useMemo(() => {
@@ -589,31 +590,37 @@ export function OrdersListScreenV2() {
   // Seçili sipariş süzgeçten düşerse paneli kapat
   useEffect(() => { if (selectedId && splitView && !splitOrder) setSelectedId(null); }, [selectedId, splitView, splitOrder]);
   const onRowPress = useCallback((order: WorkOrder) => {
-    if (splitView) setSelectedId(prev => (prev === String(order.id) ? null : String(order.id)));
-    else onCardPress(order);
-  }, [splitView, onCardPress]);
+    // Planlama bekleyen iş lab/admin'de Plan ekranına, istasyonda uyarıya gider —
+    // bu davranış korunur (panel açılmaz).
+    const needsTriage = order.status === 'alindi' && !(order as any).triaged_at;
+    if (splitView && !(needsTriage && panel !== 'doctor')) {
+      setSelectedId(prev => (prev === String(order.id) ? null : String(order.id)));
+    } else onCardPress(order);
+  }, [splitView, onCardPress, panel]);
 
   // Klavye: Esc kapatır · ↑ ↓ önceki/sonraki · "/" aramaya odaklanır (yalnız web, hekim masaüstü)
   useEffect(() => {
     if (Platform.OS !== 'web' || !splitView || typeof window === 'undefined') return;
+    const isTriage = (o: WorkOrder) => panel !== 'doctor' && o.status === 'alindi' && !(o as any).triaged_at;
+    const nav = visualOrder.filter(o => !isTriage(o));
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
       if (e.key === '/' && !typing) { e.preventDefault(); searchInputRef.current?.focus?.(); return; }
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'Escape' && selectedId) { setSelectedId(null); return; }
-      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && visualOrder.length) {
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && nav.length) {
         e.preventDefault();
-        const idx = selectedId ? visualOrder.findIndex(o => String(o.id) === selectedId) : -1;
+        const idx = selectedId ? nav.findIndex(o => String(o.id) === selectedId) : -1;
         const next = e.key === 'ArrowDown'
-          ? Math.min(visualOrder.length - 1, idx + 1)
+          ? Math.min(nav.length - 1, idx + 1)
           : Math.max(0, idx < 0 ? 0 : idx - 1);
-        setSelectedId(String(visualOrder[next].id));
+        setSelectedId(String(nav[next].id));
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [splitView, selectedId, visualOrder]);
+  }, [splitView, selectedId, visualOrder, panel]);
 
   const onAssignPress = useCallback((order: WorkOrder) => {
     setAssignTarget(order);
@@ -993,12 +1000,12 @@ export function OrdersListScreenV2() {
           </ScrollView>
 
           {/* Search */}
-          {/* Hekim panelinde arama hep görünür ("/" ile odaklanır); diğer panellerde ikondan açılır. */}
-          {(searchOpen || panel === 'doctor') ? (
+          {/* Hekim/lab/admin/istasyon panelinde arama hep görünür ("/" ile odaklanır); klinikte ikondan açılır. */}
+          {(searchOpen || splitPanel) ? (
             <View
               className="flex-row items-center gap-2 rounded-full px-3 h-8"
               style={{
-                minWidth: panel === 'doctor' ? 280 : 200,
+                minWidth: splitPanel ? 280 : 200,
                 backgroundColor: isDark ? T.card : '#FFFFFF',
                 borderWidth: 1, borderColor: T.hairline,
                 // @ts-ignore
@@ -1013,16 +1020,16 @@ export function OrdersListScreenV2() {
                 placeholderTextColor={T.ink3 as string}
                 value={search}
                 onChangeText={setSearch}
-                autoFocus={panel !== 'doctor'}
+                autoFocus={!splitPanel}
                 returnKeyType="search"
-                onBlur={() => { if (!search && panel !== 'doctor') setSearchOpen(false); }}
+                onBlur={() => { if (!search && !splitPanel) setSearchOpen(false); }}
                 style={{ color: T.ink, outlineStyle: 'none' } as any}
               />
               {search.length > 0 ? (
                 <Pressable onPress={() => { setSearch(''); setSearchOpen(false); }}>
                   <X size={13} color={T.ink2} strokeWidth={2} />
                 </Pressable>
-              ) : panel === 'doctor' && Platform.OS === 'web' ? (
+              ) : splitPanel && Platform.OS === 'web' ? (
                 <View style={{ borderWidth: 1, borderColor: T.hairline, borderRadius: 5, paddingHorizontal: 6 }}>
                   <Text style={{ fontSize: 11.5, color: T.ink3, fontFamily: 'monospace' }}>/</Text>
                 </View>
@@ -1803,6 +1810,7 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
           useClinicLogoAvatar={tablePanel !== 'clinic' && tablePanel !== 'doctor'}
           showDoctorCol={showDoctorCol}
           showCreatedCol={!compact}
+          showProgress={tablePanel === 'lab' || tablePanel === 'admin'}
           selected={!!selectedId && String(order.id) === selectedId}
           key={order.id}
           order={order}
@@ -1885,12 +1893,14 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
   );
 }
 
-const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, isLast, useClinicLogoAvatar, showDoctorCol = true, showCreatedCol = true, selected = false, onPress, onAssign, onEdit, onArchive, onDelete, onAwaitDoctor }: {
+const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, isLast, useClinicLogoAvatar, showDoctorCol = true, showCreatedCol = true, showProgress = false, selected = false, onPress, onAssign, onEdit, onArchive, onDelete, onAwaitDoctor }: {
   order: WorkOrder;
   /** Hekim panelinde false — Hekim sütunu çizilmez. */
   showDoctorCol?: boolean;
   /** Yan panel açıkken false — Oluşturma sütunu çizilmez. */
   showCreatedCol?: boolean;
+  /** Lab/admin/istasyon: durum rozetinin altında üretim ilerleme çubuğu. */
+  showProgress?: boolean;
   /** Split view'de sağ panelde açık olan satır. */
   selected?: boolean;
   /** Lab/admin/teknisyen: hasta baş harfleri yerine klinik logosu göster. */
@@ -2116,6 +2126,25 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
             </Text>
           </View>
         </View>
+        {showProgress && !needsTriage && order.status !== 'iptal' && (() => {
+          // Üretim ilerlemesi: aşama sayımı (skipped hariç) varsa o, yoksa durum adımı (5 adım).
+          const total = Number((order as any).stages_total) || 0;
+          const doneN = Number((order as any).stages_done) || 0;
+          const delivered = order.status === 'teslim_edildi';
+          const STEP: Record<string, number> = { alindi: 1, atama_bekleniyor: 1, asamada: 2, uretimde: 2, kalite_kontrol: 3, teslimata_hazir: 4, kurye_bekleniyor: 4, kuryede: 4, teslim_edildi: 5 };
+          const num = total > 0 ? (delivered ? total : Math.min(doneN, total)) : (STEP[order.status] ?? 1);
+          const den = total > 0 ? total : 5;
+          const pct = Math.max(0, Math.min(100, Math.round((num / den) * 100)));
+          const fill = isLate ? '#DC2626' : delivered ? '#2D9A6B' : onHold ? '#E89B2A' : stageColor;
+          return (
+            <View className="flex-row items-center gap-1.5" style={{ marginTop: 6, maxWidth: 150 }}>
+              <View style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+                <View style={{ width: `${pct}%`, height: '100%', borderRadius: 2, backgroundColor: fill }} />
+              </View>
+              <Text style={{ fontSize: 10.5, fontWeight: '600', color: T.ink3, fontVariant: ['tabular-nums'] }}>{`${num}/${den}`}</Text>
+            </View>
+          );
+        })()}
       </View>
 
       {/* Action */}

@@ -1,6 +1,7 @@
 // modules/orders/components/OrderSidePanel.tsx
 // Masaüstü sipariş listesinde sağda açılan detay paneli (split view) — 2026-11.
-// Şimdilik YALNIZ hekim panelinde kullanılır (OrdersListScreenV2, panel==='doctor').
+// Yalnız hekim panelinde kullanılır (OrdersListScreenV2). Renkler aktif panelden gelir;
+// showParties ile Hekim/Klinik satırları açılabilir.
 // Liste yerinde kalır; Esc kapatır, ↑ ↓ önceki/sonraki sipariş (klavye dinleyicisi
 // listede). "Tam sayfa aç" mevcut detay rotasına gider, "Mesaj" detayı sohbet açık
 // gelecek biçimde açar (?tab=chat).
@@ -11,7 +12,7 @@ import { X, Check, MessageCircle, ArrowUpRight } from '../../../core/ui/icons';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { fmtDayMonthYear, localeTag } from '../../../core/i18n';
 import { getOrderStageLabel } from '../utils/currentStage';
@@ -46,18 +47,31 @@ function safeDate(s?: string | null, withTime = false): string {
   return `${fmtDayMonthYear(d)} ${d.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })}`;
 }
 
-export function OrderSidePanel({ order, overdue, onClose, onOpenFull, onMessage }: {
+// Panel accent'inin rozet/aktif metin tonu — açık temada koyu, koyu temada açık.
+const ACCENT_TEXT: Record<string, { light: string; dark: string }> = {
+  clinic: { light: '#0A7247', dark: '#74E1A8' },
+  lab:    { light: '#8A6410', dark: '#F5C24B' },
+  exec:   { light: '#314F7E', dark: '#93C5FD' },
+  tech:   { light: '#1E5FBF', dark: '#93C5FD' },
+};
+
+export function OrderSidePanel({ order, overdue, onClose, onOpenFull, onMessage, showParties = false }: {
   order: WorkOrder;
   overdue: boolean;
   onClose: () => void;
   onOpenFull: () => void;
   onMessage: () => void;
+  /** Hekim ve klinik satırlarını göster (hekim dışı paneller). */
+  showParties?: boolean;
 }) {
   const T = useMobileTokens();
   const U = useInkUI();
   const isDark = useThemeModeStore(s => s.resolvedDark);
-  const accent = usePanelTheme().primary;
-  const accentText = isDark ? '#74E1A8' : '#0A7247';
+  const theme = usePanelTheme();
+  const accent = theme.primary;
+  const onAccent = onAccentInk(accent);
+  const tone = ACCENT_TEXT[theme.key] ?? ACCENT_TEXT.clinic;
+  const accentText = isDark ? tone.dark : tone.light;
   const step = STATUS_STEP[order.status] ?? 0;
   const cancelled = order.status === 'iptal';
   const teeth = order.tooth_numbers?.length ? order.tooth_numbers.join(', ') : '—';
@@ -67,7 +81,13 @@ export function OrderSidePanel({ order, overdue, onClose, onOpenFull, onMessage 
   const statusText = onHold ? autoT(holdBadgeText(order as any)) : getOrderStageLabel(order as any);
   const holdFg = isDark ? '#F0C078' : '#9C5E0E';
 
+  const doctorName = order.doctor?.full_name || '—';
+  const clinicName = order.doctor?.clinic?.name || order.doctor?.clinic_name || '—';
   const rows: { label: string; value: string; tone?: string }[] = [
+    ...(showParties ? [
+      { label: 'Hekim',  value: doctorName },
+      { label: 'Klinik', value: clinicName },
+    ] : []),
     { label: 'İş',        value: order.work_type || '—' },
     { label: 'Dişler',    value: teeth },
     { label: 'Renk',      value: order.shade || '—' },
@@ -150,7 +170,7 @@ export function OrderSidePanel({ order, overdue, onClose, onOpenFull, onMessage 
                         borderColor: current ? accent : (isDark ? 'rgba(255,255,255,0.18)' : '#D4D4D4'),
                         ...(current && Platform.OS === 'web' ? { boxShadow: `0 0 0 4px ${hexA(accent, 0.18)}` } as any : {}),
                       }}>
-                        {done && <Check size={10} color="#FFFFFF" strokeWidth={3.2} />}
+                        {done && <Check size={10} color={onAccent} strokeWidth={3.2} />}
                       </View>
                       {!last && (
                         <View style={{ width: 2, height: 22, backgroundColor: done ? accent : (isDark ? 'rgba(255,255,255,0.10)' : '#E4E7E5') }} />
@@ -218,8 +238,8 @@ export function OrderSidePanel({ order, overdue, onClose, onOpenFull, onMessage 
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
             })}
           >
-            <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }}>{autoT('Tam sayfa aç')}</Text>
-            <ArrowUpRight size={15} color="#FFFFFF" strokeWidth={2} />
+            <Text style={{ fontSize: 14, fontWeight: '600', color: onAccent }}>{autoT('Tam sayfa aç')}</Text>
+            <ArrowUpRight size={15} color={onAccent} strokeWidth={2} />
           </Pressable>
         </View>
 
