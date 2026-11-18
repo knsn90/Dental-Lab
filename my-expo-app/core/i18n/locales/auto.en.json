@@ -10820,5 +10820,10 @@
   "revizyonda hatalı istasyon işaretlenmemiş. Revizyon açarken istasyonu seçerseniz burada kırılım görünür.": "revisions have no faulty station marked. Select the station when opening a revision to see a breakdown here.",
   "Son revizyonlar": "Recent revisions",
   "Menüyü genişlet": "Expand menu",
-  "Menüyü daralt": "Collapse menu"
+  "Menüyü daralt": "Collapse menu",
+  "Tahsilatı sil; kapattığı hizmet bedelleri yeniden açılır": "Delete the payment; the service fees it settled are reopened",
+  "Tahsilatı sil": "Delete payment",
+  "Tahsilat silinsin mi? Kapattığı hizmet bedelleri yeniden açılır; geri alınamaz.": "Delete this payment? The service fees it settled will be reopened; this cannot be undone.",
+  "Tahsilat silinemedi": "Payment could not be deleted",
+  "Bu tahsilat hizmet bedellerine dağıtılmış; kaydedince yeniden dağıtılır": "This payment is allocated to service fees; it will be reallocated when you save"
 }

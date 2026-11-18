@@ -23,7 +23,7 @@ import { getRate } from '../../../core/money/currency';
 import { getBaseCurrency } from '../../../core/money/baseCurrency';
 import { labTodayOf } from '../../../core/metrics/orderDefs';
 import { cachedLabTz, loadLabTz } from '../../../core/metrics/useLabToday';
-import { previewClinicReceipt, recordClinicReceipt, updateClinicReceipt, setClinicReceiptAccount } from '../api';
+import { previewClinicReceipt, recordClinicReceipt, updateClinicReceipt, setClinicReceiptAccount, deleteClinicReceipt } from '../api';
 import { fetchDepositAccounts } from '../../cash/api';
 import type { ReceiptLine, ReceiptResult, ClinicReceipt, OpenInvoice } from '../types';
 import {
@@ -83,6 +83,10 @@ export function ClinicReceiptModal({
   const [openInvs, setOpenInvs] = useState<OpenInvoice[]>([]);
   const [saveErr, setSaveErr]   = useState<string | null>(null);
   const [prevTick, setPrevTick] = useState(0);
+  // Silme iki adımlı: "Sil" → alt barda onay satırı (hata da düğmenin yanında kalır)
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [delBusy, setDelBusy]       = useState(false);
+  const [delErr, setDelErr]         = useState<string | null>(null);
   const idemRef = useRef<string>('');
   const debRef  = useRef<any>(null);
   const prevSeq = useRef(0);   // yalnız en son önizleme yanıtı uygulanır
@@ -92,6 +96,7 @@ export function ClinicReceiptModal({
     idemRef.current = `rcpt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     setPreview(null); setBusy(false); setMethodErr(false);
     setManual(false); setSelected([]); setOpenInvs([]); setSaveErr(null);
+    setConfirmDel(false); setDelBusy(false); setDelErr(null);
     setLocked(!!editing);
     setAccountId(editing?.account_id ?? null);
     fetchDepositAccounts().then(setAccounts).catch(() => setAccounts([]));
@@ -218,6 +223,20 @@ export function ClinicReceiptModal({
       setSaveErr(friendly ? autoT(friendly) : (raw || autoT('Tahsilat kaydedilemedi')));
       if (friendly) setPrevTick(t => t + 1);   // listeyi yenile, kapanan fatura seçimden düşsün
     } finally { setBusy(false); }
+  };
+
+  /** Kayıtlı makbuzu siler; faturalara dağıttığı ödemeler de silinir, o faturalar yeniden açılır (sunucu). */
+  const doDelete = async () => {
+    if (!editing || delBusy) return;
+    setDelBusy(true); setDelErr(null);
+    try {
+      await deleteClinicReceipt(editing.id);
+      toast.success(autoT('Tahsilat silindi'));
+      onSaved?.({ receipt_id: editing.id } as ReceiptResult);
+      onClose();
+    } catch (e: any) {
+      setDelErr(String(e?.message ?? '') || autoT('Tahsilat silinemedi'));
+    } finally { setDelBusy(false); }
   };
 
   /** Hesap para hareketi değildir: kayıtlı (salt okunur / dağıtılmış) makbuzda da seçilir ve hemen kaydedilir */
@@ -489,7 +508,7 @@ export function ClinicReceiptModal({
               ) : null}
             </View>
 
-            {/* Elle fatura seçimi — düzenlenen fiş dağıtılmaz, alacak kalır; seçim gizli */}
+            {/* Elle fatura seçimi — düzenlenen fiş eski faturalarına yeniden dağıtılır; seçim gizli */}
             {editing ? (
               <Text style={{ fontSize: 12, color: U.ink[500] }}>
                 {autoT('Düzenlenen tahsilat alacak olarak kalır; yeni hizmet bedeli kesinleşince uygulanır')}
@@ -587,7 +606,52 @@ export function ClinicReceiptModal({
           }}>
             {/* Makbuz yalnız KAYITLI fiş için anlamlı — yeni kayıtta henüz
                 belgeleneck bir tahsilat yok. */}
-            {editing && onPrintVoucher ? (
+            {editing && locked && !confirmDel ? (
+              <GlassTooltip title={autoT('Sil')}
+                text={autoT('Tahsilatı sil; kapattığı hizmet bedelleri yeniden açılır')}>
+                <Pressable onPress={() => { setConfirmDel(true); setDelErr(null); }}
+                  accessibilityRole="button" accessibilityLabel={autoT('Tahsilatı sil')}
+                  style={({ hovered }: any) => ({
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    ...(onPrintVoucher ? {} : { marginEnd: 'auto' as any }),
+                    paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999,
+                    borderWidth: 1, borderColor: U.hairline,
+                    backgroundColor: hovered ? U.chipTones.danger.bg : U.plainBtn.bg,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  })}>
+                  <Trash2 size={14} color={U.chipTones.danger.fg} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: U.chipTones.danger.fg }}>Sil</Text>
+                </Pressable>
+              </GlassTooltip>
+            ) : null}
+            {confirmDel && editing ? (
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <Text style={{ flex: 1, minWidth: 180, fontSize: 12, fontWeight: '600',
+                  color: delErr ? U.chipTones.danger.fg : U.ink[700] }}>
+                  {delErr ?? autoT('Tahsilat silinsin mi? Kapattığı hizmet bedelleri yeniden açılır; geri alınamaz.')}
+                </Text>
+                <Pressable onPress={() => { setConfirmDel(false); setDelErr(null); }} disabled={delBusy}
+                  style={{
+                    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
+                    borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: U.plainBtn.fg }}>Vazgeç</Text>
+                </Pressable>
+                <Pressable onPress={doDelete} disabled={delBusy}
+                  accessibilityRole="button" accessibilityLabel={autoT('Evet, sil')}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 7,
+                    paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999,
+                    backgroundColor: U.chipTones.danger.fg, opacity: delBusy ? 0.6 : 1,
+                    ...(Platform.OS === 'web' ? { cursor: delBusy ? 'not-allowed' : 'pointer' } as any : {}),
+                  }}>
+                  {delBusy ? <ActivityIndicator size="small" color="#FFFFFF" /> : null}
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Evet, sil</Text>
+                </Pressable>
+              </View>
+            ) : null}
+            {!confirmDel && editing && onPrintVoucher ? (
               <GlassTooltip title={autoT('Makbuz')} text={autoT('Bu tahsilat için PDF makbuz oluştur')}>
                 <Pressable onPress={() => onPrintVoucher(editing)}
                   style={{
@@ -607,6 +671,7 @@ export function ClinicReceiptModal({
             {methodErr && !locked ? (
               <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: U.chipTones.danger.fg }}>{autoT('Ödeme yöntemini seçin')}</Text>
             ) : null}
+            {confirmDel ? null : (<>
             <Pressable onPress={onClose}
               style={{
                 paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
@@ -618,7 +683,10 @@ export function ClinicReceiptModal({
               </Text>
             </Pressable>
             {locked ? (
-              <GlassTooltip title={autoT('Düzenle')} text={autoT('Bu tahsilatın bilgilerini değiştir')}>
+              <GlassTooltip title={autoT('Düzenle')}
+                text={(editing?.allocated_base ?? 0) > 0
+                  ? autoT('Bu tahsilat hizmet bedellerine dağıtılmış; kaydedince yeniden dağıtılır')
+                  : autoT('Bu tahsilatın bilgilerini değiştir')}>
                 <Pressable onPress={() => setLocked(false)}
                   style={{
                     paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999,
@@ -644,6 +712,7 @@ export function ClinicReceiptModal({
               </Pressable>
             </GlassTooltip>
             )}
+            </>)}
           </View>
         </View>
       </View>

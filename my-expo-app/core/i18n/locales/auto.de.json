@@ -10820,5 +10820,10 @@
   "revizyonda hatalı istasyon işaretlenmemiş. Revizyon açarken istasyonu seçerseniz burada kırılım görünür.": "Revisionen ohne markierte Fehlerstation. Wählen Sie beim Anlegen einer Revision die Station, um hier eine Aufschlüsselung zu sehen.",
   "Son revizyonlar": "Letzte Revisionen",
   "Menüyü genişlet": "Menü ausklappen",
-  "Menüyü daralt": "Menü einklappen"
+  "Menüyü daralt": "Menü einklappen",
+  "Tahsilatı sil; kapattığı hizmet bedelleri yeniden açılır": "Zahlung löschen; die damit beglichenen Leistungsentgelte werden wieder geöffnet",
+  "Tahsilatı sil": "Zahlung löschen",
+  "Tahsilat silinsin mi? Kapattığı hizmet bedelleri yeniden açılır; geri alınamaz.": "Diese Zahlung löschen? Die damit beglichenen Leistungsentgelte werden wieder geöffnet; dies kann nicht rückgängig gemacht werden.",
+  "Tahsilat silinemedi": "Zahlung konnte nicht gelöscht werden",
+  "Bu tahsilat hizmet bedellerine dağıtılmış; kaydedince yeniden dağıtılır": "Diese Zahlung ist Leistungsentgelten zugeordnet; beim Speichern wird sie neu zugeordnet"
 }

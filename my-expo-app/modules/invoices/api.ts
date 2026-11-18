@@ -730,7 +730,7 @@ export async function setClinicReceiptAccount(receiptId: string, account: { id: 
   if (error) throw new Error(error.message);
 }
 
-/** Fişi düzeltir — satırlar tamamen değiştirilir. Dağıtılmış fiş reddedilir. */
+/** Fişi düzeltir — satırlar tamamen değiştirilir. Dağıtılmış fişin ödemeleri geri alınıp yeniden dağıtılır (sunucu). */
 export async function updateClinicReceipt(p: {
   receiptId: string;
   lines: ReceiptLine[];
@@ -751,6 +751,7 @@ export async function updateClinicReceipt(p: {
   return data as ReceiptResult;
 }
 
+/** Fişi siler; faturalara dağıttığı ödemeler de silinir, o faturalar yeniden açılır. */
 export async function deleteClinicReceipt(receiptId: string): Promise<void> {
   const { error } = await supabase.rpc('delete_clinic_receipt', { p_receipt_id: receiptId });
   if (error) throw new Error(error.message);

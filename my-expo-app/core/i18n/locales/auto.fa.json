@@ -10820,5 +10820,10 @@
   "revizyonda hatalı istasyon işaretlenmemiş. Revizyon açarken istasyonu seçerseniz burada kırılım görünür.": "بازبینی بدون ایستگاه خطای مشخص. هنگام ثبت بازبینی ایستگاه را انتخاب کنید تا تفکیک اینجا نمایش داده شود.",
   "Son revizyonlar": "بازبینی‌های اخیر",
   "Menüyü genişlet": "باز کردن منو",
-  "Menüyü daralt": "جمع کردن منو"
+  "Menüyü daralt": "جمع کردن منو",
+  "Tahsilatı sil; kapattığı hizmet bedelleri yeniden açılır": "حذف دریافتی؛ هزینه‌های خدماتی که تسویه کرده دوباره باز می‌شوند",
+  "Tahsilatı sil": "حذف دریافتی",
+  "Tahsilat silinsin mi? Kapattığı hizmet bedelleri yeniden açılır; geri alınamaz.": "این دریافتی حذف شود؟ هزینه‌های خدماتی که تسویه کرده دوباره باز می‌شوند؛ قابل بازگشت نیست.",
+  "Tahsilat silinemedi": "دریافتی حذف نشد",
+  "Bu tahsilat hizmet bedellerine dağıtılmış; kaydedince yeniden dağıtılır": "این دریافتی به هزینه‌های خدمات تخصیص یافته است؛ با ذخیره دوباره تخصیص می‌یابد"
 }
