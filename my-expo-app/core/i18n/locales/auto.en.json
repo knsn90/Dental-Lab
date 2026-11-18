@@ -10782,5 +10782,12 @@
   "Taslak fatura güncellenmedi": "Draft invoice was not updated",
   "Uyarıyı kapat": "Close the notice",
   "Siparişin kalemleri değişti, ama taslak faturası eski tutarla duruyor. Fatura otomatik güncellenmez; kliniğe gitmeden önce faturayı da düzeltin.": "The order's items changed, but its draft invoice still shows the old amount. The invoice is not updated automatically; correct it before it goes to the clinic.",
-  "Daha sonra": "Later"
+  "Daha sonra": "Later",
+  "PDF seçenekleri": "PDF options",
+  "Yazdırılamadı": "Could not print",
+  "Ön ekstreyi PDF dosyası olarak indirir; son seçilen biçim kullanılır": "Downloads the pre-statement as a PDF file using the last chosen format",
+  "Doğrudan yazıcı penceresini açar; son seçilen biçim kullanılır": "Opens the print dialog directly using the last chosen format",
+  "Ekstreyi PDF dosyası olarak indirir; son seçilen seçenekler kullanılır": "Downloads the statement as a PDF file using the last chosen options",
+  "Doğrudan yazıcı penceresini açar; son seçilen seçenekler kullanılır": "Opens the print dialog directly using the last chosen options",
+  "Onay bekleyenler, biçim ve hekim seçimi": "Pending approvals, format and dentist selection"
 }

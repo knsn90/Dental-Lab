@@ -49,6 +49,70 @@ export async function exportHtmlPdf(
   await deliverWebPdf(file);
 }
 
+/**
+ * Doğrudan PDF DOSYASI (2026-11-18: "uygulamada da sistem penceresinde de soruyor").
+ * Web'de sekme/yazdırma penceresi açılmaz: html2canvas + jsPDF ile A4 dosya indirilir
+ * (masaüstünde a[download]; dar ekranda paylaşım sayfası). Native: paylaşım sayfası.
+ * HTML kâğıt görünümünde (paper) üretilmeli — html2canvas @media print uygulamaz.
+ */
+export async function downloadHtmlPdf(html: HtmlSrc, fileName: string): Promise<void> {
+  const src = await html;
+  if (Platform.OS !== 'web') return nativeShare(src, fileName);
+  const file = await buildWebPdfFile(src, fileName);
+  if (Dimensions.get('window').width >= 1024) return saveFile(file);
+  await deliverWebPdf(file);
+}
+
+/**
+ * Doğrudan YAZDIR: tek adım, yalnız sistem yazdırma penceresi (uygulama sekmesi/araç çubuğu yok).
+ * Web: gizli iframe'e yazılır, görseller + fontlar yüklenince iframe yazdırılır.
+ * Native: expo-print sistem yazdırma penceresi.
+ */
+export async function printHtmlDirect(html: HtmlSrc, title?: string): Promise<void> {
+  const src = await html;
+  if (Platform.OS !== 'web') {
+    const Print = await import('expo-print');
+    await Print.printAsync({ html: src, width: 595, height: 842, margins: { top: 45, bottom: 45, left: 40, right: 40 } } as any);
+    return;
+  }
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;';
+  document.body.appendChild(iframe);
+  const cleanup = () => { try { document.body.removeChild(iframe); } catch {} };
+  try {
+    const doc = iframe.contentDocument!;
+    const titled = title ? src.replace(/<title>[\s\S]*?<\/title>/, `<title>${title.replace(/[<>&]/g, '')}</title>`) : src;
+    doc.open(); doc.write(titled); doc.close();
+    await new Promise<void>((resolve) => {
+      const imgs = Array.from(doc.images);
+      if (imgs.length === 0) return resolve();
+      let loaded = 0;
+      const tick = () => { if (++loaded >= imgs.length) resolve(); };
+      imgs.forEach(img => { if (img.complete) tick(); else { img.onload = tick; img.onerror = tick; } });
+      setTimeout(resolve, 5000);
+    });
+    try { await Promise.race([(doc as any).fonts?.ready, new Promise(r => setTimeout(r, 3000))]); } catch {}
+    const win = iframe.contentWindow!;
+    // Belge başlığı = önerilen PDF dosya adı (Chrome/Safari "PDF olarak kaydet")
+    const prevTitle = document.title;
+    if (title) document.title = title;
+    win.addEventListener('afterprint', () => { document.title = prevTitle; setTimeout(cleanup, 500); });
+    win.focus();
+    win.print();
+    // afterprint gelmeyen tarayıcılar için emniyet
+    setTimeout(() => { document.title = prevTitle; cleanup(); }, 120000);
+  } catch (e) { cleanup(); throw e; }
+}
+
+function saveFile(file: File): void {
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url; a.download = file.name; a.rel = 'noopener';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch {} }, 4000);
+}
+
 async function nativeShare(html: string, fileName: string): Promise<void> {
   const Print = await import('expo-print');
   const Sharing = await import('expo-sharing');

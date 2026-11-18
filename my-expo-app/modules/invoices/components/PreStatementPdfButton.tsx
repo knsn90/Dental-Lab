@@ -6,12 +6,13 @@
  * Düğme ayar kapalıyken ya da taslak yokken çizilmez (çağıran enabled/invoices'a bakar; burada da korunur).
  */
 import React, { useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, Modal, ScrollView, Platform, Dimensions } from 'react-native';
-import { Download } from '../../../core/ui/icons';
+import { View, Text, Pressable, Modal, ScrollView, Platform } from 'react-native';
+import { Download, Printer, Sliders } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
-import { exportHtmlPdf, pdfExportMode } from '../../../core/print/exportHtmlPdf';
+import { downloadHtmlPdf, printHtmlDirect } from '../../../core/print/exportHtmlPdf';
+import { readPrintPref, writePrintPref } from '../../../core/print/printPrefs';
 import { buildPreStatementSummaryHtml, buildPreStatementDetailHtml, type PreStatementPdfInput } from '../buildPreStatementHtml';
 import { scopeToDoctor, NO_DOCTOR, pdfCurrencies, pickCurrency } from '../lib/preStatementPdf';
 import type { PreStatement } from '../types';
@@ -47,7 +48,9 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
   const [open, setOpen] = useState(false);
   const settingFormat = usePreStatementPdfFormat();
   // Ayar sonradan yüklenebilir: kullanıcı seçmedikçe varsayılan izlenir.
-  const [picked, setFormat] = useState<PdfFormat | null>(null);
+  // Son seçilen biçim cihazda hatırlanır: "PDF" / "Yazdır" her seferinde pencere açmaz.
+  const [picked, setPicked] = useState<PdfFormat | null>(() => readPrintPref<PdfFormat>('preStatementFormat', ['ozet', 'ayrintili']));
+  const setFormat = (f: PdfFormat) => { setPicked(f); writePrintPref('preStatementFormat', f); };
   const format: PdfFormat = picked ?? defaultFormat ?? settingFormat;
   const [doctor, setDoctor] = useState<string | null>(null);
   // Hekim seçiliyse yalnız o hekimin kalemlerinin para birimleri (boş PDF eşleşmesi olmasın)
@@ -61,7 +64,7 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
   const docList = useMemo(() => doctors ?? [], [doctors]);
   if (!data.enabled || (data.invoices ?? []).length === 0) return null;
 
-  const run = () => {
+  const run = (action: 'pdf' | 'print') => {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true); setError(null); setOpen(false);
@@ -78,18 +81,18 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
         clinicName, lab: letter, data: scoped, currency: ccy,
         // Hekimli PDF'te karekod/onay yok (R7)
         approve: doctor ? undefined : approve,
-        // Masaüstü sekmede genel ekstreyle aynı görünüm; dar ekranda kâğıt (görüntüden PDF).
-        paper: pdfExportMode(Platform.OS, Dimensions.get('window').width) !== 'tab',
+        // Sekme/araç çubuğu yok: doğrudan dosya ya da doğrudan yazdırma → kâğıt görünümü.
+        paper: true,
       };
       return format === 'ayrintili' ? buildPreStatementDetailHtml(input) : buildPreStatementSummaryHtml(input);
     })();
-    // Genel ekstre PDF'iyle aynı açılış: sekme açılır, yazdırma diyaloğu kendiliğinden gelmez.
-    exportHtmlPdf(html, fileName, { autoPrint: false })
+    // Tek adım: PDF → dosya iner; Yazdır → yalnız sistem yazdırma penceresi.
+    (action === 'pdf' ? downloadHtmlPdf(html, fileName) : printHtmlDirect(html, fileName.replace(/\.pdf$/i, '')))
       .catch((e: any) => {
         const m = String(e?.message ?? e);
         setError(m === 'POPUP_BLOCKED'
           ? autoT('Açılır pencere engellendi — bu siteye izin verip tekrar deneyin.')
-          : `${autoT('PDF oluşturulamadı')}: ${m}`);
+          : `${action === 'pdf' ? autoT('PDF oluşturulamadı') : autoT('Yazdırılamadı')}: ${m}`);
       })
       .finally(() => { inFlight.current = false; setBusy(false); });
   };
@@ -108,23 +111,31 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
       <Text style={{ fontSize: 12.5, fontWeight: '600', color: active ? U.onDarkPill : U.plainBtn.fg }}>{label}</Text>
     </Pressable>
   );
+  const pillStyle = ({ pressed, hovered }: any) => ({
+    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
+    backgroundColor: hovered || pressed ? U.plainBtn.hoverBg : U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border,
+    opacity: busy ? 0.6 : 1,
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+  });
   const lbl = { fontSize: 10, fontWeight: '700' as const, letterSpacing: 0.8, textTransform: 'uppercase' as const, color: U.ink[400] };
 
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-      <GlassTooltip title={autoT('PDF indir')} text={autoT('Ön ekstreyi özet ya da ayrıntılı PDF olarak indirir')}>
-        <Pressable
-          disabled={busy}
-          onPress={() => { setError(null); setOpen(true); }}
-          style={({ pressed }) => ({
-            flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
-            backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border,
-            opacity: busy ? 0.6 : pressed ? 0.85 : 1,
-            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-          })}
-        >
+      <GlassTooltip title={autoT('PDF indir')} text={autoT('Ön ekstreyi PDF dosyası olarak indirir; son seçilen biçim kullanılır')}>
+        <Pressable disabled={busy} onPress={() => run('pdf')} style={pillStyle}>
           <Download size={13} color={U.plainBtn.fg} strokeWidth={2} />
           <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.plainBtn.fg }}>{busy ? autoT('Hazırlanıyor…') : 'PDF'}</Text>
+        </Pressable>
+      </GlassTooltip>
+      <GlassTooltip title={autoT('Yazdır')} text={autoT('Doğrudan yazıcı penceresini açar; son seçilen biçim kullanılır')}>
+        <Pressable disabled={busy} onPress={() => run('print')} style={pillStyle}>
+          <Printer size={13} color={U.plainBtn.fg} strokeWidth={2} />
+          <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.plainBtn.fg }}>{autoT('Yazdır')}</Text>
+        </Pressable>
+      </GlassTooltip>
+      <GlassTooltip title={autoT('PDF seçenekleri')} text={`${autoT('Biçim')}: ${format === 'ayrintili' ? autoT('Ayrıntılı') : autoT('Özet')}`}>
+        <Pressable disabled={busy} onPress={() => { setError(null); setOpen(true); }} accessibilityLabel={autoT('PDF seçenekleri')} style={(st: any) => ({ ...pillStyle(st), paddingHorizontal: 10 })}>
+          <Sliders size={13} color={U.plainBtn.fg} strokeWidth={2} />
         </Pressable>
       </GlassTooltip>
       {error ? <Text style={{ flex: 1, minWidth: 180, fontSize: 12, color: U.chipTones.danger.fg }}>{error}</Text> : null}
@@ -172,12 +183,20 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
                   <Text style={{ fontSize: 12.5, fontWeight: '600', color: U.plainBtn.fg }}>{autoT('Vazgeç')}</Text>
                 </Pressable>
                 <Pressable
-                  onPress={run}
+                  onPress={() => run('print')}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                >
+                  <Printer size={13} color={U.plainBtn.fg} strokeWidth={2} />
+                  <Text style={{ fontSize: 12.5, fontWeight: '600', color: U.plainBtn.fg }}>{autoT('Yazdır')}</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => run('pdf')}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, backgroundColor: U.ink[900],
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
                 >
                   <Download size={13} color={U.onDarkPill} strokeWidth={2} />
-                  <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.onDarkPill }}>{autoT('İndir')}</Text>
+                  <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.onDarkPill }}>{autoT('PDF indir')}</Text>
                 </Pressable>
               </View>
             </ScrollView>

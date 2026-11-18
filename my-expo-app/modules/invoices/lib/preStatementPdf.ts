@@ -2,6 +2,7 @@
 // Yerel içe aktarma yalnız `import type`.
 import type { PreStatement, PreStatementInvoice } from '../types';
 import type { StatementLine } from '../buildStatementHtml';
+import { patientLabel } from './preStatement';
 
 export const NO_DOCTOR = '—';
 
@@ -139,7 +140,7 @@ export function preStatementLines(
         id: inv.id,
         description: uniq(items.map((it) => it.description)).join(', ') || (inv.invoice_number ?? ''),
         orderNo: uniq(items.map((it) => it.order_no)).join(', ') || null,
-        patientName: uniq(items.map((it) => it.patient_initials)).join(', ') || null,
+        patientName: uniq(items.map((it) => patientLabel(it))).join(', ') || null,
         doctorName: uniq(items.map((it) => it.doctor_name)).join(', ') || null,
         debit: r2(num(inv.total)),
         tax: r2(num(inv.tax)),
@@ -154,7 +155,7 @@ export function preStatementLines(
           id: `${inv.id}:${it.id}`,
           description: `${(it.description ?? '').trim() || NO_DOCTOR} · ${num(it.quantity)} × ${money(num(it.unit_price))}`,
           orderNo: it.order_no ?? null,
-          patientName: it.patient_initials ?? null,
+          patientName: patientLabel(it),
           doctorName: (it.doctor_name ?? '').trim() || null,
           debit: shares.get(it.id) ?? 0,
           tax: taxParts[k] / 100,

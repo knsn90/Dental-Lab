@@ -29,7 +29,7 @@ import { formatMoney, type Currency } from '../../../core/money/currency';
 import { fetchPreStatement, approvePreStatement } from '../../invoices/preStatementApi';
 import {
   canApprove, invoiceDisputeStatus, undisputedCount, preStatementErrorText, summarizeApproval,
-  groupItemsByDoctorOrder,
+  groupItemsByDoctorOrder, patientLabel,
 } from '../../invoices/lib/preStatement';
 import type { ApprovalMode, PreStatement, PreStatementInvoice, PreStatementItem } from '../../invoices/types';
 import { DISPLAY, PAGE_PADDING, fmtDate, ErrorBar, Loader, EmptyCard, PillButton } from '../components/atoms';
@@ -619,7 +619,7 @@ function ItemRows({ items, cur, date, onItem }: { items: PreStatementItem[]; cur
           })}
         >
           <Text style={[cell, { flex: COLS.date, color: U.ink[500] }]} numberOfLines={1}>{date}</Text>
-          <Text style={[cell, { flex: COLS.patient }]} numberOfLines={1}>{it.patient_initials || '—'}</Text>
+          <Text style={[cell, { flex: COLS.patient }]} numberOfLines={1}>{patientLabel(it) || '—'}</Text>
           <Text style={[cell, { flex: COLS.job, color: U.ink[900] }]} numberOfLines={2}>{it.description || '—'}</Text>
           <Text style={[cell, { flex: COLS.qty, textAlign: 'right' }]}>{Number(it.quantity) || 0}</Text>
           <Text style={[cell, { flex: COLS.unit, textAlign: 'right' }]} numberOfLines={1}>{money(it.unit_price, cur)}</Text>
@@ -652,7 +652,7 @@ function ItemCardRows({ items, cur, date, onItem }: { items: PreStatementItem[];
           <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
             <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={2}>{it.description || '—'}</Text>
             <Text style={{ fontSize: 11.5, color: U.ink[400] }} numberOfLines={1}>
-              {[date, it.patient_initials].filter(Boolean).join(' · ')}
+              {[date, patientLabel(it)].filter(Boolean).join(' · ')}
             </Text>
             <Text style={{ fontSize: 11.5, color: U.ink[500] }}>
               {`${Number(it.quantity) || 0} × ${money(it.unit_price, cur)}`}

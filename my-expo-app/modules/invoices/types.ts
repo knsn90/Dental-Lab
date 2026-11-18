@@ -382,6 +382,8 @@ export interface PreStatementItem {
   gross_total: number;
   order_no: string | null;
   patient_initials: string | null;
+  /** Tam hasta adı — yalnız girişli get_pre_statement verir; onay bağlantısında yok (KVKK) */
+  patient_name?: string | null;
   doctor_name: string | null;
   dispute_status: DisputeStatus | null;
   notes: PreStatementNote[];

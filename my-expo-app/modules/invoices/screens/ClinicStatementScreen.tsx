@@ -33,8 +33,10 @@ import { StatementPrefsModal } from '../components/StatementPrefsModal';
 import { buildPendingAppendixHtml, appendBeforeBody, type PendingAppendixRow } from '../lib/pendingAppendixHtml';
 import { buildPreStatementSummaryHtml, buildPreStatementDetailHtml } from '../buildPreStatementHtml';
 import { scopeToDoctor } from '../lib/preStatementPdf';
+import { patientLabel } from '../lib/preStatement';
 import { doctorNamesOf } from '../components/PreStatementPdfButton';
-import { exportHtmlPdf, pdfExportMode } from '../../../core/print/exportHtmlPdf';
+import { downloadHtmlPdf, printHtmlDirect } from '../../../core/print/exportHtmlPdf';
+import { readPrintPref, writePrintPref } from '../../../core/print/printPrefs';
 import { usePreStatementPdfFormat } from '../../../core/store/labSettingsStore';
 import { useStatementPrefs } from '../hooks/useStatementPrefs';
 import { applyStatementPrefs } from '../lib/statementPrefs';
@@ -317,9 +319,12 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   /** Genel ekstre PDF seçenek penceresi (ön ekstre PDF'iyle aynı tarz). */
   const [pdfOpen, setPdfOpen] = useState(false);
   /** 'statement' yalnız ekstre · 'with' ekstre + onay bekleyenler · 'pending' yalnız onay bekleyenler (ön ekstre PDF'i). */
-  const [pdfMode, setPdfMode] = useState<PdfMode>('with');
+  // Son seçilen kapsam cihazda hatırlanır ("PDF"/"Yazdır" doğrudan çalışır, pencere açmaz).
+  const [pdfMode, setPdfModeRaw] = useState<PdfMode>(() => readPrintPref<PdfMode>('statementMode', ['statement', 'with', 'pending']) ?? 'with');
+  const setPdfMode = useCallback((m: PdfMode) => { setPdfModeRaw(m); writePrintPref('statementMode', m); }, []);
   const preFmtSetting = usePreStatementPdfFormat();
-  const [preFmt, setPreFmt] = useState<'ozet' | 'ayrintili' | null>(null);
+  const [preFmt, setPreFmtRaw] = useState<'ozet' | 'ayrintili' | null>(() => readPrintPref<'ozet' | 'ayrintili'>('preStatementFormat', ['ozet', 'ayrintili']));
+  const setPreFmt = useCallback((f: 'ozet' | 'ayrintili') => { setPreFmtRaw(f); writePrintPref('preStatementFormat', f); }, []);
   const [preDoctor, setPreDoctor] = useState<string | null>(null);
   // Liste ayarı — kullanıcıya özel, cihazda (ekran + PDF + Excel)
   const [prefsOpen, setPrefsOpen] = useState(false);
@@ -739,7 +744,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
         if ((inv.currency || 'TRY') !== selectedCcy) continue;
         const items = inv.items ?? [];
         const first = items[0];
-        const desc = [first?.description, first?.patient_initials, first?.order_no].filter(Boolean).join(' · ');
+        const desc = [first?.description, first ? patientLabel(first) : null, first?.order_no].filter(Boolean).join(' · ');
         out.push({
           ref: inv.invoice_number ?? '',
           date: inv.issue_date ?? inv.created_at,
@@ -755,7 +760,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
     return out;
   }, [selfView, preSt.data, selectedCcy, pendingRows]);
 
-  const handlePrint = useCallback(async (withPending: boolean = false) => {
+  const handlePrint = useCallback(async (withPending: boolean = false, action: 'pdf' | 'print' = 'print') => {
     setExporting(true);
     try {
       const lab = selfView ? await fetchSelfViewLetterhead() : await fetchLabLetterhead();
@@ -767,30 +772,19 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
         selectedCcy,
         periodTotals,
         // Liste ayarı: KDV kapalıysa sütun/döküm yok; tahsilat gizliyse de toplamlar tüm hareketten
-        { vat: prefs.vat, sums: { debit: totals.debit, credit: totals.credit }, discountMode: discMode },
+        // paper: sekme/araç çubuğu yok — doğrudan dosya ya da doğrudan yazdırma
+        { vat: prefs.vat, sums: { debit: totals.debit, credit: totals.credit }, discountMode: discMode, paper: true },
       );
       // Onay bekleyenler: kesinleşmiş ekstrenin ALTINA ayrı, "bakiyeye dahil değil" etiketli bölüm.
       const html = withPending
         ? appendBeforeBody(baseHtml, buildPendingAppendixHtml(pdfPendingRows, selectedCcy, kpis.balance))
         : baseHtml;
 
-      if (Platform.OS === 'web') {
-        const w = window.open('', '_blank');
-        if (!w) { toast.error('Pop-up engellendi'); return; }
-        w.document.write(html);
-        w.document.close();
-        try { w.focus(); } catch {}
-      } else {
-        const { uri } = await Print.printToFileAsync({ html });
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(uri, {
-            mimeType: 'application/pdf',
-            dialogTitle: `Hesap-Ekstresi-${clinicInfo?.clinic_name ?? 'Klinik'}.pdf`,
-            UTI: 'com.adobe.pdf',
-          });
-        }
-      }
+      const safeName = (clinicInfo?.clinic_name ?? 'Klinik').replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'Klinik';
+      const docName = `Hesap-Ekstresi-${safeName}-${selectedCcy}`;
+      // Tek adım: PDF → dosya iner; Yazdır → yalnız sistem yazdırma penceresi.
+      if (action === 'pdf') await downloadHtmlPdf(html, `${docName}.pdf`);
+      else await printHtmlDirect(html, docName);
     } catch (e: any) {
       toast.error(e?.message ?? 'Dışa aktarma hatası');
     } finally {
@@ -802,7 +796,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   const preStatementCount = !selfView && preSt.data?.enabled
     ? (preSt.data.invoices ?? []).filter(i => (i.currency || 'TRY') === selectedCcy).length : 0;
   const preDoctors = useMemo(() => doctorNamesOf(preSt.data), [preSt.data]);
-  const handlePendingPdf = useCallback(() => {
+  const handlePendingPdf = useCallback((action: 'pdf' | 'print' = 'pdf') => {
     const data = preSt.data;
     if (!data) return;
     const fmt = preFmt ?? preFmtSetting;
@@ -815,19 +809,26 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
     // await YOK: masaüstünde sekme tıklama jesti içinde açılmalı.
     const html = (async () => {
       const lab = await fetchLabLetterhead();
-      // Masaüstü sekmede genel ekstreyle aynı görünüm (kâğıt modu yalnız görüntüden-PDF yolunda).
-      const paper = pdfExportMode(Platform.OS, Dimensions.get('window').width) !== 'tab';
+      // Sekme yok (doğrudan dosya/yazdırma) → kâğıt görünümü.
+      const paper = true;
       const input = { clinicName: name, lab, data: scoped, currency: selectedCcy, paper };
       return fmt === 'ayrintili' ? buildPreStatementDetailHtml(input) : buildPreStatementSummaryHtml(input);
     })();
     setExporting(true);
-    exportHtmlPdf(html, fileName, { autoPrint: false })
+    (action === 'pdf' ? downloadHtmlPdf(html, fileName) : printHtmlDirect(html, fileName.replace(/\.pdf$/i, '')))
       .catch((e: any) => {
         const m = String(e?.message ?? e);
-        toast.error(m === 'POPUP_BLOCKED' ? autoT('Açılır pencere engellendi — bu siteye izin verip tekrar deneyin.') : `${autoT('PDF oluşturulamadı')}: ${m}`);
+        toast.error(m === 'POPUP_BLOCKED' ? autoT('Açılır pencere engellendi — bu siteye izin verip tekrar deneyin.') : `${action === 'pdf' ? autoT('PDF oluşturulamadı') : autoT('Yazdırılamadı')}: ${m}`);
       })
       .finally(() => setExporting(false));
   }, [preSt.data, preFmt, preFmtSetting, preDoctor, clinicInfo, selectedCcy]);
+
+  /** PDF / Yazdır düğmeleri: hatırlanan kapsamla doğrudan çalışır (seçenek penceresi açılmaz). */
+  const runStatementOutput = (action: 'pdf' | 'print') => {
+    if (selfView) { void handlePrint(false, action); return; }
+    if (pdfMode === 'pending' && preStatementCount > 0) { handlePendingPdf(action); return; }
+    void handlePrint(pdfMode !== 'statement' && pdfPendingRows.length > 0, action);
+  };
 
   // ── Excel ──────────────────────────────────────────────
   /** Tahsilat makbuzu (PDF) — ekstre yazdırmayla aynı yol. */
@@ -1007,9 +1008,17 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                 <PillBtn icon={Wallet} label={isDesktop ? "Tahsilat ekle" : ""} onPress={() => { setEditingReceipt(null); setReceiptOpen(true); }} />
               </GlassTooltip>
             )}
-            <GlassTooltip title={autoT('Yazdır / PDF')} text={autoT('Ekstreyi yazdır veya PDF olarak kaydet')}>
-              <PillBtn icon={Printer} label={isDesktop ? "Yazdır / PDF" : ""} onPress={() => { if (selfView) { void handlePrint(false); } else { setPdfMode(pdfPendingRows.length > 0 ? 'with' : 'statement'); setPdfOpen(true); } }} busy={exporting} variant="ghost" />
+            <GlassTooltip title={autoT('PDF indir')} text={autoT('Ekstreyi PDF dosyası olarak indirir; son seçilen seçenekler kullanılır')}>
+              <PillBtn icon={Download} label={isDesktop ? "PDF" : ""} onPress={() => runStatementOutput('pdf')} busy={exporting} variant="ghost" />
             </GlassTooltip>
+            <GlassTooltip title={autoT('Yazdır')} text={autoT('Doğrudan yazıcı penceresini açar; son seçilen seçenekler kullanılır')}>
+              <PillBtn icon={Printer} label={isDesktop ? "Yazdır" : ""} onPress={() => runStatementOutput('print')} busy={exporting} variant="ghost" />
+            </GlassTooltip>
+            {!selfView && (
+              <GlassTooltip title={autoT('PDF seçenekleri')} text={autoT('Onay bekleyenler, biçim ve hekim seçimi')}>
+                <PillBtn icon={SlidersHorizontal} onPress={() => setPdfOpen(true)} busy={exporting} variant="ghost" />
+              </GlassTooltip>
+            )}
             {/* İkincil eylemler tek menüde: İndirim (lab), Liste ayarı, Excel (web) */}
             <HeroMoreMenu items={[
               ...(!selfView ? [{ key: 'disc', icon: Percent, label: autoT('İndirim ekle'), hint: autoT('Seçili dönemin hizmet bedellerine yüzde ya da tutar indirim uygula'), onPress: () => setDiscountOpen(true) }] : []),
@@ -1573,10 +1582,9 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
         doctor={preDoctor}
         onDoctor={setPreDoctor}
         onClose={() => setPdfOpen(false)}
-        onRun={() => {
+        onRun={(action) => {
           setPdfOpen(false);
-          if (pdfMode === 'pending' && preStatementCount > 0) handlePendingPdf();
-          else void handlePrint(pdfMode === 'with' && pdfPendingRows.length > 0);
+          runStatementOutput(action);
         }}
       />
 
@@ -1914,7 +1922,7 @@ function StatementPdfModal({
   preCount: number;
   preFormat: 'ozet' | 'ayrintili'; onPreFormat: (f: 'ozet' | 'ayrintili') => void;
   doctors: string[]; doctor: string | null; onDoctor: (d: string | null) => void;
-  onClose: () => void; onRun: () => void;
+  onClose: () => void; onRun: (action: 'pdf' | 'print') => void;
 }) {
   const U = useInkUI();
   const web = Platform.OS === 'web' ? ({ cursor: 'pointer', outlineStyle: 'none' } as any) : {};
@@ -1982,11 +1990,18 @@ function StatementPdfModal({
                 <Text style={{ fontSize: 12.5, fontWeight: '600', color: U.plainBtn.fg }}>{autoT('Vazgeç')}</Text>
               </Pressable>
               <Pressable
-                onPress={onRun}
+                onPress={() => onRun('print')}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border, ...web }}
+              >
+                <Printer size={13} color={U.plainBtn.fg} strokeWidth={2} />
+                <Text style={{ fontSize: 12.5, fontWeight: '600', color: U.plainBtn.fg }}>{autoT('Yazdır')}</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => onRun('pdf')}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, backgroundColor: U.ink[900], ...web }}
               >
                 <Download size={13} color={U.onDarkPill} strokeWidth={2} />
-                <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.onDarkPill }}>{autoT('İndir')}</Text>
+                <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.onDarkPill }}>{autoT('PDF indir')}</Text>
               </Pressable>
             </View>
           </ScrollView>

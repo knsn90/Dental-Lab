@@ -10782,5 +10782,12 @@
   "Taslak fatura güncellenmedi": "Rechnungsentwurf wurde nicht aktualisiert",
   "Uyarıyı kapat": "Hinweis schließen",
   "Siparişin kalemleri değişti, ama taslak faturası eski tutarla duruyor. Fatura otomatik güncellenmez; kliniğe gitmeden önce faturayı da düzeltin.": "Die Positionen des Auftrags wurden geändert, aber der Rechnungsentwurf zeigt noch den alten Betrag. Die Rechnung wird nicht automatisch aktualisiert; korrigieren Sie sie, bevor sie an die Klinik geht.",
-  "Daha sonra": "Später"
+  "Daha sonra": "Später",
+  "PDF seçenekleri": "PDF-Optionen",
+  "Yazdırılamadı": "Drucken fehlgeschlagen",
+  "Ön ekstreyi PDF dosyası olarak indirir; son seçilen biçim kullanılır": "Lädt den Vorab-Kontoauszug als PDF-Datei im zuletzt gewählten Format herunter",
+  "Doğrudan yazıcı penceresini açar; son seçilen biçim kullanılır": "Öffnet direkt den Druckdialog im zuletzt gewählten Format",
+  "Ekstreyi PDF dosyası olarak indirir; son seçilen seçenekler kullanılır": "Lädt den Kontoauszug als PDF-Datei mit den zuletzt gewählten Optionen herunter",
+  "Doğrudan yazıcı penceresini açar; son seçilen seçenekler kullanılır": "Öffnet direkt den Druckdialog mit den zuletzt gewählten Optionen",
+  "Onay bekleyenler, biçim ve hekim seçimi": "Ausstehende Freigaben, Format und Zahnarztauswahl"
 }

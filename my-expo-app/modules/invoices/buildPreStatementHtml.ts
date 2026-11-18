@@ -6,7 +6,7 @@
  * bir sarmalayıcıdır: satırlar lib/preStatementPdf.ts::preStatementLines'tan gelir, şablona
  * eklemeli seçenekler (başlık, bant, karekod, açılışsız) geçirilir. Çeviri autoT/printLocale ile.
  *
- * KVKK: hasta yalnız `patient_initials`; not içerikleri PDF'e girmez.
+ * KVKK: hasta adı girişli kullanıcıda tam (patient_name), onay bağlantısında baş harf; not içerikleri PDF'e girmez.
  */
 import type { PreStatement } from './types';
 import type { LabLetterhead } from '../receipt/buildReceiptHtml';
@@ -48,7 +48,7 @@ const money = (n: number): string =>
  */
 function displayLine(l: StatementLine, mode: 'ozet' | 'ayrintili'): StatementLine {
   if (mode === 'ayrintili') {
-    return { ...l, patientName: null, orderNo: [l.orderNo, l.patientName, l.doctorName].filter(Boolean).join(' · ') || null };
+    return { ...l, patientName: null, orderNo: [l.patientName, l.orderNo, l.doctorName].filter(Boolean).join(' · ') || null };
   }
   // Özet: çok kalemli faturada listeler kısaltılır ("S-1, S-2, S-3 +47") — satır uzamasın
   return {

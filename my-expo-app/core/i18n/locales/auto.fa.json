@@ -10782,5 +10782,12 @@
   "Taslak fatura güncellenmedi": "پیش‌نویس فاکتور به‌روز نشد",
   "Uyarıyı kapat": "بستن هشدار",
   "Siparişin kalemleri değişti, ama taslak faturası eski tutarla duruyor. Fatura otomatik güncellenmez; kliniğe gitmeden önce faturayı da düzeltin.": "اقلام سفارش تغییر کرد، اما پیش‌نویس فاکتور هنوز مبلغ قبلی را نشان می‌دهد. فاکتور خودکار به‌روز نمی‌شود؛ پیش از ارسال به کلینیک آن را هم اصلاح کنید.",
-  "Daha sonra": "بعداً"
+  "Daha sonra": "بعداً",
+  "PDF seçenekleri": "گزینه‌های PDF",
+  "Yazdırılamadı": "چاپ انجام نشد",
+  "Ön ekstreyi PDF dosyası olarak indirir; son seçilen biçim kullanılır": "پیش‌صورت‌حساب را با آخرین قالب انتخاب‌شده به‌صورت فایل PDF دانلود می‌کند",
+  "Doğrudan yazıcı penceresini açar; son seçilen biçim kullanılır": "پنجرهٔ چاپ را مستقیم با آخرین قالب انتخاب‌شده باز می‌کند",
+  "Ekstreyi PDF dosyası olarak indirir; son seçilen seçenekler kullanılır": "صورت‌حساب را با آخرین گزینه‌های انتخاب‌شده به‌صورت فایل PDF دانلود می‌کند",
+  "Doğrudan yazıcı penceresini açar; son seçilen seçenekler kullanılır": "پنجرهٔ چاپ را مستقیم با آخرین گزینه‌های انتخاب‌شده باز می‌کند",
+  "Onay bekleyenler, biçim ve hekim seçimi": "موارد در انتظار تأیید، قالب و انتخاب پزشک"
 }

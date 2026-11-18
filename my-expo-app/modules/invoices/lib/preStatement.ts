@@ -224,7 +224,7 @@ export function filterPreStatement(
     const items = (i.items ?? []).filter((it) => {
       if (work && String(it.description ?? '').trim() !== work) return false;
       if (!text) return true;
-      return trLower(it.patient_initials).includes(text) || trLower(it.order_no).includes(text);
+      return trLower(it.patient_name).includes(text) || trLower(it.patient_initials).includes(text) || trLower(it.order_no).includes(text);
     });
     if (items.length > 0) out.push({ ...i, items });
   }
@@ -263,4 +263,9 @@ export function workTypes(inv: PreStatementInvoice[]): string[] {
     if (d) set.add(d);
   }
   return [...set].sort((a, b) => a.localeCompare(b, 'tr'));
+}
+
+/** Ekranda/PDF'te gösterilecek hasta: girişli kullanıcıda tam ad, onay bağlantısında baş harf. */
+export function patientLabel(it: { patient_name?: string | null; patient_initials?: string | null }): string | null {
+  return (it.patient_name ?? '').trim() || it.patient_initials || null;
 }

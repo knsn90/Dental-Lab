@@ -198,6 +198,15 @@ const PAPER_CSS = `
   thead th { padding-inline: 8px; }
   tbody td { padding-inline: 8px; }
   td.date-cell { padding-inline-start: 10px; }
+  /* A4'te sabit sütunlar dar tutulur ki açıklama sütunu sıkışmasın (2026-11-18: "yazılar
+     2.-3. satıra atmış" — eski 128/88/120/92/120px açıklamaya ~60px bırakıyordu). */
+  td.t-id { width: 108px; }
+  td.date-cell { width: 74px; }
+  td.money-cell { width: 100px; font-size: 11px; }
+  td.vat-cell { width: 68px; }
+  td.balance-cell { width: 98px; }
+  thead th { letter-spacing: 0.6px; }
+  .party-sub { word-break: normal; overflow-wrap: anywhere; }
 `;
 const NOTICE_CSS = `
   .notice-band {
@@ -554,6 +563,15 @@ ${wb ? '' : `        <td class="balance-cell">
     thead th { padding-inline: 8px; }
     tbody td { padding-inline: 8px; }
     td.date-cell { padding-inline-start: 10px; }
+    /* A4'te sabit sütunlar dar tutulur ki açıklama sütunu sıkışmasın (2026-11-18: "yazılar
+       2.-3. satıra atmış" — eski 128/88/120/92/120px açıklamaya ~60px bırakıyordu). */
+    td.t-id { width: 108px; }
+    td.date-cell { width: 74px; }
+    td.money-cell { width: 100px; font-size: 11px; }
+    td.vat-cell { width: 68px; }
+    td.balance-cell { width: 98px; }
+    thead th { letter-spacing: 0.6px; }
+    .party-sub { word-break: normal; overflow-wrap: anywhere; }
   }
   .balance-num { font-size: 12px; font-weight: 600; }
   .ba-flag {

@@ -20,7 +20,7 @@ import { useInkUI } from '../../../core/theme/inkScale';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { formatMoney, type Currency } from '../../../core/money/currency';
 import { addStatementNote, resolveStatementDispute } from '../../invoices/preStatementApi';
-import { disputeLabel, preStatementErrorText } from '../../invoices/lib/preStatement';
+import { disputeLabel, preStatementErrorText, patientLabel } from '../../invoices/lib/preStatement';
 import type { DisputeStatus, PreStatementItem } from '../../invoices/types';
 import { fmtDate } from './atoms';
 
@@ -152,7 +152,7 @@ export function StatementNoteSheet({
                   {item.dispute_status ? <DisputeChip status={item.dispute_status} /> : null}
                 </View>
                 <Text style={{ fontSize: 12, color: U.ink[500] }}>
-                  {[item.order_no, item.patient_initials, `${Number(item.quantity) || 0} × ${money(item.unit_price, currency)}`, money(item.total, currency)]
+                  {[item.order_no, patientLabel(item), `${Number(item.quantity) || 0} × ${money(item.unit_price, currency)}`, money(item.total, currency)]
                     .filter(Boolean).join(' · ')}
                 </Text>
               </View>
