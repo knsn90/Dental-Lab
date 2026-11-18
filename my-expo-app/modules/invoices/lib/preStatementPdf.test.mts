@@ -120,6 +120,10 @@ test('preStatementLines özet: fatura başına satır, running bakiye = closing 
   assert.equal(cents(l1.discount!), cents(183.6 - 170.5));
   assert.equal(cents(l1.discountBase!), cents(183.6));
   assert.equal(r.lines[2].discount ?? 0, 0);
+  // İşin kalemleri faturanın altında: kalem başına bir alt satır, adet × fiyat ve hasta/sipariş no
+  assert.equal(l1.items!.length, F1.items.length);
+  assert.ok(l1.items!.every((it) => /\d+ × /.test(it.sub ?? '')));
+  assert.ok(l1.items!.some((it) => (it.sub ?? '').includes('S1')));
 });
 
 test('preStatementLines ayrıntılı: kalem başına satır; debit ve tax fatura toplamına kuruşu kuruşuna eşit', () => {

@@ -100,7 +100,7 @@ function rateOf(i: PreStatementInvoice): number | undefined {
 
 /**
  * Ön ekstreyi mevcut cari ekstre satırlarına (buildStatementHtml) çevirir — tek para birimi.
- *  - özet: fatura başına satır; ayrıntılı: kalem başına satır (pay = itemShares, KDV payı en büyük kalanla).
+ *  - özet: fatura başına satır (altında iş kalemleri); ayrıntılı: kalem başına satır (pay = itemShares, KDV payı en büyük kalanla).
  *  - opening = kesinleşmiş bakiye (own kapsamda null → 0 ve hideOpening); closing = opening + onay bekleyen.
  *  - balance = opening + kümülatif borç. Hasta yalnız baş harf (RPC tam ad vermez; burada da okunmaz).
  * `money` yalnız ayrıntılı açıklamadaki birim fiyat için (varsayılan 2 ondalık).
@@ -150,6 +150,14 @@ export function preStatementLines(
         debit: r2(num(inv.total)),
         tax: r2(num(inv.tax)),
         ...(disc > 0.004 ? { discount: disc, discountBase: r2(gross) } : {}),
+        // İşin kalemleri faturanın altında (ekstre "Ayrıntılı" ile aynı alt liste) — tutar/bakiye değişmez
+        items: items.map((it) => ({
+          text: (it.description ?? '').trim() || (inv.invoice_number ?? ''),
+          sub: [
+            `${num(it.quantity)} × ${money(num(it.unit_price))}`,
+            patientLabel(it), it.order_no, (it.doctor_name ?? '').trim() || null,
+          ].filter(Boolean).join(' · ') || null,
+        })),
       });
     } else {
       const shares = itemShares(inv);
