@@ -348,7 +348,9 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const provaOrderId = (order as any)?.id as string | undefined;
   const provaSnap = useProvaSnapshot(provaOrderId, !!provaOrderId);
   useEffect(() => { if (tabParam === 'prova') { setProvaOrigin(null); setProvaOpen(true); } }, [tabParam, _routeId]);
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(tabParam === 'chat');
+  // ?tab=chat — listedeki sağ panelin "Mesaj" düğmesi detayı sohbet açık getirir.
+  useEffect(() => { if (tabParam === 'chat') setChatOpen(true); }, [tabParam, _routeId]);
   const [profit, setProfit] = useState<ProfitData | null>(null);
   const [related, setRelated] = useState<Array<{ id: string; order_number: string; work_type: string | null; status: string; delivery_date: string | null; }>>([]);
   const [materials, setMaterials] = useState<Array<{ name: string; quantity: number; unit: string | null; line_cost: number }>>([]);

@@ -116,6 +116,7 @@ import { OrderStatusInfo } from '../../../core/ui/OrderStatusInfo';
 import { getOrderStageLabel } from '../utils/currentStage';
 import { OrdersKanbanB2Mobile } from './OrdersKanbanB2Mobile';
 import { DoctorOrdersMobile } from './DoctorOrdersMobile';
+import { OrderSidePanel } from '../components/OrderSidePanel';
 import { PendingPaperOrdersScreen } from './PendingPaperOrdersScreen';
 import { mapStationToStage } from '../stationMapping';
 import { STAGE_LABEL, STAGE_COLOR, legacyStatusToStage, type Stage } from '../stages';
@@ -378,6 +379,9 @@ export function OrdersListScreenV2() {
   const [sortBy, setSortBy]             = useState<SortBy>('created_at');  // en yeni sipariş her zaman üstte
   const [sortDir, setSortDir]           = useState<SortDir>('desc');
   const [sortOpen, setSortOpen]         = useState(false);
+  // Hekim masaüstü: satıra tıklayınca detay sağ panelde açılır (split view, 2026-11).
+  const [selectedId, setSelectedId]     = useState<string | null>(null);
+  const searchInputRef = useRef<any>(null);
 
   // Manuel/kağıt sipariş inbox — bekleyen sayısı (lab panelindeki Inbox butonu rozeti)
   useEffect(() => {
@@ -570,6 +574,46 @@ export function OrdersListScreenV2() {
       router.push(`/(lab)/order/${order.id}${qs}` as any);
     }
   }, [panelGroup, router]);
+
+  // ── Hekim masaüstü split view ──
+  // Yalnız hekim paneli + masaüstü + liste görünümü. Diğer paneller satıra
+  // tıklayınca eskisi gibi detay sayfasına gider.
+  const splitView = isDesktop && panel === 'doctor' && viewMode === 'list' && statusFilter !== 'manual';
+  // Panelin ↑ ↓ ile gezdiği sıra = ekrandaki sıra (planlama bloğu önce, sonra ana tablo).
+  const visualOrder = useMemo(() => {
+    if (!splitView) return [] as WorkOrder[];
+    const { planning, main } = splitPlanning(filtered as any[]);
+    return [...planning, ...main] as WorkOrder[];
+  }, [splitView, filtered]);
+  const splitOrder = splitView && selectedId ? (visualOrder.find(o => String(o.id) === selectedId) ?? null) : null;
+  // Seçili sipariş süzgeçten düşerse paneli kapat
+  useEffect(() => { if (selectedId && splitView && !splitOrder) setSelectedId(null); }, [selectedId, splitView, splitOrder]);
+  const onRowPress = useCallback((order: WorkOrder) => {
+    if (splitView) setSelectedId(prev => (prev === String(order.id) ? null : String(order.id)));
+    else onCardPress(order);
+  }, [splitView, onCardPress]);
+
+  // Klavye: Esc kapatır · ↑ ↓ önceki/sonraki · "/" aramaya odaklanır (yalnız web, hekim masaüstü)
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !splitView || typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      if (e.key === '/' && !typing) { e.preventDefault(); searchInputRef.current?.focus?.(); return; }
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'Escape' && selectedId) { setSelectedId(null); return; }
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && visualOrder.length) {
+        e.preventDefault();
+        const idx = selectedId ? visualOrder.findIndex(o => String(o.id) === selectedId) : -1;
+        const next = e.key === 'ArrowDown'
+          ? Math.min(visualOrder.length - 1, idx + 1)
+          : Math.max(0, idx < 0 ? 0 : idx - 1);
+        setSelectedId(String(visualOrder[next].id));
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [splitView, selectedId, visualOrder]);
 
   const onAssignPress = useCallback((order: WorkOrder) => {
     setAssignTarget(order);
@@ -949,11 +993,12 @@ export function OrdersListScreenV2() {
           </ScrollView>
 
           {/* Search */}
-          {searchOpen ? (
+          {/* Hekim panelinde arama hep görünür ("/" ile odaklanır); diğer panellerde ikondan açılır. */}
+          {(searchOpen || panel === 'doctor') ? (
             <View
               className="flex-row items-center gap-2 rounded-full px-3 h-8"
               style={{
-                minWidth: 200,
+                minWidth: panel === 'doctor' ? 280 : 200,
                 backgroundColor: isDark ? T.card : '#FFFFFF',
                 borderWidth: 1, borderColor: T.hairline,
                 // @ts-ignore
@@ -963,20 +1008,25 @@ export function OrdersListScreenV2() {
               <Search size={14} color={T.ink2} strokeWidth={1.8} />
               <TextInput
                 className="flex-1 text-[13px]"
-                placeholder="Sipariş, hasta, hekim, klinik ara..."
+                ref={searchInputRef}
+                placeholder={autoT(panel === 'doctor' ? 'Hasta, sipariş no veya iş tipi…' : 'Sipariş, hasta, hekim, klinik ara...')}
                 placeholderTextColor={T.ink3 as string}
                 value={search}
                 onChangeText={setSearch}
-                autoFocus
+                autoFocus={panel !== 'doctor'}
                 returnKeyType="search"
-                onBlur={() => { if (!search) setSearchOpen(false); }}
+                onBlur={() => { if (!search && panel !== 'doctor') setSearchOpen(false); }}
                 style={{ color: T.ink, outlineStyle: 'none' } as any}
               />
-              {search.length > 0 && (
+              {search.length > 0 ? (
                 <Pressable onPress={() => { setSearch(''); setSearchOpen(false); }}>
                   <X size={13} color={T.ink2} strokeWidth={2} />
                 </Pressable>
-              )}
+              ) : panel === 'doctor' && Platform.OS === 'web' ? (
+                <View style={{ borderWidth: 1, borderColor: T.hairline, borderRadius: 5, paddingHorizontal: 6 }}>
+                  <Text style={{ fontSize: 11.5, color: T.ink3, fontFamily: 'monospace' }}>/</Text>
+                </View>
+              ) : null}
             </View>
           ) : (
             <Pressable
@@ -1032,6 +1082,9 @@ export function OrdersListScreenV2() {
 
 
       {/* ── Content ────────────────────────────────────────────────── */}
+      {/* Hekim masaüstü: liste + sağda detay paneli (split view). Diğer panellerde panel çizilmez. */}
+      <View style={{ flex: 1, flexDirection: 'row', minHeight: 0 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
       {statusFilter === 'manual' ? (
         // Manuel sekmesi — WhatsApp/kağıt (pending_paper_orders) inbox'u satır-içi.
         <View style={{ flex: 1 }}>
@@ -1100,12 +1153,14 @@ export function OrdersListScreenV2() {
                         orders={triagePendingOrders}
                         isManager={isManager}
                         isAdmin={isAdmin}
-                        onPress={onCardPress}
+                        onPress={onRowPress}
                         onAssign={onAssignPress}
                         onEdit={(o) => setAdminEditTarget(o)}
                         onArchive={(o) => setAdminArchiveTarget(o)}
                         onDelete={(o) => setAdminDeleteTarget(o)}
                         onAwaitDoctor={holdAllowed ? setAwaitTarget : undefined}
+                        selectedId={splitView ? selectedId : null}
+                        compact={!!splitOrder}
                         footerTitle="Planlama bekliyor"
                         footerColor={PLAN.band}
                         footerBandColor={PLAN.footer}
@@ -1139,12 +1194,14 @@ export function OrdersListScreenV2() {
                       isAdmin={isAdmin}
                       paginate
                       resetKey={[statusFilter, search, urgentOnly, overdueOnly, dueFlag, provaChip, holdOnly, showArchived, sortBy, sortDir, doctorFilter?.id ?? ''].join('|')}
-                      onPress={onCardPress}
+                      onPress={onRowPress}
                       onAssign={onAssignPress}
                       onEdit={setAdminEditTarget}
                       onArchive={setAdminArchiveTarget}
                       onDelete={setAdminDeleteTarget}
                       onAwaitDoctor={holdAllowed ? setAwaitTarget : undefined}
+                      selectedId={splitView ? selectedId : null}
+                      compact={!!splitOrder}
                     />
                   ) : (
                     <View className="gap-2">
@@ -1169,6 +1226,18 @@ export function OrdersListScreenV2() {
           })()}
         </ScrollView>
       )}
+      </View>
+      {splitOrder && (
+        <OrderSidePanel
+          key={String(splitOrder.id)}
+          order={splitOrder}
+          overdue={orderDefs.isOverdueOrder(splitOrder as any, orderDefs.labTodayOf(cachedLabTz()))}
+          onClose={() => setSelectedId(null)}
+          onOpenFull={() => onCardPress(splitOrder)}
+          onMessage={() => router.push(`/${panelGroup}/order/${splitOrder.id}?tab=chat` as any)}
+        />
+      )}
+      </View>
 
       {/* ── Sort Modal ─────────────────────────────────────────────── */}
       <Modal visible={sortOpen} transparent animationType="fade" onRequestClose={() => setSortOpen(false)}>
@@ -1640,8 +1709,12 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
 // ═══════════════════════════════════════════════════════════════════════
 // DESKTOP TABLE
 // ═══════════════════════════════════════════════════════════════════════
-function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, onArchive, onDelete, onAwaitDoctor, footerTitle, footerColor, footerBandColor, paginate, resetKey }: {
+function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, onArchive, onDelete, onAwaitDoctor, footerTitle, footerColor, footerBandColor, paginate, resetKey, selectedId, compact }: {
   orders: WorkOrder[];
+  /** Yan panel açıkken dar tablo: Oluşturma sütunu gizlenir (tarih panelde var). */
+  compact?: boolean;
+  /** Hekim split view — sağ panelde açık siparişin satırı vurgulanır. */
+  selectedId?: string | null;
   isManager: boolean;
   isAdmin?: boolean;
   onPress: (o: WorkOrder) => void;
@@ -1667,6 +1740,8 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
   // Avatar: lab tarafı panellerde klinik logosu, klinik/hekimde hasta baş harfleri
   const tablePanel = detectPanel(useSegments() as string[]);
   const panelTheme = usePanelTheme();
+  // Hekim kendi siparişlerini görür → Hekim sütunu boş tekrar; yalnız hekim panelinde gizli.
+  const showDoctorCol = tablePanel !== 'doctor';
   // Tablo başlığı VE alt şeridi düz PANEL ACCENT'i — her iki temada. Gri-üstü-gri
   // şeritler gövdeden ayrışmıyordu. Renk panelden gelir: yönetim lacivert, lab
   // safran, klinik/hekim zümrüt, istasyon mavi. Metin luminance ile seçilir —
@@ -1703,15 +1778,19 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
         <Text className="uppercase" style={{ flex: 23, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Vaka
         </Text>
-        <Text className="uppercase" style={{ flex: 15, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
-          Hekim
-        </Text>
+        {showDoctorCol && (
+          <Text className="uppercase" style={{ flex: 15, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
+            Hekim
+          </Text>
+        )}
         <Text className="uppercase" style={{ flex: 12, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Teslim
         </Text>
-        <Text className="uppercase" style={{ flex: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
-          Oluşturma
-        </Text>
+        {!compact && (
+          <Text className="uppercase" style={{ flex: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
+            Oluşturma
+          </Text>
+        )}
         <Text className="uppercase" style={{ flex: 14, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Durum
         </Text>
@@ -1722,6 +1801,9 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
       {pageOrders.map((order, i) => (
         <DesktopRow
           useClinicLogoAvatar={tablePanel !== 'clinic' && tablePanel !== 'doctor'}
+          showDoctorCol={showDoctorCol}
+          showCreatedCol={!compact}
+          selected={!!selectedId && String(order.id) === selectedId}
           key={order.id}
           order={order}
           isManager={isManager}
@@ -1803,8 +1885,14 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
   );
 }
 
-const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, isLast, useClinicLogoAvatar, onPress, onAssign, onEdit, onArchive, onDelete, onAwaitDoctor }: {
+const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, isLast, useClinicLogoAvatar, showDoctorCol = true, showCreatedCol = true, selected = false, onPress, onAssign, onEdit, onArchive, onDelete, onAwaitDoctor }: {
   order: WorkOrder;
+  /** Hekim panelinde false — Hekim sütunu çizilmez. */
+  showDoctorCol?: boolean;
+  /** Yan panel açıkken false — Oluşturma sütunu çizilmez. */
+  showCreatedCol?: boolean;
+  /** Split view'de sağ panelde açık olan satır. */
+  selected?: boolean;
   /** Lab/admin/teknisyen: hasta baş harfleri yerine klinik logosu göster. */
   useClinicLogoAvatar?: boolean;
   isManager: boolean;
@@ -1909,6 +1997,7 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
         hovered && !needsTriage && Platform.OS === 'web'
           ? { backgroundColor: hexA(rowAccent, isDark ? 0.16 : 0.06) } as any
           : undefined,
+        selected ? { backgroundColor: hexA(rowAccent, isDark ? 0.22 : 0.11) } as any : undefined,
       ]}
     >
       {/* Hasta — klinik logosu (hangi klinikten geldiği) + isim + ACİL + #no + ilişki alt-satırı.
@@ -1974,16 +2063,18 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
 
       {/* Hekim + altında klinik adı (lab/yönetici görünümü; klinik/hekim panelinde
           zaten kendi klinikleri olduğu için gösterilmez — logo kuralıyla aynı koşul). */}
-      <View style={{ flex: 15, minWidth: 0, paddingEnd: 14 }}>
-        <Text style={{ fontSize: 13, color: T.ink2 }} numberOfLines={1}>
-          {order.doctor?.full_name ?? '—'}
-        </Text>
-        {useClinicLogoAvatar && (order as any)?.doctor?.clinic?.name ? (
-          <Text style={{ fontSize: 11.5, color: T.ink3, marginTop: 2 }} numberOfLines={1}>
-            {(order as any).doctor.clinic.name}
+      {showDoctorCol && (
+        <View style={{ flex: 15, minWidth: 0, paddingEnd: 14 }}>
+          <Text style={{ fontSize: 13, color: T.ink2 }} numberOfLines={1}>
+            {order.doctor?.full_name ?? '—'}
           </Text>
-        ) : null}
-      </View>
+          {useClinicLogoAvatar && (order as any)?.doctor?.clinic?.name ? (
+            <Text style={{ fontSize: 11.5, color: T.ink3, marginTop: 2 }} numberOfLines={1}>
+              {(order as any).doctor.clinic.name}
+            </Text>
+          ) : null}
+        </View>
+      )}
 
       {/* Teslim tarihi + kalan/geciken gün (lab'ın sabah listesi bu sütuna bakar) */}
       <View style={{ flex: 12, minWidth: 0, paddingEnd: 8 }}>
@@ -1996,6 +2087,7 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
       </View>
 
       {/* Oluşturma tarihi + saati */}
+      {showCreatedCol && (
       <View style={{ flex: 10 }}>
         <Text style={{ fontSize: 13, color: T.ink2 }} numberOfLines={1}>
           {order.created_at ? new Date(order.created_at).toLocaleDateString(localeTag()) : '—'}
@@ -2006,6 +2098,7 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
           </Text>
         )}
       </View>
+      )}
 
       {/* Durum — YALNIZ workflow durumu (Acil=öncelik → Hasta'da; ilişki → Hasta alt-satırı). */}
       <View style={{ flex: 14, alignItems: 'flex-start', paddingEnd: 8 }}>

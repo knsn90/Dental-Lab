@@ -11,7 +11,6 @@ import React, { useMemo, useState } from 'react';
 import {
   View, Text, Pressable, ScrollView, TextInput, RefreshControl, Platform, Modal,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Search, Plus, ArrowUpDown, Check, X, Inbox,
@@ -86,7 +85,6 @@ const STATUS_STEP: Record<string, number> = {
 const webDisplay = (T: any) => (Platform.OS === 'web' ? ({ fontFamily: T.display } as any) : {});
 
 export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNewOrder }: Props) {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -164,7 +162,6 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
   }, [filtered, sort]);
 
   const top = Math.max(insets.top, 8);
-  const openNew = onNewOrder ?? (() => router.push('/(doctor)/new-order' as any));
 
   const card = (o: WorkOrder, overdue: boolean) => (
     <OrderCard
@@ -216,22 +213,26 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
               )}
             </Text>
           </View>
-          <Pressable
-            onPress={openNew}
-            accessibilityRole="button"
-            accessibilityLabel={autoT('Yeni sipariş')}
-          >
-            {({ pressed }: any) => (
-              <View style={{
-                width: 44, height: 44, borderRadius: 22,
-                alignItems: 'center', justifyContent: 'center',
-                backgroundColor: DOCTOR.primary,
-                transform: [{ scale: pressed ? 0.94 : 1 }],
-              }}>
-                <Plus size={20} color="#FFFFFF" strokeWidth={2.4} />
-              </View>
-            )}
-          </Pressable>
+          {/* Yeni sipariş: panelin alt çubuğundaki yeşil "+" düğmesi (tekrar çizilmez).
+              Gömülü kullanımda (onNewOrder verilmişse) başlıkta gösterilir. */}
+          {!!onNewOrder && (
+            <Pressable
+              onPress={onNewOrder}
+              accessibilityRole="button"
+              accessibilityLabel={autoT('Yeni sipariş')}
+            >
+              {({ pressed }: any) => (
+                <View style={{
+                  width: 44, height: 44, borderRadius: 22,
+                  alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: DOCTOR.primary,
+                  transform: [{ scale: pressed ? 0.94 : 1 }],
+                }}>
+                  <Plus size={20} color="#FFFFFF" strokeWidth={2.4} />
+                </View>
+              )}
+            </Pressable>
+          )}
         </View>
 
         {/* ═══ Cam bant: arama + sıralama + çipler ═══ */}
