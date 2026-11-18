@@ -2137,7 +2137,7 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
           const pct = Math.max(0, Math.min(100, Math.round((num / den) * 100)));
           const fill = isLate ? '#DC2626' : delivered ? '#2D9A6B' : onHold ? '#E89B2A' : stageColor;
           return (
-            <View className="flex-row items-center gap-1.5" style={{ marginTop: 6, maxWidth: 150 }}>
+            <View className="flex-row items-center gap-1.5" style={{ marginTop: 6, width: '100%', maxWidth: 150 }}>
               <View style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
                 <View style={{ width: `${pct}%`, height: '100%', borderRadius: 2, backgroundColor: fill }} />
               </View>
