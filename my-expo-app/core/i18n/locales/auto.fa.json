@@ -10808,5 +10808,15 @@
   "Onaylanmış ekstre ve altında onay bekleyenler": "صورت‌حساب تأییدشده و در ادامه موارد در انتظار تأیید",
   "Ön ekstre, onaylanmış ekstre ya da tam ekstre": "پیش‌صورت‌حساب، صورت‌حساب تأییدشده یا صورت‌حساب کامل",
   "Ön ekstre / onaylanmış ekstre / tam ekstre; özet ya da ayrıntılı": "پیش‌صورت‌حساب / تأییدشده / کامل؛ خلاصه یا جزئی",
-  "Onay bekleyen kalem yok": "موردی در انتظار تأیید نیست"
+  "Onay bekleyen kalem yok": "موردی در انتظار تأیید نیست",
+  "Zirkonya": "زیرکونیا",
+  "Kar katkısı": "سهم سود",
+  "teknisyen": "تکنسین",
+  "Yeniden yapım": "بازسازی",
+  "Müdahale gerekli": "نیاز به اقدام",
+  "İzlenmeli": "نیاز به پیگیری",
+  "Lab kaynaklı revizyon / teslim edilen sipariş. Hekim kaynaklı revizyonlar orana girmez.": "بازبینی‌های ناشی از لابراتوار / سفارش‌های تحویل‌شده. بازبینی‌های درخواستی پزشک در این نرخ حساب نمی‌شوند.",
+  "Nerede hata oluyor": "خطا کجا رخ می‌دهد",
+  "revizyonda hatalı istasyon işaretlenmemiş. Revizyon açarken istasyonu seçerseniz burada kırılım görünür.": "بازبینی بدون ایستگاه خطای مشخص. هنگام ثبت بازبینی ایستگاه را انتخاب کنید تا تفکیک اینجا نمایش داده شود.",
+  "Son revizyonlar": "بازبینی‌های اخیر"
 }

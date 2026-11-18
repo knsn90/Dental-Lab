@@ -10808,5 +10808,15 @@
   "Onaylanmış ekstre ve altında onay bekleyenler": "Approved statement with pending items below",
   "Ön ekstre, onaylanmış ekstre ya da tam ekstre": "Pre-statement, approved statement or full statement",
   "Ön ekstre / onaylanmış ekstre / tam ekstre; özet ya da ayrıntılı": "Pre-statement / approved / full statement; summary or detailed",
-  "Onay bekleyen kalem yok": "No items awaiting approval"
+  "Onay bekleyen kalem yok": "No items awaiting approval",
+  "Zirkonya": "Zirconia",
+  "Kar katkısı": "Profit contribution",
+  "teknisyen": "technicians",
+  "Yeniden yapım": "Remakes",
+  "Müdahale gerekli": "Needs action",
+  "İzlenmeli": "Watch",
+  "Lab kaynaklı revizyon / teslim edilen sipariş. Hekim kaynaklı revizyonlar orana girmez.": "Lab-caused revisions / delivered orders. Dentist-requested revisions are not counted.",
+  "Nerede hata oluyor": "Where errors happen",
+  "revizyonda hatalı istasyon işaretlenmemiş. Revizyon açarken istasyonu seçerseniz burada kırılım görünür.": "revisions have no faulty station marked. Select the station when opening a revision to see a breakdown here.",
+  "Son revizyonlar": "Recent revisions"
 }

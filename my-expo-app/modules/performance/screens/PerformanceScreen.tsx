@@ -12,7 +12,10 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { weekdayOffset } from '../../../core/i18n';
 import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { router, useSegments } from 'expo-router';
-import { RemakeQualityCard } from '../components/RemakeQualityCard';
+import { RemakeQualityCard, remakeTone } from '../components/RemakeQualityCard';
+import { fetchRemakeStats, type RemakeStats } from '../../orders/api';
+import { usePageTitleStore } from '../../../core/store/pageTitleStore';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import {
   View, Text, ScrollView, Pressable,
   Platform, useWindowDimensions,
@@ -21,7 +24,7 @@ import {
   Calendar, Users, AlertTriangle, Wrench,
   TrendingUp, TrendingDown, Clock, Filter,
   ChevronDown, ChevronUp, BarChart3, Flame,
-  DollarSign, Timer, Zap, ArrowUpDown, Star,
+  DollarSign, Timer, Zap, ArrowUpDown, Star, RotateCcw, ClipboardList,
 } from '../../../core/ui/icons';
 
 import { supabase }     from '../../../core/api/supabase';
@@ -261,6 +264,29 @@ export function PerformanceScreen() {
     return () => { cancelled = true; };
   }, [labId, range, matType]);
 
+  // ── Yeniden yapım — sayfanın tek dönem seçicisine bağlı ─────────
+  const [remake, setRemake] = useState<RemakeStats | null>(null);
+  const [remakeLoading, setRemakeLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    const { from, to } = getRange(range);
+    setRemakeLoading(true);
+    fetchRemakeStats(from!, to!)
+      .then(st => { if (!cancelled) setRemake(st); })
+      .catch(() => { if (!cancelled) setRemake(null); })
+      .finally(() => { if (!cancelled) setRemakeLoading(false); });
+    return () => { cancelled = true; };
+  }, [range]);
+
+  // Masaüstü başlık satırı: yoksa içerik sağ üstteki yüzen arama/profil çubuğunun altına giriyordu.
+  // Hub içinde başlığı hub verir.
+  const { setTitle, clear } = usePageTitleStore();
+  useEffect(() => {
+    if (isHub) return;
+    setTitle(autoT('Performans'), autoT('Teknisyen ve üretim metrikleri'));
+    return clear;
+  }, [isHub]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Sort ───────────────────────────────────────────────────────
   const toggleSort = useCallback((key: SortKey) => {
     if (sortKey === key) {
@@ -313,60 +339,144 @@ export function PerformanceScreen() {
       contentContainerStyle={{ paddingHorizontal: isHub ? 0 : 20, paddingTop: isHub ? 0 : 4, paddingBottom: 40, gap: 14 }}
       showsVerticalScrollIndicator={false}
     >
-      <MobilePageTitle title="Performans" subtitle="Teknisyen ve üretim metrikleri" />
+      <MobilePageTitle title={autoT("Performans")} subtitle={autoT("Teknisyen ve üretim metrikleri")} />
 
-      {/* Yeniden-yapım (remake) kalite panosu — kendi dönem filtresi var */}
-      <RemakeQualityCard
-        accentColor={accentColor}
-        onOpenOrder={(oid) => router.push(`/${panelBase}/order/${oid}` as any)}
-      />
-      {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
-          Prim Motoru hiyerarşisi: kicker → 44px toplam kar katkısı →
-          bağlam cümlesi → sağda 40px stat'lar → altta kutucuk şeridi. */}
+      {/* ── Tek kontrol şeridi — dönem tüm sayfayı, materyal teknisyen metriklerini yönetir.
+          Etkilediği her şeyin ÜSTÜNDE (eskiden kartların altındaydı, iki ayrı dönem seçici vardı). */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center', zIndex: 20 }}>
+        <View style={{
+          flexDirection: 'row', padding: 3, borderRadius: 999,
+          backgroundColor: U.surfaceSoft, borderWidth: 1, borderColor: U.hairline,
+        }}>
+          {RANGE_OPTIONS.map(opt => {
+            const active = range === opt.key;
+            return (
+              <Pressable
+                key={opt.key}
+                onPress={() => setRange(opt.key)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                style={({ pressed }: any) => ({
+                  paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999,
+                  backgroundColor: active ? U.surface : 'transparent',
+                  opacity: pressed && !active ? 0.7 : 1,
+                  ...(active && Platform.OS === 'web' ? { boxShadow: U.isDark ? '0 1px 3px rgba(0,0,0,0.5)' : '0 1px 3px rgba(0,0,0,0.10)' } as any : {}),
+                  // @ts-ignore web
+                  cursor: 'pointer',
+                })}
+              >
+                <Text style={{ fontSize: 12.5, fontWeight: active ? '600' : '500', color: active ? U.ink[900] : U.ink[500] }}>
+                  {autoT(opt.label)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Materyal dropdown */}
+        <View style={{ position: 'relative', zIndex: 30 }}>
+          <Pressable
+            onPress={() => setMatOpen(o => !o)}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              paddingHorizontal: 12, paddingVertical: 7,
+              borderRadius: 9999,
+              backgroundColor: matType !== 'all' ? U.ink[900] : U.plainBtn.bg,
+              borderWidth: matType !== 'all' ? 0 : 1, borderColor: U.hairline,
+              // @ts-ignore web
+              cursor: 'pointer',
+            }}
+          >
+            <Wrench size={12} color={matType !== 'all' ? U.onDarkPill : U.ink[500]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 12.5, fontWeight: '500', color: matType !== 'all' ? U.onDarkPill : U.ink[700] }}>
+              {autoT(MATERIAL_TYPES.find(m => m.key === matType)?.label ?? 'Materyal')}
+            </Text>
+            <ChevronDown size={12} color={matType !== 'all' ? U.onDarkPillMuted : U.ink[400]} strokeWidth={2} />
+          </Pressable>
+          {matOpen && (
+            <View style={{
+              position: 'absolute', top: '100%', start: 0, marginTop: 6,
+              backgroundColor: U.surface, borderRadius: 14, padding: 4,
+              borderWidth: 1, borderColor: U.hairline,
+              ...(Platform.OS === 'web' ? { boxShadow: U.isDark ? '0 8px 24px rgba(0,0,0,0.55)' : '0 8px 24px rgba(0,0,0,0.12)' } : {}),
+              minWidth: 170, zIndex: 50,
+            }}>
+              {MATERIAL_TYPES.map(opt => (
+                <Pressable
+                  key={opt.key}
+                  onPress={() => { setMatType(opt.key); setMatOpen(false); }}
+                  style={({ hovered, pressed }: any) => ({
+                    paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10,
+                    backgroundColor: matType === opt.key || hovered || pressed ? U.rowHover : 'transparent',
+                    // @ts-ignore web
+                    cursor: 'pointer',
+                  })}
+                >
+                  <Text style={{
+                    fontSize: 13,
+                    fontWeight: matType === opt.key ? '600' : '400',
+                    color: matType === opt.key ? U.ink[900] : U.ink[700],
+                  }}>
+                    {autoT(opt.label)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* ── Hero — tek ana kart. Başlık = toplam kar katkısı; vurgu rengi yalnız sıfırdan farklıyken.
+          Kutucuklar başlıkta OLMAYAN sayıları taşır (eskiden "Teknisyen" üç kez yazıyordu). */}
       {totals && !loading && (
         <WhiteHero
-          kicker="Performans"
+          kicker={autoT('Performans')}
           accent={accentColor}
-          title={<>Kar katkısı <Text style={{ color: heroInk.accentInk }}>{fmtCur(totals.totalProfit)}</Text></>}
-          description={`${totals.techCount} teknisyen · ${fmt1(totals.totalLabor)} sa toplam süre`}
+          title={<>{autoT('Kar katkısı')} <Text style={{
+            color: totals.totalProfit > 0 ? heroInk.accentInk : totals.totalProfit < 0 ? U.chipTones.danger.fg : heroInk.inkSoft,
+          }}>{fmtCur(totals.totalProfit)}</Text></>}
+          description={`${totals.techCount} ${autoT('teknisyen')} · ${fmt(totals.totalOrders)} ${autoT('sipariş')} · ${fmt1(totals.totalLabor)} ${autoT('sa toplam süre')}`}
           stats={[
-            { value: String(totals.techCount), label: 'Teknisyen' },
-            { value: `${fmt1(totals.totalLabor)} sa`, label: 'Süre' },
-            ...(totals.avgEfficiency !== null ? [{ value: `%${fmt1(totals.avgEfficiency)}`, label: 'Verim' }] : []),
+            { value: String(totals.techCount), label: autoT('Teknisyen') },
+            { value: `${fmt1(totals.totalLabor)} ${autoT('sa')}`, label: autoT('Süre') },
           ]}
         >
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
             {([
+              { label: autoT('Sipariş'), value: fmt(totals.totalOrders), icon: ClipboardList, color: heroInk.ink },
               {
-                label: 'Fire',
-                value: `−${fmt(totals.totalWaste)} ${baseSymbol()}`,
+                label: autoT('Fire'),
+                value: totals.totalWaste > 0 ? `−${fmt(totals.totalWaste)} ${baseSymbol()}` : '—',
                 icon: Flame,
+                color: totals.totalWaste > 0 ? U.chipTones.danger.fg : heroInk.inkSoft,
               },
               {
-                label: 'Verim',
+                label: autoT('Verim'),
                 value: totals.avgEfficiency !== null ? `%${fmt1(totals.avgEfficiency)}` : '—',
                 icon: Zap,
+                color: totals.avgEfficiency !== null ? effTone(U, totals.avgEfficiency).fg : heroInk.inkSoft,
               },
               {
-                label: 'Teknisyen',
-                value: `${totals.techCount}`,
-                icon: BarChart3,
+                label: autoT('Yeniden yapım'),
+                value: remake ? `%${remake.rate.toFixed(1)}` : '—',
+                icon: RotateCcw,
+                color: remake ? U.chipTones[remakeTone(remake.rate)].fg : heroInk.inkSoft,
               },
-            ] as const).map(stat => {
+            ]).map(stat => {
               const Icon = stat.icon;
               return (
                 <View key={stat.label} style={{
-                  flex: 1, minWidth: 110, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 14,
+                  flex: 1, minWidth: 130, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14,
                   backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
                 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
-                    <Icon size={11} color={heroInk.inkSoft} strokeWidth={2} />
-                    <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <Icon size={12} color={heroInk.inkSoft} strokeWidth={2} />
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: heroInk.inkSoft }}>
                       {stat.label}
                     </Text>
                   </View>
                   <Text
-                    style={{ ...DISPLAY, fontWeight: '300', fontSize: 18, color: heroInk.ink, letterSpacing: -0.4, lineHeight: 22 }}
+                    style={{ ...DISPLAY, fontSize: 22, color: stat.color, letterSpacing: -0.5, lineHeight: 26 }}
                     numberOfLines={1}
                   >
                     {stat.value}
@@ -378,89 +488,12 @@ export function PerformanceScreen() {
         </WhiteHero>
       )}
 
-      {/* ── Filters — dönem pills + materyal dropdown ─────────── */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', zIndex: 20 }}>
-        {/* Dönem pill strip */}
-        {RANGE_OPTIONS.map(opt => {
-          const active = range === opt.key;
-          return (
-            <Pressable
-              key={opt.key}
-              onPress={() => setRange(opt.key)}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                paddingHorizontal: active ? 14 : 12, paddingVertical: 6,
-                borderRadius: 9999,
-                backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
-                borderWidth: active ? 0 : 1, borderColor: U.ink[300],
-                // @ts-ignore web
-                cursor: 'pointer',
-              }}
-            >
-              {active && <Calendar size={11} color={U.onDarkPill} strokeWidth={2} />}
-              <Text style={{ fontSize: 12, fontWeight: '500', color: active ? U.onDarkPill : U.ink[500] }}>
-                {opt.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-
-        {/* Separator */}
-        <View style={{ width: 1, height: 20, backgroundColor: U.fieldBorder, marginHorizontal: 2 }} />
-
-        {/* Materyal dropdown */}
-        <View style={{ position: 'relative', zIndex: 30 }}>
-          <Pressable
-            onPress={() => setMatOpen(o => !o)}
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 6,
-              paddingHorizontal: 12, paddingVertical: 6,
-              borderRadius: 9999,
-              backgroundColor: matType !== 'all' ? U.ink[900] : U.plainBtn.bg,
-              borderWidth: matType !== 'all' ? 0 : 1, borderColor: U.ink[300],
-              // @ts-ignore web
-              cursor: 'pointer',
-            }}
-          >
-            <Wrench size={11} color={matType !== 'all' ? U.onDarkPill : U.ink[500]} strokeWidth={1.8} />
-            <Text style={{ fontSize: 12, fontWeight: '500', color: matType !== 'all' ? U.onDarkPill : U.ink[500] }}>
-              {MATERIAL_TYPES.find(m => m.key === matType)?.label ?? 'Materyal'}
-            </Text>
-            <ChevronDown size={11} color={matType !== 'all' ? U.onDarkPillMuted : U.ink[400]} strokeWidth={2} />
-          </Pressable>
-          {matOpen && (
-            <View style={{
-              position: 'absolute', top: '100%', start: 0, marginTop: 4,
-              backgroundColor: U.surface, borderRadius: 14,
-              borderWidth: 1, borderColor: U.fieldBorder,
-              ...(Platform.OS === 'web' ? { boxShadow: U.isDark ? '0 4px 20px rgba(0,0,0,0.55)' : '0 4px 20px rgba(0,0,0,0.12)' } : {}),
-              minWidth: 160, zIndex: 50,
-              overflow: 'hidden',
-            }}>
-              {MATERIAL_TYPES.map(opt => (
-                <Pressable
-                  key={opt.key}
-                  onPress={() => { setMatType(opt.key); setMatOpen(false); }}
-                  style={{
-                    paddingHorizontal: 14, paddingVertical: 10,
-                    backgroundColor: matType === opt.key ? U.ink[50] : 'transparent',
-                    // @ts-ignore web
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Text style={{
-                    fontSize: 13,
-                    fontWeight: matType === opt.key ? '600' : '400',
-                    color: matType === opt.key ? U.ink[900] : U.ink[500],
-                  }}>
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-        </View>
-      </View>
+      {/* ── Yeniden yapım — sade kart (hero değil); dönem yukarıdaki seçiciden */}
+      <RemakeQualityCard
+        stats={remake}
+        loading={remakeLoading}
+        onOpenOrder={(oid) => router.push(`/${panelBase}/order/${oid}` as any)}
+      />
 
       {/* ── Table ──────────────────────────────────────────────── */}
       {loading ? (

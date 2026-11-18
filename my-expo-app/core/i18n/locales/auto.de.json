@@ -10808,5 +10808,15 @@
   "Onaylanmış ekstre ve altında onay bekleyenler": "Bestätigter Kontoauszug, darunter die offenen Posten",
   "Ön ekstre, onaylanmış ekstre ya da tam ekstre": "Vorab-Auszug, bestätigter oder vollständiger Kontoauszug",
   "Ön ekstre / onaylanmış ekstre / tam ekstre; özet ya da ayrıntılı": "Vorab-Auszug / bestätigt / vollständig; Übersicht oder detailliert",
-  "Onay bekleyen kalem yok": "Keine Posten warten auf Freigabe"
+  "Onay bekleyen kalem yok": "Keine Posten warten auf Freigabe",
+  "Zirkonya": "Zirkon",
+  "Kar katkısı": "Gewinnbeitrag",
+  "teknisyen": "Techniker",
+  "Yeniden yapım": "Neuanfertigung",
+  "Müdahale gerekli": "Handlungsbedarf",
+  "İzlenmeli": "Beobachten",
+  "Lab kaynaklı revizyon / teslim edilen sipariş. Hekim kaynaklı revizyonlar orana girmez.": "Laborbedingte Revisionen / gelieferte Aufträge. Vom Zahnarzt veranlasste Revisionen zählen nicht.",
+  "Nerede hata oluyor": "Wo Fehler entstehen",
+  "revizyonda hatalı istasyon işaretlenmemiş. Revizyon açarken istasyonu seçerseniz burada kırılım görünür.": "Revisionen ohne markierte Fehlerstation. Wählen Sie beim Anlegen einer Revision die Station, um hier eine Aufschlüsselung zu sehen.",
+  "Son revizyonlar": "Letzte Revisionen"
 }
