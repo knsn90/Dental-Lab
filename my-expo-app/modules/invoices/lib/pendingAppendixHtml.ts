@@ -13,6 +13,8 @@ export type PendingAppendixRow = {
   ref: string;
   date: string | null;
   description: string;
+  /** Ayrıntılı PDF: kalem listesi (açıklama · adet × fiyat; alt: hasta · sipariş) */
+  items?: { text: string; sub?: string | null }[] | null;
   status: 'awaiting' | 'draft';
   amount: number;
 };
@@ -42,7 +44,7 @@ export function buildPendingAppendixHtml(
   const body = rows.map(r => `<tr>
       <td style="${td}white-space:nowrap;">${esc(r.ref || '—')}</td>
       <td style="${td}white-space:nowrap;">${esc(d(r.date))}</td>
-      <td style="${td}">${esc(r.description || '—')}</td>
+      <td style="${td}">${esc(r.description || '—')}${r.items && r.items.length ? `<div style="margin-top:5px;border-inline-start:2px solid #EAEAEA;padding-inline-start:8px">${r.items.map(it => `<div style="padding:2px 0"><div style="font-size:10.5px;color:#2C2C2C">${esc(it.text)}</div>${it.sub ? `<div style="font-size:9.5px;color:#6B6B6B">${esc(it.sub)}</div>` : ''}</div>`).join('')}</div>` : ''}</td>
       <td style="${td}">${chip(r.status)}</td>
       <td style="${td}text-align:right;white-space:nowrap;font-weight:600;">${esc(m(r.amount))}</td>
     </tr>`).join('');

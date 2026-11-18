@@ -51,7 +51,11 @@ const errText = (e: unknown): string => {
 
 type ResultMsg = { issued: number; changed: number; disputed: number };
 
-export function PreStatementScreen({ clinicId }: { clinicId: string }) {
+export function PreStatementScreen({ clinicId, onOtherScope }: {
+  clinicId: string;
+  /** PDF penceresinde Tamamı / Onaylanmışlar seçilince ekstre sekmesine geçirir. */
+  onOtherScope?: (scope: 'all' | 'approved') => void;
+}) {
   const U = useInkUI();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
@@ -223,6 +227,7 @@ export function PreStatementScreen({ clinicId }: { clinicId: string }) {
               data={data}
               lab={fetchSelfViewLetterhead}
               defaultFormat="ozet"
+              onOtherScope={onOtherScope}
             />
           ) : null}
 

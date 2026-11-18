@@ -49,6 +49,8 @@ function fmtMoney(amount: number | string | null | undefined): string {
 
 // ── Statement line builder ───────────────────────────────────────────
 export interface StatementLine {
+  /** Ayrıntılı PDF: faturanın iş kalemleri (yalnız görünüm; tutarlar fatura satırında kalır) */
+  items?: { text: string; sub?: string | null }[] | null;
   /** Stabil React key için opsiyonel id (örn. fatura/ödeme uuid'si) */
   id?: string;
   date: string;
@@ -279,6 +281,7 @@ export function buildStatementHtml(
     tax: l.type === 'invoice' ? (l.tax ?? 0) : null,
     taxRate: l.type === 'invoice' ? (l.taxRate ?? null) : null,
     ...(showDiscount ? { discountText: discText(l) } : {}),
+    ...(l.type === 'invoice' && l.items?.length ? { items: l.items } : {}),
   }));
 
   return buildCariStatementHtml({

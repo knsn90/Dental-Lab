@@ -78,6 +78,8 @@ export function ClinicFinanceHubScreen() {
     setTabRaw(k);
     try { router.setParams({ tab: k } as any); } catch { /* native fallback */ }
   }, [router]);
+  // Ön ekstre PDF penceresinden "Tamamı/Onaylanmışlar" → ekstre sekmesinde PDF penceresi o kapsamla açılır
+  const [pdfIntent, setPdfIntent] = useState<'with' | 'statement' | null>(null);
   useEffect(() => {
     const q = typeof params.tab === 'string' ? params.tab : null;
     if (q && isValidTab(q) && q !== tab) setTabRaw(q as TabKey);
@@ -120,7 +122,7 @@ export function ClinicFinanceHubScreen() {
   const renderContent = () => {
     switch (tab) {
       case 'overview':  return <OverviewScreen clinicId={clinicId} onJump={setTab} />;
-      case 'statement': return <ClinicStatementScreen clinicId={clinicId} selfView />;
+      case 'statement': return <ClinicStatementScreen clinicId={clinicId} selfView openPdf={pdfIntent} onOpenPdfHandled={() => setPdfIntent(null)} />;
       case 'open':      return <OpenInvoicesScreen clinicId={clinicId} />;
       // 'overdue' ayrı sekme DEĞİL, aynı ekranın ön-filtreli hâli: vadesi
       // geçenler zaten bekleyenlerin alt kümesi, iki sekme aynı listeyi
@@ -128,7 +130,7 @@ export function ClinicFinanceHubScreen() {
       // route anahtarı korunuyor.
       case 'overdue':   return <OpenInvoicesScreen clinicId={clinicId} onlyOverdue />;
       case 'payments':  return <PaymentHistoryScreen clinicId={clinicId} />;
-      case 'preStatement': return <PreStatementScreen clinicId={clinicId} />;
+      case 'preStatement': return <PreStatementScreen clinicId={clinicId} onOtherScope={(s) => { setPdfIntent(s === 'all' ? 'with' : 'statement'); setTab('statement'); }} />;
     }
   };
 

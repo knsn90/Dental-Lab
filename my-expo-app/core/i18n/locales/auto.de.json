@@ -10789,5 +10789,11 @@
   "Doğrudan yazıcı penceresini açar; son seçilen biçim kullanılır": "Öffnet direkt den Druckdialog im zuletzt gewählten Format",
   "Ekstreyi PDF dosyası olarak indirir; son seçilen seçenekler kullanılır": "Lädt den Kontoauszug als PDF-Datei mit den zuletzt gewählten Optionen herunter",
   "Doğrudan yazıcı penceresini açar; son seçilen seçenekler kullanılır": "Öffnet direkt den Druckdialog mit den zuletzt gewählten Optionen",
-  "Onay bekleyenler, biçim ve hekim seçimi": "Ausstehende Freigaben, Format und Zahnarztauswahl"
+  "Onay bekleyenler, biçim ve hekim seçimi": "Ausstehende Freigaben, Format und Zahnarztauswahl",
+  "Tamamı": "Alle",
+  "Onaylanmışlar": "Bestätigte",
+  "Onay bekleyenler": "Ausstehende Bestätigung",
+  "Tamamı / onaylanmışlar / onay bekleyenler; özet ya da ayrıntılı": "Alle / bestätigte / ausstehende Bestätigung; Übersicht oder detailliert",
+  "Her hizmet bedelinin altında iş kalemleri: açıklama, adet × fiyat, hasta, sipariş no": "Positionen unter jeder Leistungsabrechnung: Beschreibung, Menge × Preis, Patient, Auftragsnr.",
+  "Hizmet bedeli başına tek satır": "Eine Zeile pro Leistungsabrechnung"
 }

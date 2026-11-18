@@ -10789,5 +10789,11 @@
   "Doğrudan yazıcı penceresini açar; son seçilen biçim kullanılır": "Opens the print dialog directly using the last chosen format",
   "Ekstreyi PDF dosyası olarak indirir; son seçilen seçenekler kullanılır": "Downloads the statement as a PDF file using the last chosen options",
   "Doğrudan yazıcı penceresini açar; son seçilen seçenekler kullanılır": "Opens the print dialog directly using the last chosen options",
-  "Onay bekleyenler, biçim ve hekim seçimi": "Pending approvals, format and dentist selection"
+  "Onay bekleyenler, biçim ve hekim seçimi": "Pending approvals, format and dentist selection",
+  "Tamamı": "All",
+  "Onaylanmışlar": "Approved",
+  "Onay bekleyenler": "Awaiting approval",
+  "Tamamı / onaylanmışlar / onay bekleyenler; özet ya da ayrıntılı": "All / approved / awaiting approval; summary or detailed",
+  "Her hizmet bedelinin altında iş kalemleri: açıklama, adet × fiyat, hasta, sipariş no": "Work items under each service charge: description, qty × price, patient, order no",
+  "Hizmet bedeli başına tek satır": "One line per service charge"
 }

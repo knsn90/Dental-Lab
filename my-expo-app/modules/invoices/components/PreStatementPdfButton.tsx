@@ -30,7 +30,7 @@ export function doctorNamesOf(data: PreStatement | null | undefined): string[] {
 
 const safe = (s: string) => s.replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'Klinik';
 
-export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, approve, doctors, currency }: {
+export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, approve, doctors, currency, onOtherScope }: {
   clinicName: string;
   data: PreStatement;
   /** Hazır antet ya da (tıklamada çağrılan) çekici */
@@ -43,6 +43,8 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
   doctors?: string[];
   /** Varsayılan para birimi (lab: ekranda seçili olan). Yoksa ilk para birimi. */
   currency?: string;
+  /** Verilirse pencerede "Kapsam" seçimi çıkar: Tamamı / Onaylanmışlar → ekstre PDF'ine yönlendirir. */
+  onOtherScope?: (scope: 'all' | 'approved') => void;
 }) {
   const U = useInkUI();
   const [open, setOpen] = useState(false);
@@ -145,6 +147,16 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
           <View style={[U.modalCard, { maxWidth: 420 }]}>
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 16, fontWeight: '700', color: U.ink[900] }}>{autoT('Ön ekstre PDF')}</Text>
+              {onOtherScope ? (
+                <View style={{ gap: 8 }}>
+                  <Text style={lbl}>{autoT('Kapsam')}</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {chip(autoT('Tamamı'), false, () => { setOpen(false); onOtherScope('all'); }, 'sc:all')}
+                    {chip(autoT('Onaylanmışlar'), false, () => { setOpen(false); onOtherScope('approved'); }, 'sc:ok')}
+                    {chip(autoT('Onay bekleyenler'), true, () => {}, 'sc:pend')}
+                  </View>
+                </View>
+              ) : null}
               <View style={{ gap: 8 }}>
                 <Text style={lbl}>{autoT('Biçim')}</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>

@@ -25,7 +25,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
 import { withEffectiveDiscounts } from '../lib/correctionDoc';
-import { fetchInvoicesForClinic, fetchClinicBalance, fetchUnbilledWorkOrders, createInvoiceFromOrder, fetchClinicPriceCurrency, fetchClinicReceipts, fetchStatementDiscounts, deleteStatementDiscount } from '../api';
+import { fetchInvoicesForClinic, fetchClinicBalance, fetchUnbilledWorkOrders, createInvoiceFromOrder, fetchClinicPriceCurrency, fetchClinicReceipts, fetchStatementDiscounts, deleteStatementDiscount, fetchInvoiceItemDetails } from '../api';
 import { buildStatementLines, buildStatementHtml } from '../buildStatementHtml';
 import { statementVatSummary } from '../lib/statementVat';
 import { StatementVatSummary } from '../components/StatementVatSummary';
@@ -270,12 +270,15 @@ function exportExcel(
 // ═════════════════════════════════════════════════════════════════════
 // MAIN
 // ═════════════════════════════════════════════════════════════════════
-export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false }: {
+export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false, openPdf = null, onOpenPdfHandled }: {
   /** Hub içine gömülünce (klinik/hekim kendi ekstresi) prop'la gelir; yoksa route param. */
   clinicId?: string;
   /** Klinik/hekim kendi ekstresini görüyor: lab'a özel bölümler (faturalanmamış işler,
       geri butonu) gizlenir; veri çekimi RLS'e takılmayacak şekilde kısılır. */
   selfView?: boolean;
+  /** Dışarıdan PDF penceresini bu kapsamla aç (ön ekstre sayfasından yönlendirme). */
+  openPdf?: PdfMode | null;
+  onOpenPdfHandled?: () => void;
 } = {}) {
   const U = useInkUI();
   const STATUS_CHIP = statusChip(U);
@@ -322,6 +325,10 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   // Son seçilen kapsam cihazda hatırlanır ("PDF"/"Yazdır" doğrudan çalışır, pencere açmaz).
   const [pdfMode, setPdfModeRaw] = useState<PdfMode>(() => readPrintPref<PdfMode>('statementMode', ['statement', 'with', 'pending']) ?? 'with');
   const setPdfMode = useCallback((m: PdfMode) => { setPdfModeRaw(m); writePrintPref('statementMode', m); }, []);
+  useEffect(() => {
+    if (!openPdf) return;
+    setPdfMode(openPdf); setPdfOpen(true); onOpenPdfHandled?.();
+  }, [openPdf, setPdfMode, onOpenPdfHandled]);
   const preFmtSetting = usePreStatementPdfFormat();
   const [preFmt, setPreFmtRaw] = useState<'ozet' | 'ayrintili' | null>(() => readPrintPref<'ozet' | 'ayrintili'>('preStatementFormat', ['ozet', 'ayrintili']));
   const setPreFmt = useCallback((f: 'ozet' | 'ayrintili') => { setPreFmtRaw(f); writePrintPref('preStatementFormat', f); }, []);
@@ -360,7 +367,8 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   // Hangi klinik için veri yüklendi — aynı kliniğin TAZELEMESİ sessiz olsun (bkz. aşağı).
   const loadedFor = useRef<string | null>(null);
   // Ön ekstre (lab tarafı) — ayar kapalıyken hiçbir şey çizmez; klinik kendi ekranını kullanır.
-  const preSt = useLabPreStatement(clinicId, reloadTick, !selfView);
+  // Klinik/hekim kendi ekstresinde de çekilir: PDF'teki "Onay bekleyenler" / "Tamamı" kapsamı için (bölüm çizilmez).
+  const preSt = useLabPreStatement(clinicId, reloadTick, true);
   // Ayar açıkken taslaklar YALNIZ ön ekstre bölümünde görünür ("Faturalanmamış İşler"de değil).
   // RPC sonucu esas; gelmeden önce lab ayarı (store) ipucu. Kapalıyken bugünkü davranış.
   const approvalHint = useInvoiceApprovalEnabled();
@@ -737,7 +745,6 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   // ── Print / PDF ────────────────────────────────────────
   /** PDF'in sonuna eklenecek kesinleşmemiş kalemler (seçili dövizde): ön ekstre + taslak/faturasız işler. */
   const pdfPendingRows = useMemo<PendingAppendixRow[]>(() => {
-    if (selfView) return [];
     const out: PendingAppendixRow[] = [];
     if (preSt.data?.enabled) {
       for (const inv of preSt.data.invoices ?? []) {
@@ -749,24 +756,48 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
           ref: inv.invoice_number ?? '',
           date: inv.issue_date ?? inv.created_at,
           description: items.length > 1 ? `${desc} (+${items.length - 1} ${autoT('kalem')})` : desc,
+          // Ayrıntılı PDF'te kalem kalem (özet PDF'te dışa aktarımda atılır)
+          items: items.map(it => ({
+            text: it.description || autoT('Kalem'),
+            sub: [`${Number(it.quantity) || 0} × ${fmtMoney(Number(it.unit_price) || 0, selectedCcy)}`, patientLabel(it), it.order_no, it.doctor_name].filter(Boolean).join(' · '),
+          })),
           status: 'awaiting',
           amount: Number(inv.total) || 0,
         });
       }
     }
-    for (const r of pendingRows) {
+    // Faturasız işler yalnız lab'da (klinik kendi ekstresinde görmez)
+    if (!selfView) for (const r of pendingRows) {
       out.push({ ref: r.ref, date: r.date, description: [r.title, r.subtitle].filter(Boolean).join(' · '), status: 'draft', amount: r.amount });
     }
     return out;
   }, [selfView, preSt.data, selectedCcy, pendingRows]);
 
-  const handlePrint = useCallback(async (withPending: boolean = false, action: 'pdf' | 'print' = 'print') => {
+  const handlePrint = useCallback(async (withPending: boolean = false, action: 'pdf' | 'print' = 'print', detail: boolean = false) => {
     setExporting(true);
     try {
       const lab = selfView ? await fetchSelfViewLetterhead() : await fetchLabLetterhead();
+      // Ayrıntılı: her faturanın altına iş kalemleri (tutar/bakiye fatura satırında kalır)
+      let lines = shown;
+      if (detail) {
+        const ids = shown.filter(l => l.type === 'invoice' && l.id).map(l => l.id as string);
+        const det = ids.length ? await fetchInvoiceItemDetails(ids) : [];
+        const byInv = new Map<string, { text: string; sub?: string | null }[]>();
+        for (const it of det) {
+          const wo = it.order_item?.work_order;
+          const arr = byInv.get(it.invoice_id) ?? [];
+          arr.push({
+            text: it.description || autoT('Kalem'),
+            sub: [`${Number(it.quantity) || 0} × ${fmtMoney(Number(it.unit_price) || 0, selectedCcy)}`, wo?.patient_name, wo?.order_number].filter(Boolean).join(' · '),
+          });
+          byInv.set(it.invoice_id, arr);
+        }
+        lines = shown.map(l => (l.type === 'invoice' && l.id && byInv.has(l.id) ? { ...l, items: byInv.get(l.id) } : l));
+      }
+      const appendixRows = detail ? pdfPendingRows : pdfPendingRows.map(({ items: _i, ...rest }) => rest);
       const baseHtml = buildStatementHtml(
         clinicInfo?.clinic_name ?? 'Klinik',
-        shown,
+        lines,
         lab,
         { from: dateFrom || undefined, to: dateTo || undefined },
         selectedCcy,
@@ -777,11 +808,11 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
       );
       // Onay bekleyenler: kesinleşmiş ekstrenin ALTINA ayrı, "bakiyeye dahil değil" etiketli bölüm.
       const html = withPending
-        ? appendBeforeBody(baseHtml, buildPendingAppendixHtml(pdfPendingRows, selectedCcy, kpis.balance))
+        ? appendBeforeBody(baseHtml, buildPendingAppendixHtml(appendixRows, selectedCcy, kpis.balance))
         : baseHtml;
 
       const safeName = (clinicInfo?.clinic_name ?? 'Klinik').replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'Klinik';
-      const docName = `Hesap-Ekstresi-${safeName}-${selectedCcy}`;
+      const docName = `Hesap-Ekstresi${detail ? '-Ayrintili' : ''}-${safeName}-${selectedCcy}`;
       // Tek adım: PDF → dosya iner; Yazdır → yalnız sistem yazdırma penceresi.
       if (action === 'pdf') await downloadHtmlPdf(html, `${docName}.pdf`);
       else await printHtmlDirect(html, docName);
@@ -793,7 +824,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   }, [clinicInfo, shown, dateFrom, dateTo, selectedCcy, selfView, periodTotals, prefs.vat, totals, discMode, pdfPendingRows, kpis.balance]);
 
   /** Yalnız onay bekleyenler: ön ekstre PDF'i (özet/ayrıntılı, hekim süzgeci), genel ekstreyle aynı açılış. */
-  const preStatementCount = !selfView && preSt.data?.enabled
+  const preStatementCount = preSt.data?.enabled
     ? (preSt.data.invoices ?? []).filter(i => (i.currency || 'TRY') === selectedCcy).length : 0;
   const preDoctors = useMemo(() => doctorNamesOf(preSt.data), [preSt.data]);
   const handlePendingPdf = useCallback((action: 'pdf' | 'print' = 'pdf') => {
@@ -825,9 +856,9 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
 
   /** PDF / Yazdır düğmeleri: hatırlanan kapsamla doğrudan çalışır (seçenek penceresi açılmaz). */
   const runStatementOutput = (action: 'pdf' | 'print') => {
-    if (selfView) { void handlePrint(false, action); return; }
     if (pdfMode === 'pending' && preStatementCount > 0) { handlePendingPdf(action); return; }
-    void handlePrint(pdfMode !== 'statement' && pdfPendingRows.length > 0, action);
+    const detail = (preFmt ?? preFmtSetting) === 'ayrintili';
+    void handlePrint(pdfMode !== 'statement' && pdfPendingRows.length > 0, action, detail);
   };
 
   // ── Excel ──────────────────────────────────────────────
@@ -1014,11 +1045,9 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
             <GlassTooltip title={autoT('Yazdır')} text={autoT('Doğrudan yazıcı penceresini açar; son seçilen seçenekler kullanılır')}>
               <PillBtn icon={Printer} label={isDesktop ? "Yazdır" : ""} onPress={() => runStatementOutput('print')} busy={exporting} variant="ghost" />
             </GlassTooltip>
-            {!selfView && (
-              <GlassTooltip title={autoT('PDF seçenekleri')} text={autoT('Onay bekleyenler, biçim ve hekim seçimi')}>
-                <PillBtn icon={SlidersHorizontal} onPress={() => setPdfOpen(true)} busy={exporting} variant="ghost" />
-              </GlassTooltip>
-            )}
+            <GlassTooltip title={autoT('PDF seçenekleri')} text={autoT('Tamamı / onaylanmışlar / onay bekleyenler; özet ya da ayrıntılı')}>
+              <PillBtn icon={SlidersHorizontal} onPress={() => setPdfOpen(true)} busy={exporting} variant="ghost" />
+            </GlassTooltip>
             {/* İkincil eylemler tek menüde: İndirim (lab), Liste ayarı, Excel (web) */}
             <HeroMoreMenu items={[
               ...(!selfView ? [{ key: 'disc', icon: Percent, label: autoT('İndirim ekle'), hint: autoT('Seçili dönemin hizmet bedellerine yüzde ya da tutar indirim uygula'), onPress: () => setDiscountOpen(true) }] : []),
@@ -1956,21 +1985,24 @@ function StatementPdfModal({
             <View style={{ gap: 8 }}>
               <Text style={lbl}>{autoT('İçerik')}</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {chip(autoT('Yalnız ekstre'), eff === 'statement', () => onMode('statement'), 'm:s')}
-                {pendingCount > 0 ? chip(autoT('Ekstre + onay bekleyenler'), eff === 'with', () => onMode('with'), 'm:w') : null}
-                {preCount > 0 ? chip(autoT('Yalnız onay bekleyenler'), eff === 'pending', () => onMode('pending'), 'm:p') : null}
+                {pendingCount > 0 ? chip(autoT('Tamamı'), eff === 'with', () => onMode('with'), 'm:w') : null}
+                {chip(autoT('Onaylanmışlar'), eff === 'statement', () => onMode('statement'), 'm:s')}
+                {preCount > 0 ? chip(autoT('Onay bekleyenler'), eff === 'pending', () => onMode('pending'), 'm:p') : null}
               </View>
               <Text style={{ fontSize: 11.5, color: U.ink[500] }}>{hint}</Text>
             </View>
+            <View style={{ gap: 8 }}>
+              <Text style={lbl}>{autoT('Biçim')}</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {chip(autoT('Özet'), preFormat === 'ozet', () => onPreFormat('ozet'), 'f:o')}
+                {chip(autoT('Ayrıntılı'), preFormat === 'ayrintili', () => onPreFormat('ayrintili'), 'f:a')}
+              </View>
+              <Text style={{ fontSize: 11.5, color: U.ink[500] }}>
+                {preFormat === 'ayrintili' ? autoT('Her hizmet bedelinin altında iş kalemleri: açıklama, adet × fiyat, hasta, sipariş no') : autoT('Hizmet bedeli başına tek satır')}
+              </Text>
+            </View>
             {eff === 'pending' ? (
               <>
-                <View style={{ gap: 8 }}>
-                  <Text style={lbl}>{autoT('Biçim')}</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {chip(autoT('Özet'), preFormat === 'ozet', () => onPreFormat('ozet'), 'f:o')}
-                    {chip(autoT('Ayrıntılı'), preFormat === 'ayrintili', () => onPreFormat('ayrintili'), 'f:a')}
-                  </View>
-                </View>
                 {doctors.length > 0 ? (
                   <View style={{ gap: 8 }}>
                     <Text style={lbl}>{autoT('Hekim')}</Text>

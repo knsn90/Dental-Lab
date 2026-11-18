@@ -115,7 +115,7 @@ test('preStatementLines özet: fatura başına satır, running bakiye = closing 
   assert.equal(l1.taxRate, 20);
   assert.equal(l1.credit, 0);
   assert.equal(l1.orderNo, 'S1, S2, S3');
-  assert.equal(l1.patientName, 'A.K.');
+  assert.equal(l1.patientName, FULL); // giriş yapılmış RPC tam adı verir
   // İndirimli fatura: Σ net (183.6) − subtotal (170.5)
   assert.equal(cents(l1.discount!), cents(183.6 - 170.5));
   assert.equal(cents(l1.discountBase!), cents(183.6));
@@ -133,7 +133,7 @@ test('preStatementLines ayrıntılı: kalem başına satır; debit ve tax fatura
   }
   const first = r.lines[0];
   assert.equal(first.orderNo, 'S1');
-  assert.equal(first.patientName, 'A.K.');
+  assert.equal(first.patientName, FULL);
   assert.equal(first.doctorName, 'Dr. Ali');
   assert.match(first.description, /^Kron · 1 × /);
   assert.ok(r.lines.every((l) => !l.discount));
@@ -158,11 +158,13 @@ test('preStatementLines: başka para birimi satıra girmez; EUR seçilince yaln�
   assert.equal(cents(r.closing), cents(5 + F3.total));
 });
 
-test('preStatementLines: hasta tam adı hiçbir satırda yok (KVKK)', () => {
-  for (const mode of ['ozet', 'ayrintili'] as const) {
-    const r = preStatementLines(ps([F1, F2].map(withName)), 'TRY', mode);
-    assert.ok(!JSON.stringify(r).includes(FULL), mode);
-  }
+// Hasta tam adı yalnız giriş yapılmış get_pre_statement'tan gelir (patient_name); herkese açık
+// bağlantı RPC'si bu alanı döndürmez (KVKK) → o PDF'te yalnız baş harfler kalır.
+test('preStatementLines: patient_name varsa ayrıntılıda tam ad, yoksa baş harfler', () => {
+  const named = preStatementLines(ps([F1, F2].map(withName)), 'TRY', 'ayrintili');
+  assert.ok(JSON.stringify(named).includes(FULL));
+  const link = preStatementLines(ps([F1, F2]), 'TRY', 'ayrintili');
+  assert.ok(!JSON.stringify(link).includes(FULL));
 });
 
 test('preStatementLines özet indirimi mevcut ekstreyle aynı: satır indirimi + fatura altı indirim', () => {

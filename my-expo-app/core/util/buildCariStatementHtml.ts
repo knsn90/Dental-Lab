@@ -16,6 +16,8 @@ import { htmlAttrs, printLocale } from '../i18n/printLocale';
 import { cariDiscountTh, cariDiscountTd, cariDiscountSummaryRow } from './cariDiscountColumn';
 
 export interface CariLine {
+  /** Ayrıntılı PDF: satırın iş kalemleri (açıklama · adet × fiyat; alt: hasta · sipariş). Tutar sütunları değişmez. */
+  items?: { text: string; sub?: string | null }[] | null;
   /** Belge no / referans (T_ID) */
   refNo?: string | null;
   /** Açıklama / not (Reference altında) */
@@ -287,6 +289,7 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
         <td class="party-cell">
           <div class="party-name">${esc(l.counterparty ?? '')}</div>
           ${l.counterpartySub ? `<div class="party-sub">${esc(l.counterpartySub)}</div>` : ''}
+          ${l.items && l.items.length ? `<div class="item-list">${l.items.map(it => `<div class="item"><div class="item-text">${esc(it.text)}</div>${it.sub ? `<div class="item-sub">${esc(it.sub)}</div>` : ''}</div>`).join('')}</div>` : ''}
         </td>
         <td class="money-cell" style="color:${moneyColor}">${l.kind === 'discount' ? '' : esc(moneyText)}</td>
         ${showVat ? `<td class="vat-cell">${(l.tax ?? 0) > 0
@@ -513,6 +516,12 @@ ${wb ? '' : `        <td class="balance-cell">
   .time-text { color: var(--ink-400); margin-top: 2px; font-size: 10px; }
 
   td.party-cell { font-size: 11px; color: var(--ink-900); }
+  /* Ayrıntılı PDF: fatura altındaki iş kalemleri */
+  .item-list { margin-top: 6px; border-inline-start: 2px solid var(--line); padding-inline-start: 8px; }
+  .item-list .item { padding: 2px 0; }
+  .item-list .item + .item { border-top: 1px dashed var(--line-2); margin-top: 2px; padding-top: 4px; }
+  .item-text { font-size: 10.5px; color: var(--ink-700); }
+  .item-sub { font-size: 9.5px; color: var(--ink-500); margin-top: 1px; }
   .party-name { font-weight: 500; }
   .party-sub {
     color: var(--ink-400); margin-top: 2px;

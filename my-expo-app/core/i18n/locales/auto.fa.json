@@ -10789,5 +10789,11 @@
   "Doğrudan yazıcı penceresini açar; son seçilen biçim kullanılır": "پنجرهٔ چاپ را مستقیم با آخرین قالب انتخاب‌شده باز می‌کند",
   "Ekstreyi PDF dosyası olarak indirir; son seçilen seçenekler kullanılır": "صورت‌حساب را با آخرین گزینه‌های انتخاب‌شده به‌صورت فایل PDF دانلود می‌کند",
   "Doğrudan yazıcı penceresini açar; son seçilen seçenekler kullanılır": "پنجرهٔ چاپ را مستقیم با آخرین گزینه‌های انتخاب‌شده باز می‌کند",
-  "Onay bekleyenler, biçim ve hekim seçimi": "موارد در انتظار تأیید، قالب و انتخاب پزشک"
+  "Onay bekleyenler, biçim ve hekim seçimi": "موارد در انتظار تأیید، قالب و انتخاب پزشک",
+  "Tamamı": "همه",
+  "Onaylanmışlar": "تأییدشده‌ها",
+  "Onay bekleyenler": "در انتظار تأیید",
+  "Tamamı / onaylanmışlar / onay bekleyenler; özet ya da ayrıntılı": "همه / تأییدشده‌ها / در انتظار تأیید؛ خلاصه یا جزئی",
+  "Her hizmet bedelinin altında iş kalemleri: açıklama, adet × fiyat, hasta, sipariş no": "اقلام کار زیر هر صورت‌حساب خدمت: شرح، تعداد × قیمت، بیمار، شماره سفارش",
+  "Hizmet bedeli başına tek satır": "یک ردیف برای هر صورت‌حساب خدمت"
 }

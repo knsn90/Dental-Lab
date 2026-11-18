@@ -571,6 +571,31 @@ const CLINIC_STATEMENT_SELECT = `
   items:invoice_items(total, net_total)
 `;
 
+export interface InvoiceItemDetail {
+  invoice_id: string;
+  description: string | null;
+  quantity: number | null;
+  unit_price: number | null;
+  sort_order: number | null;
+  order_item: { work_order: { order_number: string | null; patient_name: string | null } | null } | null;
+}
+
+/** Ayrıntılı ekstre PDF'i: faturaların iş kalemleri (+ sipariş no / hasta). Yalnız dışa aktarımda çekilir. */
+export async function fetchInvoiceItemDetails(invoiceIds: string[]): Promise<InvoiceItemDetail[]> {
+  const out: InvoiceItemDetail[] = [];
+  for (let i = 0; i < invoiceIds.length; i += 150) {
+    const { data, error } = await supabase
+      .from('invoice_items')
+      .select('invoice_id, description, quantity, unit_price, sort_order, order_item:order_items(work_order:work_orders(order_number, patient_name))')
+      .in('invoice_id', invoiceIds.slice(i, i + 150))
+      .order('sort_order', { ascending: true })
+      .returns<InvoiceItemDetail[]>();
+    if (error) throw error;
+    out.push(...(data ?? []));
+  }
+  return out;
+}
+
 export async function fetchInvoicesForClinic(clinicId: string) {
   return supabase
     .from('invoices')

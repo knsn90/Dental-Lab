@@ -2,7 +2,12 @@
 // Yerel içe aktarma yalnız `import type`.
 import type { PreStatement, PreStatementInvoice } from '../types';
 import type { StatementLine } from '../buildStatementHtml';
-import { patientLabel } from './preStatement';
+
+// preStatement.ts'teki patientLabel'ın aynısı: bu dosya düz `node --test` ile yüklenir ve
+// uzantısız çalışma zamanı importu çözülemez, bu yüzden burada yerel kopya tutulur.
+function patientLabel(it: { patient_name?: string | null; patient_initials?: string | null }): string | null {
+  return (it.patient_name ?? '').trim() || it.patient_initials || null;
+}
 
 export const NO_DOCTOR = '—';
 
