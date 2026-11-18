@@ -90,6 +90,12 @@
       "system": "سیستم",
       "workArea": "ناحیه کاری",
       "account": "حساب"
+    },
+    "groups": {
+      "work": "کار",
+      "customers": "مشتریان و تحویل",
+      "management": "مدیریت",
+      "system": "سیستم"
     }
   },
   "roles": {

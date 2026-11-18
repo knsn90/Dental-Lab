@@ -102,6 +102,9 @@ export interface PatternsNavItem {
   iconSet?: string;
   subtitle?: string;
   sectionLabel?: string;
+  /** Kenar çubuğunda görünen grup başlığı. Ardışık aynı gruptaki öğeler tek başlık altında
+   *  toplanır; hiçbir öğede yoksa sabit "Çalışma alanı" başlığı çizilir. */
+  group?: string;
   onPress?: () => void;
   /** If set, this nav item is hidden unless the user has this permission */
   requiresPermission?: string;
@@ -285,7 +288,13 @@ export function PatternsShell({
       return true; // no permission required
     });
   }, [navItems, permStore.loaded, permStore.permissions, featureFlags]);
-  const [collapsed, setCollapsed] = useState(false);
+  // Daraltma tercihi tarayıcıda saklanır (yenilemede geri açılmasın).
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try { return typeof window !== 'undefined' && window.localStorage?.getItem('nx_sidebar_collapsed') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { if (typeof window !== 'undefined') window.localStorage?.setItem('nx_sidebar_collapsed', collapsed ? '1' : '0'); } catch {}
+  }, [collapsed]);
   const rtl = isRTL();
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   useEffect(() => { amIPlatformAdmin().then(setIsPlatformAdmin).catch(() => {}); }, []);
@@ -542,30 +551,28 @@ export function PatternsShell({
             tourOrdersHref={tourOrdersHref}
           />
         )}
-        {/* ── Collapse toggle — sidebar'ın içinde sağ-alt köşede ── */}
-        <Pressable
-          onPress={() => setCollapsed(c => !c)}
-          style={{
-            position: 'absolute',
-            ...(rtl ? { left: 12 } : { right: 12 }),
-            bottom: 12,
-            width: 38,
-            height: 38,
-            borderRadius: 19,
-            ...accentSurface,
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10,
-            // @ts-ignore web
-            boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.5)' : '0 4px 12px rgba(0,0,0,0.12)',
-            cursor: 'pointer',
-          }}
-        >
-          {(collapsed !== rtl)
-            ? <ChevronRight size={18} color="#FFFFFF" strokeWidth={2.2} />
-            : <ChevronLeft size={18} color="#FFFFFF" strokeWidth={2.2} />
-          }
-        </Pressable>
+        {/* ── Collapse toggle — alt satırda küçük, nötr ikon düğmesi ── */}
+        <View style={{ position: 'absolute', bottom: 10, zIndex: 10, ...(collapsed ? { left: 18 } : (rtl ? { left: 10 } : { right: 10 })) }}>
+          <GlassTooltip placement={rtl ? 'left' : 'right'} text={collapsed ? autoT('Menüyü genişlet') : autoT('Menüyü daralt')}>
+            <Pressable
+              onPress={() => setCollapsed(c => !c)}
+              accessibilityRole="button"
+              accessibilityLabel={collapsed ? autoT('Menüyü genişlet') : autoT('Menüyü daralt')}
+              style={({ hovered }: any) => ({
+                width: 28, height: 28, borderRadius: 8,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: hovered ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') : 'transparent',
+                // @ts-ignore web
+                cursor: 'pointer',
+              })}
+            >
+              {(collapsed !== rtl)
+                ? <ChevronRight size={16} color={isDark ? '#B8B2A6' : '#6B6B6B'} strokeWidth={2} />
+                : <ChevronLeft size={16} color={isDark ? '#B8B2A6' : '#6B6B6B'} strokeWidth={2} />
+              }
+            </Pressable>
+          </GlassTooltip>
+        </View>
       </View>
 
       {/* ═════════════ RIGHT COLUMN: toolbar + content ═════════════ */}
@@ -1052,9 +1059,11 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
   const icOn   = isDark ? '#F7F2E9' : '#0A0A0A';
   const icOff  = isDark ? '#B8B2A6' : '#2C2C2C';
   const icOff2 = isDark ? '#9A9488' : '#6B6B6B';
-  const badgeOnBg  = isDark ? '#F7F2E9' : '#0A0A0A';
-  const badgeOffBg = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)';
-  const badgeOffFg = isDark ? '#B8B2A6' : '#6B6B6B';
+  // Tek rozet kuralı: bekleyen sayı her panelde ve her satırda aynı yumuşak kırmızı ton.
+  const badgeBg = isDark ? 'rgba(217,75,75,0.24)' : 'rgba(217,75,75,0.12)';
+  const badgeFg = isDark ? '#F0A5A5' : '#B03A3A';
+  const hoverBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.035)';
+  const rowBg = (on: boolean) => ({ hovered }: any) => (on ? { backgroundColor: activeRowBg } : hovered ? { backgroundColor: hoverBg } : undefined);
   const hasChildren = Array.isArray(item.children) && item.children.length > 0;
   const childActive = hasChildren && item.children.some((c: PatternsNavItem) => isActive(c));
   const [open, setOpen] = useState<boolean>(!!childActive);
@@ -1066,15 +1075,17 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
       <NavAnchor href={item.onPress ? undefined : item.href}>
         <Pressable
           onPress={() => item.onPress ? item.onPress() : router.push(item.href)}
-          className={`px-3 ${rtl ? "py-2" : "py-2.5"} rounded-[10px] flex-row items-center gap-2.5 relative`}
-          style={active ? { backgroundColor: activeRowBg } : undefined}
+          accessibilityRole="link"
+          accessibilityState={{ selected: active }}
+          className="px-3 py-2 rounded-[10px] flex-row items-center gap-2.5 relative"
+          style={rowBg(active)}
         >
           {active && <View className="absolute rounded" style={{ ...(rtl ? { right: 0 } : { left: 0 }), top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }} />}
           <IconCmp size={15} color={active ? icOn : icOff} strokeWidth={1.8} />
           <Text className={`flex-1 text-[13px] ${active ? 'font-medium text-ink-900 dark:text-white/90' : 'text-ink-700 dark:text-white/70'}`}>{item.label}</Text>
           {item.badgeCount != null && item.badgeCount > 0 && (
-            <View className="px-1.5 py-px rounded-full" style={{ backgroundColor: item.badgeColor ?? (active ? badgeOnBg : badgeOffBg) }}>
-              <Text className="text-[10px] font-semibold" style={{ color: item.badgeColor ? '#FFFFFF' : (active ? accentColor : badgeOffFg) }}>{item.badgeCount}</Text>
+            <View className="px-1.5 py-px rounded-full" style={{ backgroundColor: badgeBg }}>
+              <Text className="text-[10px] font-semibold" style={{ color: badgeFg }}>{item.badgeCount > 99 ? '99+' : item.badgeCount}</Text>
             </View>
           )}
         </Pressable>
@@ -1087,8 +1098,10 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
     <View>
       <Pressable
         onPress={() => setOpen((o) => !o)}
-        className={`px-3 ${rtl ? "py-2" : "py-2.5"} rounded-[10px] flex-row items-center gap-2.5 relative`}
-        style={childActive ? { backgroundColor: activeRowBg } : undefined}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        className="px-3 py-2 rounded-[10px] flex-row items-center gap-2.5 relative"
+        style={rowBg(!!childActive)}
       >
         {childActive && <View className="absolute rounded" style={{ ...(rtl ? { right: 0 } : { left: 0 }), top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }} />}
         <IconCmp size={15} color={childActive ? icOn : icOff} strokeWidth={1.8} />
@@ -1105,14 +1118,16 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
             <Pressable
               onPress={() => c.onPress ? c.onPress() : router.push(c.href)}
               className={`${rtl ? "py-1.5" : "py-2"} rounded-[10px] flex-row items-center gap-2.5 relative`}
-              style={[(rtl ? { paddingRight: 34, paddingLeft: 12 } : { paddingLeft: 34, paddingRight: 12 }), a ? { backgroundColor: activeRowBg } : undefined]}
+              accessibilityRole="link"
+              accessibilityState={{ selected: a }}
+              style={({ hovered }: any) => [(rtl ? { paddingRight: 34, paddingLeft: 12 } : { paddingLeft: 34, paddingRight: 12 }), a ? { backgroundColor: activeRowBg } : hovered ? { backgroundColor: hoverBg } : undefined]}
             >
               {a && <View className="absolute rounded" style={{ ...(rtl ? { right: 14 } : { left: 14 }), top: 7, bottom: 7, width: 2.5, backgroundColor: accentColor }} />}
               <CIcon size={14} color={a ? icOn : icOff2} strokeWidth={1.8} />
               <Text className={`flex-1 text-[12.5px] ${a ? 'font-medium text-ink-900 dark:text-white/90' : 'text-ink-500 dark:text-white/55'}`}>{c.label}</Text>
               {c.badgeCount != null && c.badgeCount > 0 && (
-                <View className="px-1.5 py-px rounded-full" style={{ backgroundColor: a ? badgeOnBg : badgeOffBg }}>
-                  <Text className="text-[10px] font-semibold" style={{ color: a ? accentColor : badgeOffFg }}>{c.badgeCount}</Text>
+                <View className="px-1.5 py-px rounded-full" style={{ backgroundColor: badgeBg }}>
+                  <Text className="text-[10px] font-semibold" style={{ color: badgeFg }}>{c.badgeCount > 99 ? '99+' : c.badgeCount}</Text>
                 </View>
               )}
             </Pressable>
@@ -1134,7 +1149,7 @@ function ExpandedSidebar({
   // Panel-aware sidebar tonları
   const isStation = panelType === 'station';
   const logoSquareBg = isStation ? '#0F2840' : '#0A0A0A'; // station: koyu denim
-  const activeRowBg  = isDark ? 'rgba(255,255,255,0.07)' : (palette?.panelBg ?? '#FBFAF6');      // station: F4F8FC (mavi soluk)
+  const activeRowBg  = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.055)';      // station: F4F8FC (mavi soluk)
   return (
     <View
       className="rounded-[20px] p-3.5 pt-5 border border-black/[0.05] dark:border-white/[0.06]"
@@ -1207,15 +1222,22 @@ function ExpandedSidebar({
         </View>
       ) : null}
 
-      {/* Section label */}
-      <Text className="text-[10px] font-semibold uppercase text-ink-400 dark:text-white/40 px-2.5 pt-1 pb-2" style={{ letterSpacing: 1 }}>
-        Çalışma alanı
-      </Text>
+      {/* Section label — öğelerde grup tanımlıysa başlıklar listenin içinde çizilir */}
+      {!navItems.some((n: PatternsNavItem) => n.group) && (
+        <Text className="text-[10px] font-semibold uppercase text-ink-400 dark:text-white/40 px-2.5 pt-1 pb-2" style={{ letterSpacing: 1 }}>
+          Çalışma alanı
+        </Text>
+      )}
 
       {/* Nav items */}
       <ScrollView className="flex-1" contentContainerStyle={{ gap: 2 }} showsVerticalScrollIndicator={false}>
         {navItems.map((item: PatternsNavItem, i: number) => (
           <View key={i} ref={tourOrdersHref && item.href === tourOrdersHref ? tourRefs?.orders : undefined}>
+            {item.group && item.group !== navItems[i - 1]?.group ? (
+              <Text className="text-[10px] font-semibold uppercase text-ink-400 dark:text-white/40 px-2.5 pt-2.5 pb-1" style={{ letterSpacing: 1 }}>
+                {item.group}
+              </Text>
+            ) : null}
             <ExpandedNavRow
               item={item}
               isActive={isActive}
@@ -1229,19 +1251,14 @@ function ExpandedSidebar({
         {onPressMessages && !hideSidebarMessages && (
           <Pressable
             onPress={onPressMessages}
-            className={`px-3 ${rtl ? "py-2" : "py-2.5"} rounded-[10px] flex-row items-center gap-2.5`}
+            className="px-3 py-2 rounded-[10px] flex-row items-center gap-2.5"
+            style={({ hovered }: any) => (hovered ? { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.035)' } : undefined)}
           >
             <MessageSquare size={15} color={isDark ? "#B8B2A6" : "#2C2C2C"} strokeWidth={1.8} />
             <Text className="flex-1 text-[13px] text-ink-700 dark:text-white/70">Mesajlar</Text>
             {messagesUnreadCount > 0 && (
-              <View
-                style={{
-                  minWidth: 22, height: 22, paddingHorizontal: 6,
-                  borderRadius: 11, backgroundColor: '#EF4444',
-                  alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.2 }}>
+              <View className="px-1.5 py-px rounded-full" style={{ backgroundColor: isDark ? 'rgba(217,75,75,0.24)' : 'rgba(217,75,75,0.12)' }}>
+                <Text className="text-[10px] font-semibold" style={{ color: isDark ? '#F0A5A5' : '#B03A3A' }}>
                   {messagesUnreadCount > 99 ? '99+' : String(messagesUnreadCount)}
                 </Text>
               </View>
@@ -1254,7 +1271,7 @@ function ExpandedSidebar({
       {/* "Powered by SIMAN" bir MARKA KİLİDİ — İngilizce ve bütün olarak okunur.
           flex-row CSS'te yön duyarlı olduğu için RTL'de sıra ters dönüyor ve
           "SIMAN Powered by" çıkıyordu; row-reverse bunu geri çevirir. */}
-      <View className="items-center gap-1.5 pt-3 mt-1" style={[{ flexDirection: rtl ? 'row-reverse' : 'row' }, rtl ? { paddingRight: 10, paddingLeft: 56 } : { paddingLeft: 10, paddingRight: 56 }]}>
+      <View className="items-center gap-1.5 pt-3 mt-1" style={[{ flexDirection: rtl ? 'row-reverse' : 'row' }, rtl ? { paddingRight: 10, paddingLeft: 36 } : { paddingLeft: 10, paddingRight: 36 }]}>
         <Text className="text-[9.5px] text-ink-400 dark:text-white/40" numberOfLines={1}>Powered by</Text>
         <SimanWordmark height={9} color="#9A9A9A" />
       </View>
@@ -1270,7 +1287,10 @@ function CollapsedSidebar({
 }: any) {
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const logoSquareBg = panelType === 'station' ? '#0F2840' : '#0A0A0A';
-  const activeRowBg  = isDark ? 'rgba(255,255,255,0.07)' : (palette?.panelBg ?? '#FBFAF6');
+  const activeRowBg  = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.055)';
+  const rtl = isRTL();
+  const hoverBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.045)';
+  const badgeRing = palette?.panelBg ?? '#FFFFFF';
   return (
     <View
       className="rounded-[20px] py-4 items-center border border-black/[0.05] dark:border-white/[0.06]"
@@ -1315,19 +1335,27 @@ function CollapsedSidebar({
           />
         </View>
       )}
-      <View className="w-7 h-px bg-black/[0.08] mb-3" />
+      <View className="w-7 h-px bg-black/[0.08] dark:bg-white/10 mb-3" />
 
       <ScrollView contentContainerStyle={{ gap: 4, alignItems: 'center' }} showsVerticalScrollIndicator={false}>
-        {navItems.flatMap((it: PatternsNavItem) => (it.children && it.children.length ? it.children : [it])).map((item: PatternsNavItem, i: number) => {
+        {navItems.flatMap((it: PatternsNavItem) => (it.children && it.children.length ? it.children.map((c: PatternsNavItem) => ({ ...c, group: it.group })) : [it])).map((item: PatternsNavItem, i: number, arr: PatternsNavItem[]) => {
           const active = isActive(item);
           const IconCmp = resolveIcon(item.iconName);
           return (
-            <NavAnchor key={i} href={item.onPress ? undefined : item.href}>
+            <React.Fragment key={i}>
+            {i > 0 && item.group && item.group !== arr[i - 1]?.group ? (
+              <View className="w-6 h-px bg-black/[0.08] dark:bg-white/10 my-1" />
+            ) : null}
+            <NavAnchor href={item.onPress ? undefined : item.href}>
+            <GlassTooltip placement={rtl ? 'left' : 'right'} text={item.label}>
               <Pressable
                 ref={tourOrdersHref && item.href === tourOrdersHref ? tourRefs?.orders : undefined}
                 onPress={() => item.onPress ? item.onPress() : router.push(item.href)}
+                accessibilityRole="link"
+                accessibilityLabel={item.label}
+                accessibilityState={{ selected: active }}
                 className="w-10 h-10 rounded-[10px] items-center justify-center relative"
-                style={active ? { backgroundColor: activeRowBg } : undefined}
+                style={({ hovered }: any) => (active ? { backgroundColor: activeRowBg } : hovered ? { backgroundColor: hoverBg } : undefined)}
               >
                 {active && (
                   <View
@@ -1338,35 +1366,42 @@ function CollapsedSidebar({
                 <IconCmp size={16} color={active ? (isDark ? "#F7F2E9" : "#0A0A0A") : (isDark ? "#B8B2A6" : "#2C2C2C")} strokeWidth={1.8} />
                 {item.badgeCount != null && item.badgeCount > 0 && (
                   <View
-                    className="absolute min-w-[16px] h-4 px-1 rounded-full border-2 border-white items-center justify-center"
-                    style={{ top: -2, end: -2, backgroundColor: '#9C2E2E' }}
+                    className="absolute min-w-[16px] h-4 px-1 rounded-full border-2 items-center justify-center"
+                    style={{ top: -2, end: -2, backgroundColor: '#D94B4B', borderColor: badgeRing }}
                   >
-                    <Text className="text-[9px] font-semibold text-white">{item.badgeCount}</Text>
+                    <Text className="text-[9px] font-semibold text-white">{item.badgeCount > 99 ? '99+' : item.badgeCount}</Text>
                   </View>
                 )}
               </Pressable>
+            </GlassTooltip>
             </NavAnchor>
+            </React.Fragment>
           );
         })}
         {onPressMessages && !hideSidebarMessages && (
+          <GlassTooltip placement={rtl ? 'left' : 'right'} text={autoT('Mesajlar')}>
           <Pressable
             onPress={onPressMessages}
+            accessibilityRole="button"
+            accessibilityLabel={autoT('Mesajlar')}
             className="w-10 h-10 rounded-[10px] items-center justify-center relative"
+            style={({ hovered }: any) => (hovered ? { backgroundColor: hoverBg } : undefined)}
           >
-            <MessageSquare size={16} color="#2C2C2C" strokeWidth={1.8} />
+            <MessageSquare size={16} color={isDark ? '#B8B2A6' : '#2C2C2C'} strokeWidth={1.8} />
             {messagesUnreadCount > 0 && (
               <View
-                className="absolute min-w-[16px] h-4 px-1 rounded-full border-2 border-white items-center justify-center"
-                style={{ top: -2, end: -2, backgroundColor: '#9C2E2E' }}
+                className="absolute min-w-[16px] h-4 px-1 rounded-full border-2 items-center justify-center"
+                style={{ top: -2, end: -2, backgroundColor: '#D94B4B', borderColor: badgeRing }}
               >
-                <Text className="text-[9px] font-semibold text-white">{messagesUnreadCount}</Text>
+                <Text className="text-[9px] font-semibold text-white">{messagesUnreadCount > 99 ? '99+' : messagesUnreadCount}</Text>
               </View>
             )}
           </Pressable>
+          </GlassTooltip>
         )}
       </ScrollView>
       {/* Powered by Siman — küçük orb */}
-      <View className="items-center pt-2 mt-1 border-t border-black/[0.05]">
+      <View className="items-center pt-2 mt-1 border-t border-black/[0.05] dark:border-white/[0.06]" style={{ marginBottom: 30 }}>
         <LabFlowLogo size={16} />
       </View>
     </View>

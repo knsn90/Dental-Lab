@@ -149,35 +149,35 @@ export default function AdminLayout() {
     return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
   }
 
-  // Sıra (kullanıcı, 2026-10-28): Özet · Siparişler · Tarama Randevuları · Üretim Panosu ·
-  //   Sağlık Kurumları · Kurye Takip · Finans · Stok ve Depo · (Ekip) · Onaylar ·
-  //   Telefon Talepleri · Mesajlar · Destek · Ayarlar
+  // Sıra + gruplar (kullanıcı onayı, 2026-11-18): Özet · İŞ: Siparişler · Onaylar · Tarama Randevuları ·
+  //   Üretim Panosu (+ İş Akışları) · MÜŞTERİ VE TESLİMAT: Sağlık Kurumları · Kurye Takip · Telefon Talepleri ·
+  //   YÖNETİM: Finans (+ Fiyat Listesi) · Stok ve Depo · Ekip · SİSTEM: Destek · Ayarlar
   const ADMIN_NAV = [
     { label: t('nav.items.summary'),              href: '/(admin)',                  iconName: 'home' },
-    { label: t('nav.items.orders'),        href: '/(admin)/orders',           iconName: 'list-check',     matchPrefix: true, sectionLabel: t('nav.sections.work'),
+    { group: t('nav.groups.work'), label: t('nav.items.orders'),        href: '/(admin)/orders',           iconName: 'list-check',     matchPrefix: true, sectionLabel: t('nav.sections.work'),
       requiresPermission: 'view_orders' },
-    { label: t('nav.items.scans'),         href: '/(admin)/scans',            iconName: 'calendar',       matchPrefix: false,
+    { group: t('nav.groups.work'), label: t('nav.items.approvals'),           href: '/(admin)/approvals',        iconName: 'check-circle',   matchPrefix: true,
+      badgeCount: pendingCount > 0 ? pendingCount : undefined,
+      requiresPermission: 'view_approvals' },
+    { group: t('nav.groups.work'), label: t('nav.items.scans'),         href: '/(admin)/scans',            iconName: 'calendar',       matchPrefix: false,
       requiresFeature: 'scan_appointments' },
-    { label: t('nav.items.production'),     href: '/(admin)/production',       iconName: 'activity',       matchPrefix: true, sectionLabel: t('nav.sections.production') },
-    { label: t('nav.items.clinics'),  href: '/(admin)/clinics',          iconName: 'building-2',     matchPrefix: true, sectionLabel: t('nav.sections.customers') },
-    { label: t('nav.items.courier'),       href: '/(admin)/courier-tracking', iconName: 'scooter',        matchPrefix: true, sectionLabel: t('nav.sections.delivery') },
-    { label: t('nav.items.finance'),            href: '/(admin)/finance',          iconName: 'landmark',       matchPrefix: false, sectionLabel: t('nav.sections.finance'),
+    { group: t('nav.groups.work'), label: t('nav.items.production'),     href: '/(admin)/production',       iconName: 'activity',       matchPrefix: true, sectionLabel: t('nav.sections.production') },
+    { group: t('nav.groups.customers'), label: t('nav.items.clinics'),  href: '/(admin)/clinics',          iconName: 'building-2',     matchPrefix: true, sectionLabel: t('nav.sections.customers') },
+    { group: t('nav.groups.customers'), label: t('nav.items.courier'),       href: '/(admin)/courier-tracking', iconName: 'scooter',        matchPrefix: true, sectionLabel: t('nav.sections.delivery') },
+    { group: t('nav.groups.customers'), label: t('nav.items.phoneLeads'), href: '/(admin)/phone-leads',      iconName: 'phone',    matchPrefix: false,
+      requiresFeature: 'phone_assistant' },
+    { group: t('nav.groups.management'), label: t('nav.items.finance'),            href: '/(admin)/finance',          iconName: 'landmark',       matchPrefix: false, sectionLabel: t('nav.sections.finance'),
       requiresPermission: 'view_financials' },
-    { label: t('nav.items.stock'),      href: '/(admin)/stock',            iconName: 'package',        matchPrefix: true, sectionLabel: t('nav.sections.warehouse'),
+    { group: t('nav.groups.management'), label: t('nav.items.stock'),      href: '/(admin)/stock',            iconName: 'package',        matchPrefix: true, sectionLabel: t('nav.sections.warehouse'),
       badgeCount: stockAlert,
       requiresPermission: 'view_stock' },
     // Ekip listede yoktu — kaldırılmadı, Stok ve Depo'nun yanında
-    { label: t('nav.items.team'),              href: '/(admin)/ik-depo',          iconName: 'users',          matchPrefix: false, sectionLabel: t('nav.sections.team'),
+    { group: t('nav.groups.management'), label: t('nav.items.team'),              href: '/(admin)/ik-depo',          iconName: 'users',          matchPrefix: false, sectionLabel: t('nav.sections.team'),
       requiresPermission: 'view_team' },
-    { label: t('nav.items.approvals'),           href: '/(admin)/approvals',        iconName: 'check-circle',   matchPrefix: true,
-      badgeCount: pendingCount > 0 ? pendingCount : undefined,
-      requiresPermission: 'view_approvals' },
-    { label: t('nav.items.phoneLeads'), href: '/(admin)/phone-leads',      iconName: 'phone',    matchPrefix: false,
-      requiresFeature: 'phone_assistant' },
     // Mesajlar kenar çubuğunda yok — profil kartında (kullanıcı, 2026-10-28)
     // WhatsApp destek hattı ayarı Destek ekranının içinde (hero düğmesi) — ayrı menü maddesi yok
-    { label: t('nav.items.support'),    href: '/(admin)/support',          iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help') },
-    { label: t('nav.items.settings'),           href: '/(admin)/settings',         iconName: 'settings',       matchPrefix: true, sectionLabel: t('nav.sections.system'),
+    { group: t('nav.groups.system'), label: t('nav.items.support'),    href: '/(admin)/support',          iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help') },
+    { group: t('nav.groups.system'), label: t('nav.items.settings'),           href: '/(admin)/settings',         iconName: 'settings',       matchPrefix: true, sectionLabel: t('nav.sections.system'),
       requiresPermission: 'view_settings' },
   ];
   // Modülü kapalı öğeler komut paleti gibi kendi listeleyen yerlerde de görünmesin

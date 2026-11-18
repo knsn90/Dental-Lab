@@ -10818,5 +10818,7 @@
   "Lab kaynaklı revizyon / teslim edilen sipariş. Hekim kaynaklı revizyonlar orana girmez.": "Laborbedingte Revisionen / gelieferte Aufträge. Vom Zahnarzt veranlasste Revisionen zählen nicht.",
   "Nerede hata oluyor": "Wo Fehler entstehen",
   "revizyonda hatalı istasyon işaretlenmemiş. Revizyon açarken istasyonu seçerseniz burada kırılım görünür.": "Revisionen ohne markierte Fehlerstation. Wählen Sie beim Anlegen einer Revision die Station, um hier eine Aufschlüsselung zu sehen.",
-  "Son revizyonlar": "Letzte Revisionen"
+  "Son revizyonlar": "Letzte Revisionen",
+  "Menüyü genişlet": "Menü ausklappen",
+  "Menüyü daralt": "Menü einklappen"
 }

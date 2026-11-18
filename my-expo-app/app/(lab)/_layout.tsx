@@ -175,42 +175,42 @@ export default function LabLayout() {
     return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
   }
 
-  // Sıra (kullanıcı, 2026-10-28; Admin ile aynı): Bugün · Siparişler · Tarama Randevuları · Üretim Panosu
-  //   (+ İş Akışları) · Sağlık Kurumları · Kurye Takip · Finans (+ Fiyat Listesi) · Stok ve Depo · (Ekip) ·
-  //   Onaylar · Telefon Talepleri · Mesajlar · Destek · Ayarlar
+  // Sıra + gruplar (kullanıcı onayı, 2026-11-18): Bugün · İŞ: Siparişler · Onaylar · Tarama Randevuları ·
+  //   Üretim Panosu (+ İş Akışları) · MÜŞTERİ VE TESLİMAT: Sağlık Kurumları · Kurye Takip · Telefon Talepleri ·
+  //   YÖNETİM: Finans (+ Fiyat Listesi) · Stok ve Depo · Ekip · SİSTEM: Destek · Ayarlar
   const LAB_NAV = [
     { label: t('nav.items.today'),            emoji: '📅', href: '/(lab)',                  iconName: 'home' },
-    { label: t('nav.items.orders'),       emoji: '📋', href: '/(lab)/all-orders',       iconName: 'list-check', matchPrefix: true,
+    { group: t('nav.groups.work'), label: t('nav.items.orders'),       emoji: '📋', href: '/(lab)/all-orders',       iconName: 'list-check', matchPrefix: true,
       sectionLabel: t('nav.sections.work'),
       badgeCount: pendingActionCount > 0 ? pendingActionCount : undefined,
       requiresPermission: 'view_orders' },
+    { group: t('nav.groups.work'), label: t('nav.items.approvals'),          emoji: '✅', href: '/(lab)/approvals',         iconName: 'check-circle',   matchPrefix: true,
+      badgeCount: pendingCount > 0 ? pendingCount : undefined,
+      requiresPermission: 'view_approvals' },
     // Tarama randevuları (klinikte ağız içi tarama / fotogrametri) — yönetici + modül açık
-    ...(isManager ? [{ label: t('nav.items.scans'), href: '/(lab)/scans', iconName: 'calendar', matchPrefix: false,
+    ...(isManager ? [{ group: t('nav.groups.work'), label: t('nav.items.scans'), href: '/(lab)/scans', iconName: 'calendar', matchPrefix: false,
       requiresFeature: 'scan_appointments' }] : []),
-    { label: t('nav.items.production'),                  href: '/(lab)/production',       iconName: 'activity',       matchPrefix: true, sectionLabel: t('nav.sections.production') },
-    { label: t('nav.items.workflows'),                    href: '/(lab)/workflows',        iconName: 'list-todo',      matchPrefix: true },
-    { label: t('nav.items.clinics'), emoji: '🏥', href: '/(lab)/clinics',          iconName: 'building-2',     matchPrefix: true, sectionLabel: t('nav.sections.customers') },
-    { label: t('nav.items.courier'),                    href: '/(lab)/courier-tracking', iconName: 'scooter',        matchPrefix: true, sectionLabel: t('nav.sections.delivery') },
-    { label: t('nav.items.finance'),           emoji: '💰', href: '/(lab)/finance',           iconName: 'landmark',       matchPrefix: false, sectionLabel: t('nav.sections.finance'),
+    { group: t('nav.groups.work'), label: t('nav.items.production'),                  href: '/(lab)/production',       iconName: 'activity',       matchPrefix: true, sectionLabel: t('nav.sections.production') },
+    { group: t('nav.groups.work'), label: t('nav.items.workflows'),                    href: '/(lab)/workflows',        iconName: 'list-todo',      matchPrefix: true },
+    { group: t('nav.groups.customers'), label: t('nav.items.clinics'), emoji: '🏥', href: '/(lab)/clinics',          iconName: 'building-2',     matchPrefix: true, sectionLabel: t('nav.sections.customers') },
+    { group: t('nav.groups.customers'), label: t('nav.items.courier'),                    href: '/(lab)/courier-tracking', iconName: 'scooter',        matchPrefix: true, sectionLabel: t('nav.sections.delivery') },
+    // Telefon asistanı talepleri — yalnız müdür/admin + modül açık
+    ...(isManager ? [{ group: t('nav.groups.customers'), label: t('nav.items.phoneLeads'), href: '/(lab)/phone-leads', iconName: 'phone', matchPrefix: false,
+      requiresFeature: 'phone_assistant' }] : []),
+    { group: t('nav.groups.management'), label: t('nav.items.finance'),           emoji: '💰', href: '/(lab)/finance',           iconName: 'landmark',       matchPrefix: false, sectionLabel: t('nav.sections.finance'),
       requiresPermission: 'view_financials' },
-    { label: t('nav.items.priceList'),                 href: '/(lab)/finance?tab=pricelist', iconName: 'tag',        matchPrefix: false,
+    { group: t('nav.groups.management'), label: t('nav.items.priceList'),                 href: '/(lab)/finance?tab=pricelist', iconName: 'tag',        matchPrefix: false,
       requiresPermission: 'view_financials' },
-    { label: t('nav.items.stock'),     emoji: '📦', href: '/(lab)/stock',             iconName: 'package',        matchPrefix: true, sectionLabel: t('nav.sections.warehouse'),
+    { group: t('nav.groups.management'), label: t('nav.items.stock'),     emoji: '📦', href: '/(lab)/stock',             iconName: 'package',        matchPrefix: true, sectionLabel: t('nav.sections.warehouse'),
       badgeCount: stockAlert,
       requiresPermission: 'view_stock' },
     // Ekip listede yoktu — kaldırılmadı, Stok ve Depo'nun yanında
-    { label: t('nav.items.team'),             emoji: '👨‍💼', href: '/(lab)/ik-depo',         iconName: 'users',         matchPrefix: false, sectionLabel: t('nav.sections.team'),
+    { group: t('nav.groups.management'), label: t('nav.items.team'),             emoji: '👨‍💼', href: '/(lab)/ik-depo',         iconName: 'users',         matchPrefix: false, sectionLabel: t('nav.sections.team'),
       requiresPermission: 'view_team' },
-    { label: t('nav.items.approvals'),          emoji: '✅', href: '/(lab)/approvals',         iconName: 'check-circle',   matchPrefix: true,
-      badgeCount: pendingCount > 0 ? pendingCount : undefined,
-      requiresPermission: 'view_approvals' },
-    // Telefon asistanı talepleri — yalnız müdür/admin + modül açık
-    ...(isManager ? [{ label: t('nav.items.phoneLeads'), href: '/(lab)/phone-leads', iconName: 'phone', matchPrefix: false,
-      requiresFeature: 'phone_assistant' }] : []),
     // Mesajlar kenar çubuğunda yok — profil kartında (kullanıcı, 2026-10-28)
     // WhatsApp destek hattı ayarı Destek ekranının içinde (hero düğmesi) — ayrı menü maddesi yok
-    { label: t('nav.items.support'),           emoji: '💬', href: '/(lab)/support',           iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help') },
-    { label: t('nav.items.settings'),          emoji: '⚙️', href: '/(lab)/settings',          iconName: 'settings',       matchPrefix: true,
+    { group: t('nav.groups.system'), label: t('nav.items.support'),           emoji: '💬', href: '/(lab)/support',           iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help') },
+    { group: t('nav.groups.system'), label: t('nav.items.settings'),          emoji: '⚙️', href: '/(lab)/settings',          iconName: 'settings',       matchPrefix: true,
       requiresPermission: 'view_settings' },
   ];
 

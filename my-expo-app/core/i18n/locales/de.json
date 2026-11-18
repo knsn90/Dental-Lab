@@ -90,6 +90,12 @@
       "system": "System",
       "workArea": "Arbeitsbereich",
       "account": "Konto"
+    },
+    "groups": {
+      "work": "Arbeit",
+      "customers": "Kunden und Lieferung",
+      "management": "Verwaltung",
+      "system": "System"
     }
   },
   "roles": {

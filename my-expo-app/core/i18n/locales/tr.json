@@ -90,6 +90,12 @@
       "system": "Sistem",
       "workArea": "Çalışma Alanı",
       "account": "Hesap"
+    },
+    "groups": {
+      "work": "İş",
+      "customers": "Müşteri ve teslimat",
+      "management": "Yönetim",
+      "system": "Sistem"
     }
   },
   "roles": {

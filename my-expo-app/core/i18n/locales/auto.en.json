@@ -10818,5 +10818,7 @@
   "Lab kaynaklı revizyon / teslim edilen sipariş. Hekim kaynaklı revizyonlar orana girmez.": "Lab-caused revisions / delivered orders. Dentist-requested revisions are not counted.",
   "Nerede hata oluyor": "Where errors happen",
   "revizyonda hatalı istasyon işaretlenmemiş. Revizyon açarken istasyonu seçerseniz burada kırılım görünür.": "revisions have no faulty station marked. Select the station when opening a revision to see a breakdown here.",
-  "Son revizyonlar": "Recent revisions"
+  "Son revizyonlar": "Recent revisions",
+  "Menüyü genişlet": "Expand menu",
+  "Menüyü daralt": "Collapse menu"
 }

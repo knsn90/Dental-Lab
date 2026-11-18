@@ -10818,5 +10818,7 @@
   "Lab kaynaklı revizyon / teslim edilen sipariş. Hekim kaynaklı revizyonlar orana girmez.": "بازبینی‌های ناشی از لابراتوار / سفارش‌های تحویل‌شده. بازبینی‌های درخواستی پزشک در این نرخ حساب نمی‌شوند.",
   "Nerede hata oluyor": "خطا کجا رخ می‌دهد",
   "revizyonda hatalı istasyon işaretlenmemiş. Revizyon açarken istasyonu seçerseniz burada kırılım görünür.": "بازبینی بدون ایستگاه خطای مشخص. هنگام ثبت بازبینی ایستگاه را انتخاب کنید تا تفکیک اینجا نمایش داده شود.",
-  "Son revizyonlar": "بازبینی‌های اخیر"
+  "Son revizyonlar": "بازبینی‌های اخیر",
+  "Menüyü genişlet": "باز کردن منو",
+  "Menüyü daralt": "جمع کردن منو"
 }

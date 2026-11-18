@@ -90,6 +90,12 @@
       "system": "System",
       "workArea": "Workspace",
       "account": "Account"
+    },
+    "groups": {
+      "work": "Work",
+      "customers": "Customers and delivery",
+      "management": "Management",
+      "system": "System"
     }
   },
   "roles": {
