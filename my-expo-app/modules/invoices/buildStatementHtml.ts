@@ -98,6 +98,20 @@ export interface StatementLine {
  *   (base'e çevrilmez). Tek bir para birimine ait fatura alt-kümesiyle çağrılmalı
  *   → running bakiye o para biriminde anlamlı olur. (false = eski base davranışı.)
  */
+/**
+ * Toplu hizmet bedeli: kalemleri birden fazla siparişe yayılan fatura.
+ * invoices.work_order_id toplu faturada yalnız İLK siparişi gösterir; o
+ * siparişin hastasını satıra yazmak yanıltıcıdır. Kalemlerden sipariş sayılır.
+ */
+export function bulkOrderCount(inv: Invoice): number {
+  const ids = new Set<string>();
+  for (const it of ((inv as any).items ?? []) as any[]) {
+    const wo = it?.order_item?.work_order_id;
+    if (wo) ids.add(String(wo));
+  }
+  return ids.size > 1 ? ids.size : 0;
+}
+
 export function buildStatementLines(
   invoices: Invoice[],
   opts: { original?: boolean } = {},
@@ -113,16 +127,20 @@ export function buildStatementLines(
     // Borç: original ise faturanın kendi tutarı; değilse baz ₺ (amount_base ya da total×kur).
     const debitVal = original ? inv.total : (inv.amount_base != null ? inv.amount_base : inv.total * rate);
     const invDisc = invoiceDiscountOf(inv);
+    const bulkN = bulkOrderCount(inv);
+    const bulkLabel = bulkN ? `${autoT('Toplu')} · ${bulkN} ${autoT('sipariş')}` : null;
+    const woPatient = bulkN ? null : (inv.work_order?.patient_name ?? null);
+    const woOrderNo = bulkN ? bulkLabel : (inv.work_order?.order_number ?? null);
     lines.push({
       id: inv.id,
       date: inv.issue_date,
       type: 'invoice',
-      description: inv.work_order?.patient_name
-        ? `${inv.work_order.patient_name} — ${inv.invoice_number}`
+      description: woPatient
+        ? `${woPatient} — ${inv.invoice_number}`
         : inv.invoice_number,
       invoiceNo: inv.invoice_number,
-      orderNo: inv.work_order?.order_number ?? null,
-      patientName: inv.work_order?.patient_name ?? null,
+      orderNo: woOrderNo,
+      patientName: woPatient,
       clinicName: inv.clinic?.name ?? null,
       doctorName: inv.doctor?.full_name ?? null,
       revisionOf: inv.work_order?.revision_of?.order_number ?? null,
@@ -156,8 +174,8 @@ export function buildStatementLines(
           type: 'payment',
           description: `Tahsilat — ${inv.invoice_number}`,
           invoiceNo: inv.invoice_number,
-          orderNo: inv.work_order?.order_number ?? null,
-          patientName: inv.work_order?.patient_name ?? null,
+          orderNo: woOrderNo,
+          patientName: woPatient,
           clinicName: inv.clinic?.name ?? null,
           doctorName: inv.doctor?.full_name ?? null,
           method: p.payment_method,

@@ -568,7 +568,7 @@ const CLINIC_STATEMENT_SELECT = `
   work_order:work_orders!invoices_work_order_id_fkey(id, order_number, patient_name, delivery_date, revision_responsible,
     revision_of:revision_of_id(order_number)),
   payments:payments(*, receiver:profiles!payments_received_by_fkey(id, full_name)),
-  items:invoice_items(total, net_total)
+  items:invoice_items(total, net_total, order_item:order_items(work_order_id))
 `;
 
 export interface InvoiceItemDetail {
