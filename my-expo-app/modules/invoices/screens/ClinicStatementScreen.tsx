@@ -35,6 +35,7 @@ import { buildPreStatementSummaryHtml, buildPreStatementDetailHtml } from '../bu
 import { scopeToDoctor } from '../lib/preStatementPdf';
 import { patientLabel } from '../lib/preStatement';
 import { doctorNamesOf } from '../components/PreStatementPdfButton';
+import { StatementScopeMenu, type StatementScope } from '../components/StatementScopeMenu';
 import { downloadHtmlPdf, printHtmlDirect } from '../../../core/print/exportHtmlPdf';
 import { readPrintPref, writePrintPref } from '../../../core/print/printPrefs';
 import { usePreStatementPdfFormat } from '../../../core/store/labSettingsStore';
@@ -854,11 +855,16 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
       .finally(() => setExporting(false));
   }, [preSt.data, preFmt, preFmtSetting, preDoctor, clinicInfo, selectedCcy]);
 
-  /** PDF / Yazdır düğmeleri: hatırlanan kapsamla doğrudan çalışır (seçenek penceresi açılmaz). */
-  const runStatementOutput = (action: 'pdf' | 'print') => {
-    if (pdfMode === 'pending' && preStatementCount > 0) { handlePendingPdf(action); return; }
+  /** PDF / Yazdır: kapsam menüden (Ön / Onaylanmış / Tam ekstre) ya da seçenek penceresinden gelir. */
+  const runStatementOutput = (action: 'pdf' | 'print', mode: PdfMode = pdfMode) => {
+    if (mode === 'pending' && preStatementCount > 0) { handlePendingPdf(action); return; }
     const detail = (preFmt ?? preFmtSetting) === 'ayrintili';
-    void handlePrint(pdfMode !== 'statement' && pdfPendingRows.length > 0, action, detail);
+    void handlePrint(mode !== 'statement' && pdfPendingRows.length > 0, action, detail);
+  };
+  const pickScope = (action: 'pdf' | 'print') => (s: StatementScope) => {
+    const m = scopeToMode(s);
+    setPdfMode(m);
+    runStatementOutput(action, m);
   };
 
   // ── Excel ──────────────────────────────────────────────
@@ -1039,13 +1045,19 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                 <PillBtn icon={Wallet} label={isDesktop ? "Tahsilat ekle" : ""} onPress={() => { setEditingReceipt(null); setReceiptOpen(true); }} />
               </GlassTooltip>
             )}
-            <GlassTooltip title={autoT('PDF indir')} text={autoT('Ekstreyi PDF dosyası olarak indirir; son seçilen seçenekler kullanılır')}>
-              <PillBtn icon={Download} label={isDesktop ? "PDF" : ""} onPress={() => runStatementOutput('pdf')} busy={exporting} variant="ghost" />
-            </GlassTooltip>
-            <GlassTooltip title={autoT('Yazdır')} text={autoT('Doğrudan yazıcı penceresini açar; son seçilen seçenekler kullanılır')}>
-              <PillBtn icon={Printer} label={isDesktop ? "Yazdır" : ""} onPress={() => runStatementOutput('print')} busy={exporting} variant="ghost" />
-            </GlassTooltip>
-            <GlassTooltip title={autoT('PDF seçenekleri')} text={autoT('Tamamı / onaylanmışlar / onay bekleyenler; özet ya da ayrıntılı')}>
+            <StatementScopeMenu
+              icon={Download} label={isDesktop ? 'PDF' : ''}
+              tooltipTitle={autoT('PDF indir')} tooltipText={autoT('Ön ekstre, onaylanmış ekstre ya da tam ekstre')}
+              busy={exporting} current={modeToScope(pdfMode)} preDisabled={preStatementCount === 0}
+              onPick={pickScope('pdf')}
+            />
+            <StatementScopeMenu
+              icon={Printer} label={isDesktop ? autoT('Yazdır') : ''}
+              tooltipTitle={autoT('Yazdır')} tooltipText={autoT('Ön ekstre, onaylanmış ekstre ya da tam ekstre')}
+              busy={exporting} current={modeToScope(pdfMode)} preDisabled={preStatementCount === 0}
+              onPick={pickScope('print')}
+            />
+            <GlassTooltip title={autoT('PDF seçenekleri')} text={autoT('Ön ekstre / onaylanmış ekstre / tam ekstre; özet ya da ayrıntılı')}>
               <PillBtn icon={SlidersHorizontal} onPress={() => setPdfOpen(true)} busy={exporting} variant="ghost" />
             </GlassTooltip>
             {/* İkincil eylemler tek menüde: İndirim (lab), Liste ayarı, Excel (web) */}
@@ -1940,6 +1952,8 @@ function StatementHeroBreakdown({ currency, billed, paid, openFinal, awaiting, a
  * başlık · seçenek çipleri · Vazgeç / İndir. Seçenek: onay bekleyenleri sona ekle.
  */
 type PdfMode = 'statement' | 'with' | 'pending';
+const scopeToMode = (s: StatementScope): PdfMode => (s === 'pre' ? 'pending' : s === 'approved' ? 'statement' : 'with');
+const modeToScope = (m: PdfMode): StatementScope => (m === 'pending' ? 'pre' : m === 'statement' ? 'approved' : 'full');
 
 function StatementPdfModal({
   open, pendingCount, pendingTotal, currency, mode, onMode, preCount, preFormat, onPreFormat,
@@ -1955,8 +1969,7 @@ function StatementPdfModal({
 }) {
   const U = useInkUI();
   const web = Platform.OS === 'web' ? ({ cursor: 'pointer', outlineStyle: 'none' } as any) : {};
-  const eff: PdfMode = mode === 'pending' && preCount === 0 ? 'statement'
-    : mode === 'with' && pendingCount === 0 ? 'statement' : mode;
+  const eff: PdfMode = mode === 'pending' && preCount === 0 ? 'with' : mode;
   const chip = (label: string, active: boolean, onPress: () => void, key?: string) => (
     <Pressable
       key={key ?? label}
@@ -1973,9 +1986,9 @@ function StatementPdfModal({
   const lbl = { fontSize: 10, fontWeight: '700' as const, letterSpacing: 0.8, textTransform: 'uppercase' as const, color: U.ink[400] };
   const hint = eff === 'pending'
     ? `${preCount} ${autoT('hizmet bedeli klinik onayında')} — ${autoT('kesinleşmiş ekstre olmadan yalnız ön ekstre')}`
-    : eff === 'with'
+    : eff === 'with' && pendingCount > 0
       ? `${pendingCount} ${autoT('kesinleşmemiş kalem')} · ${fmtMoney(pendingTotal, currency)} — ${autoT('ekstrenin altında ayrı bölüm olarak yer alır, bakiyeye eklenmez')}`
-      : pendingCount > 0 ? autoT('Yalnız kesinleşmiş hareketler') : autoT('Onay bekleyen ya da taslak kalem yok');
+      : eff === 'statement' ? autoT('Yalnız kesinleşmiş hareketler') : autoT('Onay bekleyen ya da taslak kalem yok');
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
       <View style={U.modalOverlay}>
@@ -1985,9 +1998,9 @@ function StatementPdfModal({
             <View style={{ gap: 8 }}>
               <Text style={lbl}>{autoT('İçerik')}</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {pendingCount > 0 ? chip(autoT('Tamamı'), eff === 'with', () => onMode('with'), 'm:w') : null}
-                {chip(autoT('Onaylanmışlar'), eff === 'statement', () => onMode('statement'), 'm:s')}
-                {preCount > 0 ? chip(autoT('Onay bekleyenler'), eff === 'pending', () => onMode('pending'), 'm:p') : null}
+                {preCount > 0 ? chip(autoT('Ön ekstre'), eff === 'pending', () => onMode('pending'), 'm:p') : null}
+                {chip(autoT('Onaylanmış ekstre'), eff === 'statement', () => onMode('statement'), 'm:s')}
+                {chip(autoT('Tam ekstre'), eff === 'with', () => onMode('with'), 'm:w')}
               </View>
               <Text style={{ fontSize: 11.5, color: U.ink[500] }}>{hint}</Text>
             </View>

@@ -18,6 +18,7 @@ import { scopeToDoctor, NO_DOCTOR, pdfCurrencies, pickCurrency } from '../lib/pr
 import type { PreStatement } from '../types';
 import type { LabLetterhead } from '../../receipt/buildReceiptHtml';
 import { usePreStatementPdfFormat } from '../../../core/store/labSettingsStore';
+import { StatementScopeMenu } from './StatementScopeMenu';
 
 export type PdfFormat = 'ozet' | 'ayrintili';
 
@@ -43,7 +44,7 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
   doctors?: string[];
   /** Varsayılan para birimi (lab: ekranda seçili olan). Yoksa ilk para birimi. */
   currency?: string;
-  /** Verilirse pencerede "Kapsam" seçimi çıkar: Tamamı / Onaylanmışlar → ekstre PDF'ine yönlendirir. */
+  /** Verilirse PDF/Yazdır üç kapsamlı menü olur; Onaylanmış / Tam ekstre → ekstre PDF'ine yönlendirir. */
   onOtherScope?: (scope: 'all' | 'approved') => void;
 }) {
   const U = useInkUI();
@@ -123,18 +124,38 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
 
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-      <GlassTooltip title={autoT('PDF indir')} text={autoT('Ön ekstreyi PDF dosyası olarak indirir; son seçilen biçim kullanılır')}>
-        <Pressable disabled={busy} onPress={() => run('pdf')} style={pillStyle}>
-          <Download size={13} color={U.plainBtn.fg} strokeWidth={2} />
-          <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.plainBtn.fg }}>{busy ? autoT('Hazırlanıyor…') : 'PDF'}</Text>
-        </Pressable>
-      </GlassTooltip>
-      <GlassTooltip title={autoT('Yazdır')} text={autoT('Doğrudan yazıcı penceresini açar; son seçilen biçim kullanılır')}>
-        <Pressable disabled={busy} onPress={() => run('print')} style={pillStyle}>
-          <Printer size={13} color={U.plainBtn.fg} strokeWidth={2} />
-          <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.plainBtn.fg }}>{autoT('Yazdır')}</Text>
-        </Pressable>
-      </GlassTooltip>
+      {onOtherScope ? (
+        <>
+          {/* Klinik/hekim ön ekstre sekmesi: üç kapsam. Onaylanmış/Tam → ekstre sekmesindeki PDF penceresi. */}
+          <StatementScopeMenu
+            icon={Download} label={busy ? autoT('Hazırlanıyor…') : 'PDF'} compact
+            tooltipTitle={autoT('PDF indir')} tooltipText={autoT('Ön ekstre, onaylanmış ekstre ya da tam ekstre')}
+            busy={busy} current="pre"
+            onPick={(sc) => (sc === 'pre' ? run('pdf') : onOtherScope(sc === 'full' ? 'all' : 'approved'))}
+          />
+          <StatementScopeMenu
+            icon={Printer} label={autoT('Yazdır')} compact
+            tooltipTitle={autoT('Yazdır')} tooltipText={autoT('Ön ekstre, onaylanmış ekstre ya da tam ekstre')}
+            busy={busy} current="pre"
+            onPick={(sc) => (sc === 'pre' ? run('print') : onOtherScope(sc === 'full' ? 'all' : 'approved'))}
+          />
+        </>
+      ) : (
+        <>
+          <GlassTooltip title={autoT('PDF indir')} text={autoT('Ön ekstreyi PDF dosyası olarak indirir; son seçilen biçim kullanılır')}>
+            <Pressable disabled={busy} onPress={() => run('pdf')} style={pillStyle}>
+              <Download size={13} color={U.plainBtn.fg} strokeWidth={2} />
+              <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.plainBtn.fg }}>{busy ? autoT('Hazırlanıyor…') : 'PDF'}</Text>
+            </Pressable>
+          </GlassTooltip>
+          <GlassTooltip title={autoT('Yazdır')} text={autoT('Doğrudan yazıcı penceresini açar; son seçilen biçim kullanılır')}>
+            <Pressable disabled={busy} onPress={() => run('print')} style={pillStyle}>
+              <Printer size={13} color={U.plainBtn.fg} strokeWidth={2} />
+              <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.plainBtn.fg }}>{autoT('Yazdır')}</Text>
+            </Pressable>
+          </GlassTooltip>
+        </>
+      )}
       <GlassTooltip title={autoT('PDF seçenekleri')} text={`${autoT('Biçim')}: ${format === 'ayrintili' ? autoT('Ayrıntılı') : autoT('Özet')}`}>
         <Pressable disabled={busy} onPress={() => { setError(null); setOpen(true); }} accessibilityLabel={autoT('PDF seçenekleri')} style={(st: any) => ({ ...pillStyle(st), paddingHorizontal: 10 })}>
           <Sliders size={13} color={U.plainBtn.fg} strokeWidth={2} />
@@ -151,9 +172,9 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
                 <View style={{ gap: 8 }}>
                   <Text style={lbl}>{autoT('Kapsam')}</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {chip(autoT('Tamamı'), false, () => { setOpen(false); onOtherScope('all'); }, 'sc:all')}
-                    {chip(autoT('Onaylanmışlar'), false, () => { setOpen(false); onOtherScope('approved'); }, 'sc:ok')}
-                    {chip(autoT('Onay bekleyenler'), true, () => {}, 'sc:pend')}
+                    {chip(autoT('Ön ekstre'), true, () => {}, 'sc:pend')}
+                    {chip(autoT('Onaylanmış ekstre'), false, () => { setOpen(false); onOtherScope('approved'); }, 'sc:ok')}
+                    {chip(autoT('Tam ekstre'), false, () => { setOpen(false); onOtherScope('all'); }, 'sc:all')}
                   </View>
                 </View>
               ) : null}

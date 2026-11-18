@@ -10801,5 +10801,12 @@
   "Onay bekleyenler": "Awaiting approval",
   "Tamamı / onaylanmışlar / onay bekleyenler; özet ya da ayrıntılı": "All / approved / awaiting approval; summary or detailed",
   "Her hizmet bedelinin altında iş kalemleri: açıklama, adet × fiyat, hasta, sipariş no": "Work items under each service charge: description, qty × price, patient, order no",
-  "Hizmet bedeli başına tek satır": "One line per service charge"
+  "Hizmet bedeli başına tek satır": "One line per service charge",
+  "Onaylanmış ekstre": "Approved statement",
+  "Tam ekstre": "Full statement",
+  "Yalnız klinik onayındaki hizmet bedelleri": "Only service charges awaiting clinic approval",
+  "Onaylanmış ekstre ve altında onay bekleyenler": "Approved statement with pending items below",
+  "Ön ekstre, onaylanmış ekstre ya da tam ekstre": "Pre-statement, approved statement or full statement",
+  "Ön ekstre / onaylanmış ekstre / tam ekstre; özet ya da ayrıntılı": "Pre-statement / approved / full statement; summary or detailed",
+  "Onay bekleyen kalem yok": "No items awaiting approval"
 }

@@ -10801,5 +10801,12 @@
   "Onay bekleyenler": "Ausstehende Bestätigung",
   "Tamamı / onaylanmışlar / onay bekleyenler; özet ya da ayrıntılı": "Alle / bestätigte / ausstehende Bestätigung; Übersicht oder detailliert",
   "Her hizmet bedelinin altında iş kalemleri: açıklama, adet × fiyat, hasta, sipariş no": "Positionen unter jeder Leistungsabrechnung: Beschreibung, Menge × Preis, Patient, Auftragsnr.",
-  "Hizmet bedeli başına tek satır": "Eine Zeile pro Leistungsabrechnung"
+  "Hizmet bedeli başına tek satır": "Eine Zeile pro Leistungsabrechnung",
+  "Onaylanmış ekstre": "Bestätigter Kontoauszug",
+  "Tam ekstre": "Vollständiger Kontoauszug",
+  "Yalnız klinik onayındaki hizmet bedelleri": "Nur Leistungen, die auf Freigabe der Klinik warten",
+  "Onaylanmış ekstre ve altında onay bekleyenler": "Bestätigter Kontoauszug, darunter die offenen Posten",
+  "Ön ekstre, onaylanmış ekstre ya da tam ekstre": "Vorab-Auszug, bestätigter oder vollständiger Kontoauszug",
+  "Ön ekstre / onaylanmış ekstre / tam ekstre; özet ya da ayrıntılı": "Vorab-Auszug / bestätigt / vollständig; Übersicht oder detailliert",
+  "Onay bekleyen kalem yok": "Keine Posten warten auf Freigabe"
 }

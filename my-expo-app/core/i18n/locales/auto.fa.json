@@ -10801,5 +10801,12 @@
   "Onay bekleyenler": "در انتظار تأیید",
   "Tamamı / onaylanmışlar / onay bekleyenler; özet ya da ayrıntılı": "همه / تأییدشده‌ها / در انتظار تأیید؛ خلاصه یا جزئی",
   "Her hizmet bedelinin altında iş kalemleri: açıklama, adet × fiyat, hasta, sipariş no": "اقلام کار زیر هر صورت‌حساب خدمت: شرح، تعداد × قیمت، بیمار، شماره سفارش",
-  "Hizmet bedeli başına tek satır": "یک ردیف برای هر صورت‌حساب خدمت"
+  "Hizmet bedeli başına tek satır": "یک ردیف برای هر صورت‌حساب خدمت",
+  "Onaylanmış ekstre": "صورت‌حساب تأییدشده",
+  "Tam ekstre": "صورت‌حساب کامل",
+  "Yalnız klinik onayındaki hizmet bedelleri": "فقط هزینه‌های خدمات در انتظار تأیید کلینیک",
+  "Onaylanmış ekstre ve altında onay bekleyenler": "صورت‌حساب تأییدشده و در ادامه موارد در انتظار تأیید",
+  "Ön ekstre, onaylanmış ekstre ya da tam ekstre": "پیش‌صورت‌حساب، صورت‌حساب تأییدشده یا صورت‌حساب کامل",
+  "Ön ekstre / onaylanmış ekstre / tam ekstre; özet ya da ayrıntılı": "پیش‌صورت‌حساب / تأییدشده / کامل؛ خلاصه یا جزئی",
+  "Onay bekleyen kalem yok": "موردی در انتظار تأیید نیست"
 }
