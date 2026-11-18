@@ -1063,7 +1063,10 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
   const badgeBg = isDark ? 'rgba(217,75,75,0.24)' : 'rgba(217,75,75,0.12)';
   const badgeFg = isDark ? '#F0A5A5' : '#B03A3A';
   const hoverBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.035)';
-  const rowBg = (on: boolean) => ({ hovered }: any) => (on ? { backgroundColor: activeRowBg } : hovered ? { backgroundColor: hoverBg } : undefined);
+  // NOT: Pressable'da className + fonksiyon-stil birlikte ÇALIŞMAZ (css-interop fonksiyon stilini
+  // düşürür) → satır düzeni de inline stilde, className yok.
+  const ROW = { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, position: 'relative' as const };
+  const rowBg = (on: boolean) => ({ hovered }: any) => ({ ...ROW, ...(on ? { backgroundColor: activeRowBg } : hovered ? { backgroundColor: hoverBg } : null) });
   const hasChildren = Array.isArray(item.children) && item.children.length > 0;
   const childActive = hasChildren && item.children.some((c: PatternsNavItem) => isActive(c));
   const [open, setOpen] = useState<boolean>(!!childActive);
@@ -1077,7 +1080,6 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
           onPress={() => item.onPress ? item.onPress() : router.push(item.href)}
           accessibilityRole="link"
           accessibilityState={{ selected: active }}
-          className="px-3 py-2 rounded-[10px] flex-row items-center gap-2.5 relative"
           style={rowBg(active)}
         >
           {active && <View className="absolute rounded" style={{ ...(rtl ? { right: 0 } : { left: 0 }), top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }} />}
@@ -1100,7 +1102,6 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
         onPress={() => setOpen((o) => !o)}
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
-        className="px-3 py-2 rounded-[10px] flex-row items-center gap-2.5 relative"
         style={rowBg(!!childActive)}
       >
         {childActive && <View className="absolute rounded" style={{ ...(rtl ? { right: 0 } : { left: 0 }), top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }} />}
@@ -1117,10 +1118,13 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
           <NavAnchor key={j} href={c.onPress ? undefined : c.href}>
             <Pressable
               onPress={() => c.onPress ? c.onPress() : router.push(c.href)}
-              className={`${rtl ? "py-1.5" : "py-2"} rounded-[10px] flex-row items-center gap-2.5 relative`}
               accessibilityRole="link"
               accessibilityState={{ selected: a }}
-              style={({ hovered }: any) => [(rtl ? { paddingRight: 34, paddingLeft: 12 } : { paddingLeft: 34, paddingRight: 12 }), a ? { backgroundColor: activeRowBg } : hovered ? { backgroundColor: hoverBg } : undefined]}
+              style={({ hovered }: any) => ({
+                ...ROW, paddingHorizontal: undefined, paddingVertical: 8,
+                ...(rtl ? { paddingRight: 34, paddingLeft: 12 } : { paddingLeft: 34, paddingRight: 12 }),
+                ...(a ? { backgroundColor: activeRowBg } : hovered ? { backgroundColor: hoverBg } : null),
+              })}
             >
               {a && <View className="absolute rounded" style={{ ...(rtl ? { right: 14 } : { left: 14 }), top: 7, bottom: 7, width: 2.5, backgroundColor: accentColor }} />}
               <CIcon size={14} color={a ? icOn : icOff2} strokeWidth={1.8} />
@@ -1251,8 +1255,10 @@ function ExpandedSidebar({
         {onPressMessages && !hideSidebarMessages && (
           <Pressable
             onPress={onPressMessages}
-            className="px-3 py-2 rounded-[10px] flex-row items-center gap-2.5"
-            style={({ hovered }: any) => (hovered ? { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.035)' } : undefined)}
+            style={({ hovered }: any) => ({
+              paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 10,
+              backgroundColor: hovered ? (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.035)') : 'transparent',
+            })}
           >
             <MessageSquare size={15} color={isDark ? "#B8B2A6" : "#2C2C2C"} strokeWidth={1.8} />
             <Text className="flex-1 text-[13px] text-ink-700 dark:text-white/70">Mesajlar</Text>
@@ -1354,8 +1360,7 @@ function CollapsedSidebar({
                 accessibilityRole="link"
                 accessibilityLabel={item.label}
                 accessibilityState={{ selected: active }}
-                className="w-10 h-10 rounded-[10px] items-center justify-center relative"
-                style={({ hovered }: any) => (active ? { backgroundColor: activeRowBg } : hovered ? { backgroundColor: hoverBg } : undefined)}
+                style={({ hovered }: any) => ({ width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', position: 'relative', backgroundColor: active ? activeRowBg : hovered ? hoverBg : 'transparent' })}
               >
                 {active && (
                   <View
@@ -1384,8 +1389,7 @@ function CollapsedSidebar({
             onPress={onPressMessages}
             accessibilityRole="button"
             accessibilityLabel={autoT('Mesajlar')}
-            className="w-10 h-10 rounded-[10px] items-center justify-center relative"
-            style={({ hovered }: any) => (hovered ? { backgroundColor: hoverBg } : undefined)}
+            style={({ hovered }: any) => ({ width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', position: 'relative', backgroundColor: hovered ? hoverBg : 'transparent' })}
           >
             <MessageSquare size={16} color={isDark ? '#B8B2A6' : '#2C2C2C'} strokeWidth={1.8} />
             {messagesUnreadCount > 0 && (
