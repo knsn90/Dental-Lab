@@ -2,13 +2,13 @@
 // Kurye / kargo GÖNDERİ FİŞİ — yalnız A6. Basılıp müşteriye giden kargoya ya da
 // kutuya yapıştırılır. İş emri etiketiyle (printWorkLabelHtml) aynı sade dil.
 //
-// Hasta bilgisi YOK (ne ad ne baş harf). Gönderen/alıcı kurye hareketinin
+// Hasta yalnız BAŞ HARFLERİYLE ("F. C.", KVKK) alıcı kutusunda. Gönderen/alıcı kurye hareketinin
 // yönünden çözülmüş olarak gelir (modules/orders/lib/shipLabel.ts).
 // Ara harekette "ne için olduğu" (amaç + açıklama) fişin en üstünde yazar.
 //
 // Saf modül: i18n/React/Supabase import ETMEZ — çeviri `t`, tarih dili `locale`.
 
-import { type ResolvedParty } from '../modules/orders/lib/shipLabel';
+import type { ResolvedParty } from '../modules/orders/lib/shipLabel';
 import { formatLabelDate } from '../modules/orders/lib/workLabel';
 
 export interface ShipLabelInput {
@@ -21,6 +21,8 @@ export interface ShipLabelInput {
   purposeLabel: string;
   /** Hareket açıklaması (kurye çağırırken yazılan not). */
   note?: string | null;
+  /** Hastanın yalnız baş harfleri ("F. C.") — KVKK/Sağlık Bakanlığı: tam ad basılmaz. Boşsa satır yok. */
+  patientInitials?: string | null;
   from: ResolvedParty;
   to: ResolvedParty;
   lab: { name: string; logoUrl?: string | null };
@@ -46,11 +48,12 @@ function esc(s: string | null | undefined): string {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function partyBlock(p: ResolvedParty, role: 'from' | 'to', t: (x: string) => string): string {
+function partyBlock(p: ResolvedParty, role: 'from' | 'to', t: (x: string) => string, patient?: string | null): string {
   const head = `<b class="pname">${esc(p.name || '—')}</b>`;
   return `<div class="party ${role}"><span class="lbl">${esc(t(role === 'from' ? 'Gönderen' : 'Alıcı'))}</span>`
     + head
     + (p.person ? `<div class="person"><span class="k">${esc(t('Hekim'))}</span> ${esc(p.person)}</div>` : '')
+    + (patient ? `<div class="person"><span class="k">${esc(t('Hasta'))}</span> ${esc(patient)}</div>` : '')
     + (p.address ? `<div class="addr">${esc(p.address)}</div>` : '')
     + (p.phone ? `<div class="phone"><span class="k">${esc(t('Tel'))}</span> <span class="mono">${esc(p.phone)}</span></div>` : '')
     + `</div>`;
@@ -141,7 +144,7 @@ export function buildShipLabelHtml(p: ShipLabelInput): string {
       + (meta ? `<div class="meta">${meta}</div>` : '')
       + `</div>`
     : '';
-  const body = head + partyBlock(p.from, 'from', t) + partyBlock(p.to, 'to', t) + foot;
+  const body = head + partyBlock(p.from, 'from', t) + partyBlock(p.to, 'to', t, (p.patientInitials ?? '').trim() || null) + foot;
   const stage = p.screenBg ? `<style>:root{--stage:${esc(p.screenBg)}}</style>` : '';
   return `<!DOCTYPE html><html ${p.htmlAttrs ?? 'lang="tr" dir="ltr"'}><head><meta charset="utf-8">`
     + `<meta name="viewport" content="width=device-width,initial-scale=1">`

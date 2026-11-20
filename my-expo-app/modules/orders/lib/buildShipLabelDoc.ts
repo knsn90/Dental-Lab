@@ -21,6 +21,7 @@ import { isRTL } from '../../../core/i18n';
 import { resolveShipParties, isFinalLeg, labPartyAddress, adHocLeg } from './shipLabel';
 import { localQrSvg } from './qrSvg';
 import { formatAddress } from '../../../core/util/formatAddress';
+import { patientInitials } from './workLabel';
 
 const LEG_SELECT = 'id, mode, purpose, direction, notes, created_at, external_provider, external_tracking_no, '
   + 'destination_name, destination_address, destination_phone, origin_name, origin_address, '
@@ -91,6 +92,8 @@ export async function buildShipLabelDoc(
     final: isFinalLeg(leg.purpose),
     purposeLabel: DELIVERY_PURPOSE_LABELS[(leg.purpose ?? 'teslimat') as DeliveryPurpose] ?? 'Diğer',
     note: leg.notes,
+    // Hasta yalnız baş harfleriyle (KVKK) — tam ad fişe basılmaz.
+    patientInitials: patientInitials(order.patient_name) || null,
     from,
     to,
     lab: { name: lab.name ?? '', logoUrl: lab.logo_url ?? null },
