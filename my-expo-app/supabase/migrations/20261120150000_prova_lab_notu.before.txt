@@ -1,0 +1,3 @@
+2026-11-20 öncesi: public.prova_set_lab_note YOK (pg_proc'ta kayıt yok).
+provas.lab_notes (text) sütunu mevcut; tek tetikleyici provas_auto_lab_id.
+Benzer fonksiyon prova_set_note acl: {postgres=X,authenticated=X,service_role=X}.

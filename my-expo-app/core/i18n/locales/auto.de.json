@@ -10826,5 +10826,17 @@
   "Tahsilatı sil": "Zahlung löschen",
   "Tahsilat silinsin mi? Kapattığı hizmet bedelleri yeniden açılır; geri alınamaz.": "Diese Zahlung löschen? Die damit beglichenen Leistungsentgelte werden wieder geöffnet; dies kann nicht rückgängig gemacht werden.",
   "Tahsilat silinemedi": "Zahlung konnte nicht gelöscht werden",
-  "Bu tahsilat hizmet bedellerine dağıtılmış; kaydedince yeniden dağıtılır": "Diese Zahlung ist Leistungsentgelten zugeordnet; beim Speichern wird sie neu zugeordnet"
+  "Bu tahsilat hizmet bedellerine dağıtılmış; kaydedince yeniden dağıtılır": "Diese Zahlung ist Leistungsentgelten zugeordnet; beim Speichern wird sie neu zugeordnet",
+  "Prova fişi": "Einprobe-Begleitschein",
+  "Provayla gönderilecek, hekim notu alanlı fişi hazırlar": "Erstellt den Begleitschein zur Einprobe mit Feld für die Notiz des Zahnarztes",
+  "Prova fişi penceresini kapatır": "Schließt das Fenster des Einprobe-Begleitscheins",
+  "Hekime not · ör. oklüzyonu ve kontakları kontrol edin": "Notiz an den Zahnarzt · z. B. bitte Okklusion und Kontakte prüfen",
+  "Uygun, devam edilsin": "In Ordnung, fortfahren",
+  "Düzeltme gerekli": "Korrektur nötig",
+  "Yeniden prova istiyorum": "Erneute Einprobe gewünscht",
+  "Hekim imza / kaşe": "Unterschrift / Stempel Zahnarzt",
+  "Lütfen bu fişi doldurup provayla birlikte geri gönderin.": "Bitte füllen Sie diesen Schein aus und senden Sie ihn mit der Einprobe zurück.",
+  "Not provaya kaydedilemedi": "Notiz konnte nicht in der Einprobe gespeichert werden",
+  "Prova fişini A5 olarak yazdırır; lab notunu provaya kaydeder": "Druckt den Einprobe-Begleitschein im A5-Format und speichert die Labornotiz in der Einprobe",
+  "Not yazdırınca provaya kaydedilir. Boş bırakırsanız fişte elle yazılacak çizgili alan kalır; hekim notu kutusu hekimin kalemle doldurması için boştur.": "Die Notiz wird beim Drucken in der Einprobe gespeichert. Bleibt sie leer, enthält der Schein linierte Zeilen zum Handschreiben; das Feld für die Zahnarztnotiz bleibt leer, damit der Zahnarzt es per Stift ausfüllt."
 }

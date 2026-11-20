@@ -53,6 +53,11 @@ export function provaSetNote(provaId: string, note: string) {
   return call('prova_set_note', { p_prova: provaId, p_note: note });
 }
 
+/** Prova fişindeki lab notu → provas.lab_notes (boş metin notu siler). */
+export function provaSetLabNote(provaId: string, note: string) {
+  return call('prova_set_lab_note', { p_prova: provaId, p_note: note });
+}
+
 /** `apptId` null → yeni randevu. Sunucu, yetkiye ve planlama durumuna göre doğrudan yazar ya da öneri yapar. */
 export function apptSave(orderId: string, apptId: string | null, kind: 'prova' | 'takma', date: string, time?: string | null) {
   return call<string>('appt_save', { p_order: orderId, p_appt: apptId, p_kind: kind, p_date: date, p_time: time || null });

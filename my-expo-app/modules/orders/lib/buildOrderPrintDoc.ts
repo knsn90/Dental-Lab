@@ -20,7 +20,7 @@ import { autoT } from '../../../core/i18n/autoTranslate';
 import { htmlAttrs, printLocale } from '../../../core/i18n/printLocale';
 import { isRTL } from '../../../core/i18n';
 import {
-  type LabelSize, type LabelToothOp, type LabelOpRow,
+  type LabelSize, type LabelToothOp, type LabelOpRow, type WorkLine,
   patientInitials, summarizeWork, labelOps,
 } from './workLabel';
 import { localQrSvg } from './qrSvg';
@@ -35,16 +35,11 @@ export interface WorkLabelDocOptions {
 
 type PrintItem = { name: string; quantity: number; tooth_numbers?: number[] | null; notes?: string | null };
 
-export async function buildOrderPrintDoc(order: WorkOrder, opts: WorkLabelDocOptions): Promise<string> {
-  const { buildWorkLabelHtml } = await import('../../../lib/printWorkLabelHtml');
-
-  // Lab adı + logosu
-  let lab: { name: string; logoUrl?: string | null } = { name: '', logoUrl: null };
-  if ((order as any).lab_id) {
-    const { data } = await supabase.from('labs').select('name, logo_url').eq('id', (order as any).lab_id).maybeSingle();
-    if (data) lab = { name: data.name ?? '', logoUrl: data.logo_url };
-  }
-
+/**
+ * Siparişin iş satırları: dişler, iş özeti (en kalabalık başta) ve diş→işlem
+ * tablosu. İş emri etiketi ve prova fişi aynı veriyi basar — tek yerde.
+ */
+export function collectWorkRows(order: WorkOrder): { teeth: number[]; work: WorkLine[]; ops: LabelOpRow[] } {
   // ── Diş → işlem haritası (toothOps) ─────────────────────────────────────
   // Öncelik:
   //   1) order_items.tooth_numbers dolu → her item kendi diş+isim'ini verir
@@ -102,6 +97,21 @@ export async function buildOrderPrintDoc(order: WorkOrder, opts: WorkLabelDocOpt
       teeth: work.length === 1 ? [...teeth].sort((a, b) => a - b) : [],
     }));
   }
+
+  return { teeth, work, ops };
+}
+
+export async function buildOrderPrintDoc(order: WorkOrder, opts: WorkLabelDocOptions): Promise<string> {
+  const { buildWorkLabelHtml } = await import('../../../lib/printWorkLabelHtml');
+
+  // Lab adı + logosu
+  let lab: { name: string; logoUrl?: string | null } = { name: '', logoUrl: null };
+  if ((order as any).lab_id) {
+    const { data } = await supabase.from('labs').select('name, logo_url').eq('id', (order as any).lab_id).maybeSingle();
+    if (data) lab = { name: data.name ?? '', logoUrl: data.logo_url };
+  }
+
+  const { teeth, work, ops } = collectWorkRows(order);
 
   return buildWorkLabelHtml({
     size: opts.size,

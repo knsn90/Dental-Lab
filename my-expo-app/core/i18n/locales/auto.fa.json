@@ -10826,5 +10826,17 @@
   "Tahsilatı sil": "حذف دریافتی",
   "Tahsilat silinsin mi? Kapattığı hizmet bedelleri yeniden açılır; geri alınamaz.": "این دریافتی حذف شود؟ هزینه‌های خدماتی که تسویه کرده دوباره باز می‌شوند؛ قابل بازگشت نیست.",
   "Tahsilat silinemedi": "دریافتی حذف نشد",
-  "Bu tahsilat hizmet bedellerine dağıtılmış; kaydedince yeniden dağıtılır": "این دریافتی به هزینه‌های خدمات تخصیص یافته است؛ با ذخیره دوباره تخصیص می‌یابد"
+  "Bu tahsilat hizmet bedellerine dağıtılmış; kaydedince yeniden dağıtılır": "این دریافتی به هزینه‌های خدمات تخصیص یافته است؛ با ذخیره دوباره تخصیص می‌یابد",
+  "Prova fişi": "برگه پروا",
+  "Provayla gönderilecek, hekim notu alanlı fişi hazırlar": "برگه همراه پروا را با جای یادداشت دندانپزشک آماده می‌کند",
+  "Prova fişi penceresini kapatır": "پنجره برگه پروا را می‌بندد",
+  "Hekime not · ör. oklüzyonu ve kontakları kontrol edin": "یادداشت برای دندانپزشک · مثلاً اکلوژن و تماس‌ها را بررسی کنید",
+  "Uygun, devam edilsin": "تأیید، ادامه دهید",
+  "Düzeltme gerekli": "نیاز به اصلاح",
+  "Yeniden prova istiyorum": "پروای مجدد می‌خواهم",
+  "Hekim imza / kaşe": "امضا / مهر دندانپزشک",
+  "Lütfen bu fişi doldurup provayla birlikte geri gönderin.": "لطفاً این برگه را پر کنید و همراه پروا بازگردانید.",
+  "Not provaya kaydedilemedi": "یادداشت در پروا ذخیره نشد",
+  "Prova fişini A5 olarak yazdırır; lab notunu provaya kaydeder": "برگه پروا را در اندازه A5 چاپ می‌کند و یادداشت لابراتوار را در پروا ذخیره می‌کند",
+  "Not yazdırınca provaya kaydedilir. Boş bırakırsanız fişte elle yazılacak çizgili alan kalır; hekim notu kutusu hekimin kalemle doldurması için boştur.": "یادداشت هنگام چاپ در پروا ذخیره می‌شود. اگر خالی بماند، روی برگه خطوطی برای دست‌نویس می‌ماند؛ کادر یادداشت دندانپزشک خالی است تا دندانپزشک با خودکار پر کند."
 }

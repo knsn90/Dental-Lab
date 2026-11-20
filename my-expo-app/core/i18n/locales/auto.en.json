@@ -10826,5 +10826,17 @@
   "Tahsilatı sil": "Delete payment",
   "Tahsilat silinsin mi? Kapattığı hizmet bedelleri yeniden açılır; geri alınamaz.": "Delete this payment? The service fees it settled will be reopened; this cannot be undone.",
   "Tahsilat silinemedi": "Payment could not be deleted",
-  "Bu tahsilat hizmet bedellerine dağıtılmış; kaydedince yeniden dağıtılır": "This payment is allocated to service fees; it will be reallocated when you save"
+  "Bu tahsilat hizmet bedellerine dağıtılmış; kaydedince yeniden dağıtılır": "This payment is allocated to service fees; it will be reallocated when you save",
+  "Prova fişi": "Try-in slip",
+  "Provayla gönderilecek, hekim notu alanlı fişi hazırlar": "Prepares the slip sent with the try-in, with a space for the dentist's note",
+  "Prova fişi penceresini kapatır": "Closes the try-in slip window",
+  "Hekime not · ör. oklüzyonu ve kontakları kontrol edin": "Note to the dentist · e.g. please check occlusion and contacts",
+  "Uygun, devam edilsin": "Approved, proceed",
+  "Düzeltme gerekli": "Correction needed",
+  "Yeniden prova istiyorum": "Another try-in requested",
+  "Hekim imza / kaşe": "Dentist signature / stamp",
+  "Lütfen bu fişi doldurup provayla birlikte geri gönderin.": "Please fill in this slip and return it with the try-in.",
+  "Not provaya kaydedilemedi": "Note could not be saved to the try-in",
+  "Prova fişini A5 olarak yazdırır; lab notunu provaya kaydeder": "Prints the try-in slip on A5 and saves the lab note to the try-in",
+  "Not yazdırınca provaya kaydedilir. Boş bırakırsanız fişte elle yazılacak çizgili alan kalır; hekim notu kutusu hekimin kalemle doldurması için boştur.": "The note is saved to the try-in when you print. If left blank, the slip keeps a lined area for handwriting; the dentist's note box is left empty for the dentist to fill in by pen."
 }

@@ -131,6 +131,8 @@ import { FilesList } from '../components/FilesList';
 import { OrderHistoryModal } from '../history/OrderHistoryModal';
 import { DeliveryUndoModal } from '../components/DeliveryUndoModal';
 import { ProvaModal, type OriginRect } from '../prova/ProvaModal';
+import { ProvaSlipModal } from '../prova/ProvaSlipModal';
+import { slipProvaLabel, activeProva } from '../prova/provaModel';
 import { useProvaSnapshot } from '../prova/useProvaSnapshot';
 import { flagFromSnapshot, heroLabel } from '../prova/provaModel';
 import { provaHeroIcon } from '../prova/ProvaHeroIcon';
@@ -341,6 +343,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   useEffect(() => { if (tabParam === 'history') setHistoryOpen(true); }, [tabParam, _routeId]);
   // Prova popup'ı (2. dalga 4) — hero'daki "Prova" hapı; ?tab=prova (bildirimler) doğrudan açar.
   const [provaOpen, setProvaOpen] = useState(tabParam === 'prova');
+  const [provaSlipOpen, setProvaSlipOpen] = useState(false);
   const [provaOrigin, setProvaOrigin] = useState<OriginRect | null>(null);
   const [provaCourier, setProvaCourier] = useState<'prova_gidis' | 'prova_donus' | null>(null);
   const provaPillRef = useRef<View>(null);
@@ -1413,6 +1416,18 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         refetch={provaSnap.refetch}
         onChanged={refetch}
         onCallCourier={(purpose) => { setProvaOpen(false); setProvaCourier(purpose); }}
+        onPrintSlip={Platform.OS === 'web' ? () => { setProvaOpen(false); setProvaSlipOpen(true); } : undefined}
+      />
+      {/* Prova fişi — lab notu + hekimin kalemle dolduracağı not kutusu (A5) */}
+      <ProvaSlipModal
+        visible={provaSlipOpen}
+        onClose={() => setProvaSlipOpen(false)}
+        order={order}
+        provaLabel={slipProvaLabel(provaSnap.data, autoT)}
+        qrUrl={qrUrl}
+        provaId={provaSnap.data ? activeProva(provaSnap.data)?.id ?? null : null}
+        initialNote={provaSnap.data ? activeProva(provaSnap.data)?.lab_notes ?? null : null}
+        onSaved={() => { void provaSnap.refetch(); }}
       />
       {/* Prova kuryesi / dönüş kuryesi — ara kurye hareketi, amaç hazır seçili */}
       {provaCourier && (panelGroup === '(lab)' || panelGroup === '(admin)') && (
@@ -4080,6 +4095,21 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
               <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }}>İş Kağıdı</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {Platform.OS === 'web' && (panelGroup === '(lab)' || panelGroup === '(admin)') && order.status !== 'iptal' ? (
+                  <GlassTooltip title={autoT('Prova fişi')} text={autoT('Provayla gönderilecek, hekim notu alanlı fişi hazırlar')} placement="bottom">
+                    <Pressable
+                      onPress={() => { closePrint(); setProvaSlipOpen(true); }}
+                      accessibilityRole="button"
+                      accessibilityLabel={autoT('Prova fişi')}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
+                        backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border, cursor: 'pointer',
+                      } as any}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: U.plainBtn.fg }}>{autoT('Prova fişi')}</Text>
+                    </Pressable>
+                  </GlassTooltip>
+                ) : null}
                 <LabelSizePicker value={labelSize} onChange={changeLabelSize} />
                 <Pressable
                   onPress={handleActualPrint}

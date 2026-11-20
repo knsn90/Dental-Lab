@@ -24,7 +24,7 @@ import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import {
-  X, CalendarClock, Calendar, PauseCircle, PlayCircle, Bell, Truck, Plus, ChevronDown, ChevronUp, Trash2,
+  X, CalendarClock, Calendar, PauseCircle, PlayCircle, Bell, Truck, Plus, ChevronDown, ChevronUp, Trash2, Printer,
 } from '../../../core/ui/icons';
 import {
   nowCard, activeProva, riskChip, apptLine, fmtDayMonth,
@@ -164,7 +164,7 @@ function Track({ fill, color, reduce }: { fill: [number, number, number]; color:
 
 // ── Popup ─────────────────────────────────────────────────────────────────────────────────────
 export function ProvaModal({
-  visible, onClose, orderId, orderNumber, workTitle, originRect, snapshot, loading, error, refetch, onChanged, onCallCourier,
+  visible, onClose, orderId, orderNumber, workTitle, originRect, snapshot, loading, error, refetch, onChanged, onCallCourier, onPrintSlip,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -180,6 +180,8 @@ export function ProvaModal({
   onChanged?: () => void;
   /** "Prova kuryesi" / "Dönüş kuryesi" — popup kapanır, kurye penceresi bu amaçla açılır. */
   onCallCourier?: (purpose: 'prova_gidis' | 'prova_donus') => void;
+  /** "Prova fişi" — popup kapanır, fiş penceresi açılır (yalnız lab, yalnız web). */
+  onPrintSlip?: () => void;
 }) {
   const U = useInkUI();
   const T = useMobileTokens();
@@ -394,7 +396,7 @@ export function ProvaModal({
                     );
                   })}
 
-                  {(card.primary || card.secondary) ? (
+                  {(card.primary || card.secondary || (lab && onPrintSlip)) ? (
                     <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap', alignItems: 'center' }}>
                       {card.primary ? (
                         <PrimaryBtn label={card.primary.label} hint={primaryHint(card.primary.action)} onPress={onPrimary} busy={busy} accent={accent} />
@@ -405,6 +407,14 @@ export function ProvaModal({
                           hint={autoT('Bu amaçla kurye çağırma penceresini açar')}
                           icon={Truck}
                           onPress={() => onCallCourier(card.secondary!.purpose)}
+                        />
+                      ) : null}
+                      {lab && onPrintSlip ? (
+                        <PlainBtn
+                          label={autoT('Prova fişi')}
+                          hint={autoT('Provayla gönderilecek, hekim notu alanlı fişi hazırlar')}
+                          icon={Printer}
+                          onPress={onPrintSlip}
                         />
                       ) : null}
                     </View>

@@ -338,3 +338,15 @@ export function takmaBeforeDelivery(deliveryISO: string | null | undefined, appt
   const d = deliveryISO.slice(0, 10);
   return appts.some((a) => a.kind === 'takma' && !!a.date && d >= a.date.slice(0, 10));
 }
+
+/**
+ * Prova fişinde basılan başlık: klinikteki / planlanan prova ("2. Metal prova");
+ * yoksa sıradaki numara ("3. Prova"). Fiş prova gönderilmeden önce de basılır.
+ */
+export function slipProvaLabel(s: ProvaSnapshot | null | undefined, t: T): string {
+  if (!s) return t('Prova');
+  const a = activeProva(s);
+  if (a) return provaName(a, t);
+  const next = s.provas.reduce((m, p) => Math.max(m, p.number), 0) + 1;
+  return `${next}. ${t('Prova')}`;
+}
