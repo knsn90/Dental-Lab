@@ -10838,5 +10838,9 @@
   "Lütfen bu fişi doldurup provayla birlikte geri gönderin.": "Please fill in this slip and return it with the try-in.",
   "Not provaya kaydedilemedi": "Note could not be saved to the try-in",
   "Prova fişini A5 olarak yazdırır; lab notunu provaya kaydeder": "Prints the try-in slip on A5 and saves the lab note to the try-in",
-  "Not yazdırınca provaya kaydedilir. Boş bırakırsanız fişte elle yazılacak çizgili alan kalır; hekim notu kutusu hekimin kalemle doldurması için boştur.": "The note is saved to the try-in when you print. If left blank, the slip keeps a lined area for handwriting; the dentist's note box is left empty for the dentist to fill in by pen."
+  "Not yazdırınca provaya kaydedilir. Boş bırakırsanız fişte elle yazılacak çizgili alan kalır; hekim notu kutusu hekimin kalemle doldurması için boştur.": "The note is saved to the try-in when you print. If left blank, the slip keeps a lined area for handwriting; the dentist's note box is left empty for the dentist to fill in by pen.",
+  "Çıktılar": "Printouts",
+  "İş kağıdı, prova fişi ve gönderi fişi tek pencerede": "Work sheet, try-in slip and shipping label in one window",
+  "Önizleme: İş Kağıdı": "Preview: Work Sheet",
+  "Teslimat türünü sorar, A6 gönderi fişini basar": "Asks for the delivery type and prints the A6 shipping label"
 }

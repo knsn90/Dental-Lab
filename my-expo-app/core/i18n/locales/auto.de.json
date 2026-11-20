@@ -10838,5 +10838,9 @@
   "Lütfen bu fişi doldurup provayla birlikte geri gönderin.": "Bitte füllen Sie diesen Schein aus und senden Sie ihn mit der Einprobe zurück.",
   "Not provaya kaydedilemedi": "Notiz konnte nicht in der Einprobe gespeichert werden",
   "Prova fişini A5 olarak yazdırır; lab notunu provaya kaydeder": "Druckt den Einprobe-Begleitschein im A5-Format und speichert die Labornotiz in der Einprobe",
-  "Not yazdırınca provaya kaydedilir. Boş bırakırsanız fişte elle yazılacak çizgili alan kalır; hekim notu kutusu hekimin kalemle doldurması için boştur.": "Die Notiz wird beim Drucken in der Einprobe gespeichert. Bleibt sie leer, enthält der Schein linierte Zeilen zum Handschreiben; das Feld für die Zahnarztnotiz bleibt leer, damit der Zahnarzt es per Stift ausfüllt."
+  "Not yazdırınca provaya kaydedilir. Boş bırakırsanız fişte elle yazılacak çizgili alan kalır; hekim notu kutusu hekimin kalemle doldurması için boştur.": "Die Notiz wird beim Drucken in der Einprobe gespeichert. Bleibt sie leer, enthält der Schein linierte Zeilen zum Handschreiben; das Feld für die Zahnarztnotiz bleibt leer, damit der Zahnarzt es per Stift ausfüllt.",
+  "Çıktılar": "Ausdrucke",
+  "İş kağıdı, prova fişi ve gönderi fişi tek pencerede": "Arbeitsblatt, Einprobe-Begleitschein und Versandetikett in einem Fenster",
+  "Önizleme: İş Kağıdı": "Vorschau: Arbeitsblatt",
+  "Teslimat türünü sorar, A6 gönderi fişini basar": "Fragt die Lieferart ab und druckt das A6-Versandetikett"
 }

@@ -10838,5 +10838,9 @@
   "Lütfen bu fişi doldurup provayla birlikte geri gönderin.": "لطفاً این برگه را پر کنید و همراه پروا بازگردانید.",
   "Not provaya kaydedilemedi": "یادداشت در پروا ذخیره نشد",
   "Prova fişini A5 olarak yazdırır; lab notunu provaya kaydeder": "برگه پروا را در اندازه A5 چاپ می‌کند و یادداشت لابراتوار را در پروا ذخیره می‌کند",
-  "Not yazdırınca provaya kaydedilir. Boş bırakırsanız fişte elle yazılacak çizgili alan kalır; hekim notu kutusu hekimin kalemle doldurması için boştur.": "یادداشت هنگام چاپ در پروا ذخیره می‌شود. اگر خالی بماند، روی برگه خطوطی برای دست‌نویس می‌ماند؛ کادر یادداشت دندانپزشک خالی است تا دندانپزشک با خودکار پر کند."
+  "Not yazdırınca provaya kaydedilir. Boş bırakırsanız fişte elle yazılacak çizgili alan kalır; hekim notu kutusu hekimin kalemle doldurması için boştur.": "یادداشت هنگام چاپ در پروا ذخیره می‌شود. اگر خالی بماند، روی برگه خطوطی برای دست‌نویس می‌ماند؛ کادر یادداشت دندانپزشک خالی است تا دندانپزشک با خودکار پر کند.",
+  "Çıktılar": "چاپ‌ها",
+  "İş kağıdı, prova fişi ve gönderi fişi tek pencerede": "برگه کار، برگه پروا و برچسب ارسال در یک پنجره",
+  "Önizleme: İş Kağıdı": "پیش‌نمایش: برگه کار",
+  "Teslimat türünü sorar, A6 gönderi fişini basar": "نوع تحویل را می‌پرسد و برچسب ارسال A6 را چاپ می‌کند"
 }

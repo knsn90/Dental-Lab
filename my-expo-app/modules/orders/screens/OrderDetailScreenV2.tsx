@@ -132,6 +132,7 @@ import { OrderHistoryModal } from '../history/OrderHistoryModal';
 import { DeliveryUndoModal } from '../components/DeliveryUndoModal';
 import { ProvaModal, type OriginRect } from '../prova/ProvaModal';
 import { ProvaSlipModal } from '../prova/ProvaSlipModal';
+import { ShipLabelTypeModal } from '../components/ShipLabelTypeModal';
 import { slipProvaLabel, activeProva } from '../prova/provaModel';
 import { useProvaSnapshot } from '../prova/useProvaSnapshot';
 import { flagFromSnapshot, heroLabel } from '../prova/provaModel';
@@ -344,6 +345,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   // Prova popup'ı (2. dalga 4) — hero'daki "Prova" hapı; ?tab=prova (bildirimler) doğrudan açar.
   const [provaOpen, setProvaOpen] = useState(tabParam === 'prova');
   const [provaSlipOpen, setProvaSlipOpen] = useState(false);
+  // Çıktılar penceresindeki "Gönderi fişi" → teslimat türü sorusu
+  const [shipTypeOpen, setShipTypeOpen] = useState(false);
   const [provaOrigin, setProvaOrigin] = useState<OriginRect | null>(null);
   const [provaCourier, setProvaCourier] = useState<'prova_gidis' | 'prova_donus' | null>(null);
   const provaPillRef = useRef<View>(null);
@@ -1213,6 +1216,9 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   };
   // Yalnız lab tarafı (kart klinik/hekimde zaten gizler) ve yalnız web.
   const shipLabelPurposeHandler = Platform.OS === 'web' ? printShipLabelForPurpose : undefined;
+  // Çıktılar penceresi (iş kağıdı + prova fişi + gönderi fişi) yalnız lab/yönetici + web'de;
+  // klinik/hekim aynı düğmeden yalnız iş kağıdını görür.
+  const allPrintouts = Platform.OS === 'web' && (panelGroup === '(lab)' || panelGroup === '(admin)');
   // Shipink kargo etiketi (barkod) — Lojistik kartındaki hareket satırından açılır.
   // Bağlantı kayıtta yoksa (etiket gönderi anında hazır olmayabiliyor) gönderi
   // id'siyle yeniden sorulur. Final teslimat ya da ara hareket fark etmez.
@@ -1429,6 +1435,16 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         initialNote={provaSnap.data ? activeProva(provaSnap.data)?.lab_notes ?? null : null}
         onSaved={() => { void provaSnap.refetch(); }}
       />
+      {/* Çıktılar → Gönderi fişi: tür sorulur, kurye kaydı gerekmez (Lojistik kartıyla aynı belge) */}
+      {allPrintouts ? (
+        <ShipLabelTypeModal
+          visible={shipTypeOpen}
+          onClose={() => setShipTypeOpen(false)}
+          accent={panelAccent}
+          orderNumber={(order as any).order_number ?? null}
+          onPick={printShipLabelForPurpose}
+        />
+      ) : null}
       {/* Prova kuryesi / dönüş kuryesi — ara kurye hareketi, amaç hazır seçili */}
       {provaCourier && (panelGroup === '(lab)' || panelGroup === '(admin)') && (
         <DeliveryModal
@@ -2111,7 +2127,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     revision: { key: 'revision', label: autoT('Revizyon Oluştur'), icon: RotateCcw, onPress: () => setRevisionOpen(true) },
     continuation: { key: 'continuation', label: autoT('Devam Siparişi'), icon: Layers, onPress: () => startContinuation(order.id), disabled: !!contStarting },
     support: { key: 'support', label: autoT('Destek'), icon: SupportIcon as any, onPress: supportCtx },
-    print: { key: 'print', label: autoT('İş emrini yazdır'), icon: Printer, onPress: handlePrintFull },
+    print: { key: 'print', label: allPrintouts ? autoT('Çıktılar') : autoT('İş emrini yazdır'), icon: Printer, onPress: handlePrintFull },
     history: { key: 'history', label: autoT('Sipariş geçmişi'), icon: History, onPress: () => setHistoryOpen(true) },
     undoDelivery: { key: 'undoDelivery', label: autoT('Teslimi geri al'), icon: Undo2, onPress: () => setUndoDeliveryOpen(true) },
     prova: { key: 'prova', label: provaHero.text, icon: ProvaIcon as any, onPress: () => { setProvaOrigin(null); setProvaOpen(true); } },
@@ -2710,7 +2726,9 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                   )}
                   {secShown('print') && (
                     <HeroIconBtn
-                      icon={Printer} label={autoT('İş emrini yazdır')} hint={autoT('Kutuya yapıştırılacak iş emri etiketini A4, A5 ya da A6 basar')}
+                      icon={Printer}
+                      label={allPrintouts ? autoT('Çıktılar') : autoT('İş emrini yazdır')}
+                      hint={allPrintouts ? autoT('İş kağıdı, prova fişi ve gönderi fişi tek pencerede') : autoT('Kutuya yapıştırılacak iş emri etiketini A4, A5 ya da A6 basar')}
                       onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} onPress={handlePrintFull}
                     />
                   )}
@@ -4093,9 +4111,29 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
           >
             {/* Araç çubuğu */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
-              <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }}>İş Kağıdı</Text>
+              <View style={{ flexShrink: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>{allPrintouts ? autoT('Çıktılar') : autoT('İş Kağıdı')}</Text>
+                {allPrintouts ? (
+                  <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 1 }} numberOfLines={1}>{autoT('Önizleme: İş Kağıdı')}</Text>
+                ) : null}
+              </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                {Platform.OS === 'web' && (panelGroup === '(lab)' || panelGroup === '(admin)') && order.status !== 'iptal' ? (
+                {allPrintouts ? (
+                  <GlassTooltip title={autoT('Gönderi fişi')} text={autoT('Teslimat türünü sorar, A6 gönderi fişini basar')} placement="bottom">
+                    <Pressable
+                      onPress={() => { closePrint(); setShipTypeOpen(true); }}
+                      accessibilityRole="button"
+                      accessibilityLabel={autoT('Gönderi fişi')}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
+                        backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border, cursor: 'pointer',
+                      } as any}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: U.plainBtn.fg }}>{autoT('Gönderi fişi')}</Text>
+                    </Pressable>
+                  </GlassTooltip>
+                ) : null}
+                {allPrintouts && order.status !== 'iptal' ? (
                   <GlassTooltip title={autoT('Prova fişi')} text={autoT('Provayla gönderilecek, hekim notu alanlı fişi hazırlar')} placement="bottom">
                     <Pressable
                       onPress={() => { closePrint(); setProvaSlipOpen(true); }}
