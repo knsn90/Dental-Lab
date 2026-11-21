@@ -10847,7 +10847,12 @@
   "Kargonun güncel durumunu Shipink'ten sorar ve kayda yazar": "Fetches the shipment's current status from Shipink and saves it",
   "durum güncellendi": "status updated",
   "Shipink durumu": "Shipink status",
+  "{n} diş": "{n} teeth",
+  "Üretimde iş yok": "No jobs in production",
+  "Arama veya filtreyle eşleşen iş yok.": "No jobs match your search or filters.",
   "Laboratuvarın yaptığı işler": "Work done by the lab",
   "ör. metal döküm, opak, dentin + mine": "e.g. metal casting, opaque, dentin + enamel",
-  "Teknisyene / kliniğe not": "Note to technician / clinic"
+  "Teknisyene / kliniğe not": "Note to technician / clinic",
+  "Atanabilecek aktif teknisyen yok": "No active technician to assign",
+  "Bu aşama için yetkili tanımlı değil; tüm aktif teknisyenler listeleniyor.": "No one is authorized for this stage; showing all active technicians."
 }

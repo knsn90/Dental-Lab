@@ -34,6 +34,8 @@ import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { HubContext } from '../../../core/ui/HubContext';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { WhiteHero, useWhiteHeroInk, WHITE_HERO_DISPLAY } from '../../../core/ui/WhiteHero';
 
 import { useKanbanData, type KanbanCard, type KanbanColumn } from '../hooks/useKanbanData';
@@ -185,7 +187,7 @@ function makeStyles(C: Palette) {
       lateText: { fontSize: 12, fontWeight: '600', color: DANGER, letterSpacing: 0.2 },
 
       parallelBadge:     { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: hexA(C.accent, 0.12) },
-      parallelBadgeText: { fontSize: 8.5, fontWeight: '800', color: C.accentDeep, letterSpacing: 0.4 },
+      parallelBadgeText: { fontSize: 10, fontWeight: '800', color: C.accentDeep, letterSpacing: 0.4 },
 
       // Hasta adı dışındaki kart bilgileri İNCE (kullanıcı isteği): meta 400, vurgulu 500.
       meta:       { fontSize: 11.5, color: C.ink3, fontWeight: '400' },
@@ -197,16 +199,21 @@ function makeStyles(C: Palette) {
       pillTintedText: { fontSize: 13, fontWeight: '700', letterSpacing: -0.1 },
       // "Devam" birincil aksiyon DEĞİL — sayfada 20 kez tekrar ediyor ve dolgulu
       // pill olarak asıl bilgiden (iş tipi, gecikme) dikkat çalıyordu. Sade metin.
+      // "Devam" panodaki tek ilerletme eylemi: dolgusuz ama kenarlıklı, gerçek bir düğme gibi okunur.
+      pillOutline:   { paddingHorizontal: 12, height: 30, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.hairline, backgroundColor: C.card },
+      dueBadge:      { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, flexShrink: 0 },
+      dueBadgeText:  { fontSize: 11, fontWeight: '600', ...NUM },
       pillGhost:     { paddingHorizontal: 8, height: 28, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
       pillGhostText: { fontSize: 12.5, fontWeight: '500', letterSpacing: -0.1 },
     }),
 
     mp: StyleSheet.create({
       backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.40)', justifyContent: 'flex-end', alignItems: 'center' },
+      // Ortada popup (kural: masaüstünde de mobilde de ortada; alttan sayfa değil).
       sheet: {
-        width: '100%', maxWidth: 420, backgroundColor: C.card,
-        borderTopStartRadius: 20, borderTopEndRadius: 20,
-        paddingTop: 8, paddingBottom: 24, paddingHorizontal: 16, gap: 8,
+        width: '100%', maxWidth: 420, backgroundColor: C.card, borderRadius: 20,
+        paddingTop: 20, paddingBottom: 16, paddingHorizontal: 16, gap: 8,
+        ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 32px rgba(0,0,0,0.18)' } as any) : {}),
       },
       handle:   { width: 36, height: 5, borderRadius: 2.5, backgroundColor: C.ink3, alignSelf: 'center', marginBottom: 8, opacity: 0.4 },
       title:    { fontSize: 17, fontWeight: '700', color: C.ink, paddingHorizontal: 4 },
@@ -239,6 +246,12 @@ function deliveryText(d: string): string {
   return due.toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' });
 }
 
+/** Teslim günü geçti mi — kart başlığındaki rozetin tonu için. */
+function deliveryIsLate(d: string): boolean {
+  const today = new Date(); today.setHours(0,0,0,0);
+  return new Date(d + 'T00:00:00').getTime() < today.getTime();
+}
+
 // ─── Item Row ────────────────────────────────────────────────────────────────
 
 interface ItemProps {
@@ -252,11 +265,13 @@ interface ItemProps {
   onContinue:  () => void;
   onAutoAssign?: () => void;
   onAssign?:   () => void;
+  /** Verilirse ve iş henüz planlanmamışsa atama düğmeleri yerine "Planla" çıkar. */
+  onPlan?:     () => void;
 }
 
 function ItemRow({
   card, isLast, isUnassigned, busy, C, sx,
-  onOpen, onContinue, onAutoAssign, onAssign,
+  onOpen, onContinue, onAutoAssign, onAssign, onPlan,
 }: ItemProps) {
   const r = sx.r;
   const idleMs = card.stage_started_at ? Date.now() - new Date(card.stage_started_at).getTime() : 0;
@@ -277,16 +292,25 @@ function ItemRow({
   // hekim + klinik + teknisyen meta satırında. Hasta yoksa iş tipi başlığa düşer.
   const hasPatient = !!(card.patient_name && card.patient_name.trim());
   const titleText  = hasPatient ? card.patient_name!.trim() : workTypeLabel;
-  const toothStr   = Array.isArray(card.tooth_numbers) && card.tooth_numbers.length
-    ? card.tooth_numbers.join(', ') : '';
+  // Uzun diş listesi satırı kesiyordu (tam çenede 32 numara) → 6'dan fazlaysa adet yazılır.
+  const teeth      = Array.isArray(card.tooth_numbers) ? card.tooth_numbers : [];
+  const toothStr   = teeth.length > 6
+    ? autoT('{n} diş').replace('{n}', String(teeth.length))
+    : teeth.length ? `${autoT('Diş')} ${teeth.join(', ')}` : '';
+  const [hovered, setHovered] = useState(false);
+  const needsPlan = card.current_stage === 'TRIAGE' && !card.current_station_name;
+  const dueLate = !!card.delivery_date && deliveryIsLate(card.delivery_date);
   const detailLine = [
     hasPatient ? workTypeLabel : '',
-    toothStr ? `${autoT('Diş')} ${toothStr}` : '',
+    toothStr,
     card.shade ? `${autoT('Renk')} ${card.shade}` : '',
   ].filter(Boolean).join('  ·  ');
 
   return (
-    <View style={[r.rowOuter, !isLast && r.rowDivider]}>
+    <View
+      style={[r.rowOuter, !isLast && r.rowDivider, hovered && { backgroundColor: hexA(C.ink, 0.035) }]}
+      {...(Platform.OS === 'web' ? ({ onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) } as any) : {})}
+    >
       <View style={r.row}>
         {/* Sol: dolu daire (aşama göstergesi) */}
         <TouchableOpacity onPress={onOpen} activeOpacity={0.7} style={r.indicatorWrap}>
@@ -314,13 +338,30 @@ function ItemRow({
               {detailLine}
             </Text>
           ) : null}
-          <Text style={r.meta} numberOfLines={1}>
-            <Text style={r.metaStrong}>#{card.order_number}</Text>
-            {card.doctor_name ? `  ·  ${card.doctor_name}` : ''}
-            {card.clinic_name ? `  ·  ${card.clinic_name}` : ''}
-            {card.technician_name ? `  ·  ${card.technician_name}` : `  ·  ${autoT('Atanmadı')}`}
-            {`  ·  ${deliveryText(card.delivery_date)}`}
-          </Text>
+          {/* Teslim günü alt satırın BAŞINDA: sonda kesilip kayboluyordu; başlıkta ise dar
+              kolonda hasta adını kısaltıyordu. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 }}>
+            {card.delivery_date ? (
+              <View style={[r.dueBadge, { backgroundColor: dueLate ? hexA(DANGER, 0.12) : hexA(C.ink, 0.06) }]}>
+                <Text style={[r.dueBadgeText, { color: dueLate ? DANGER : C.ink2 }]}>{deliveryText(card.delivery_date)}</Text>
+              </View>
+            ) : null}
+            {/* Atanmamış kuyruğunda aşama ADI yazmalı: kime atanacağı aşamaya bağlı,
+                yalnız renkli nokta bunu söylemiyordu. */}
+            {isUnassigned ? (
+              <View style={[r.dueBadge, { backgroundColor: hexA(stageColor ?? '#94A3B8', 0.16), flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: card.current_station_color || stageColor || '#94A3B8' }} />
+                {/* Gerçek istasyon adı varsa o; yoksa aşama eşlemesi (ör. Planlama). */}
+                <Text style={[r.dueBadgeText, { color: C.ink }]}>{card.current_station_name || autoT(STAGE_LABEL[card.current_stage] ?? '')}</Text>
+              </View>
+            ) : null}
+            <Text style={[r.meta, { flex: 1, minWidth: 0 }]} numberOfLines={1}>
+              <Text style={r.metaStrong}>#{card.order_number}</Text>
+              {card.doctor_name ? `  ·  ${card.doctor_name}` : ''}
+              {card.clinic_name ? `  ·  ${card.clinic_name}` : ''}
+              {card.technician_name ? `  ·  ${card.technician_name}` : `  ·  ${autoT('Atanmadı')}`}
+            </Text>
+          </View>
         </TouchableOpacity>
 
         {/* Tek aksiyon satır içinde kalır */}
@@ -330,16 +371,29 @@ function ItemRow({
               onPress={onContinue}
               disabled={busy}
               activeOpacity={0.75}
-              style={[r.pillGhost, busy && { opacity: 0.5 }]}
+              style={[r.pillOutline, busy && { opacity: 0.5 }]}
             >
-              <Text style={[r.pillGhostText, { color: C.ink3 }]}>Devam ›</Text>
+              <Text style={[r.pillGhostText, { color: C.ink2 }]}>Devam ›</Text>
             </TouchableOpacity>
           </View>
         )}
       </View>
 
       {/* İki aksiyon kendi satırında — başlığı ezmesin */}
-      {isUnassigned && (
+      {/* Planlanmamış iş (aşamaları henüz belirlenmemiş): teknisyen atamak anlamsız —
+          önce planlanmalı. Atama düğmeleri yerine tek "Planla". */}
+      {isUnassigned && needsPlan && (
+        <View style={r.actionRow}>
+          {onPlan ? (
+            <TouchableOpacity onPress={onPlan} activeOpacity={0.75} style={[r.pill, { backgroundColor: C.accent }]}>
+              <Text style={r.pillFilledText}>{autoT('Planla')}</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={[r.meta, { paddingVertical: 6 }]}>{autoT('Planlama bekliyor')}</Text>
+          )}
+        </View>
+      )}
+      {isUnassigned && !needsPlan && (
         <View style={r.actionRow}>
           {/* Ortak yol önce, ikincisi bir ton geride: her satırda iki DOLU pil
               yan yana durunca liste bir buton duvarına dönüşüyordu ve hangisinin
@@ -376,12 +430,13 @@ interface ColumnProps {
   onContinue:(c: KanbanCard) => void;
   onAutoAssign:(c: KanbanCard) => void;
   onAssign:  (c: KanbanCard) => void;
+  onPlan?:   (c: KanbanCard) => void;
   busyId:    string | null;
 }
 
 function ColumnView({
   column, colWidth, C, sx,
-  onCard, onContinue, onAutoAssign, onAssign, busyId,
+  onCard, onContinue, onAutoAssign, onAssign, onPlan, busyId,
 }: ColumnProps) {
   const col = sx.col;
   const isUnassigned = column.isUnassigned;
@@ -450,6 +505,7 @@ function ColumnView({
               onContinue={() => onContinue(card)}
               onAutoAssign={() => onAutoAssign(card)}
               onAssign={() => onAssign(card)}
+              onPlan={onPlan ? () => onPlan(card) : undefined}
             />
           ))
         )}
@@ -642,8 +698,12 @@ interface AssignPickerProps {
 
 function AssignPickerModal({ visible, card, labId, C, sx, onClose, onAssigned }: AssignPickerProps) {
   const mp = sx.mp;
+  const U = useInkUI();
   const [users, setUsers] = useState<{ id: string; full_name: string; workload: number }[]>([]);
   const [loading, setLoading] = useState(false);
+  // Aşamaya yetkili tanımlı değilse liste boş kalıp pencere çıkmaza dönüyordu →
+  // lab'in tüm aktif teknisyenleri gösterilir (Aşama Devret penceresiyle aynı yaklaşım).
+  const [fallback, setFallback] = useState(false);
   const stage = card?.current_stage ?? 'TRIAGE';
 
   useEffect(() => {
@@ -656,7 +716,19 @@ function AssignPickerModal({ visible, card, labId, C, sx, onClose, onAssigned }:
         .eq('stage', stage)
         .eq('profiles.lab_id', labId)
         .eq('profiles.is_active', true);
-      const ids = ((skills ?? []) as any[]).map(s => s.user_id);
+      let people = ((skills ?? []) as any[]).map(s => ({ id: s.user_id as string, full_name: s.profiles.full_name as string }));
+      const usedFallback = people.length === 0;
+      if (usedFallback) {
+        const { data: profs } = await supabase
+          .from('profiles')
+          .select('id, full_name, is_active')
+          .eq('lab_id', labId)
+          .eq('user_type', 'lab')
+          .eq('role', 'technician')
+          .order('full_name');
+        people = ((profs ?? []) as any[]).filter(p => p.is_active !== false).map(p => ({ id: p.id as string, full_name: p.full_name as string }));
+      }
+      const ids = people.map(u => u.id);
       // İş yükü = teknisyenin üzerindeki aktif aşamalar (order_stages).
       // stage_log ölü (satırlar hiç kapanmıyor) — sayım oradan yapılmaz.
       const { data: workload } = ids.length
@@ -664,11 +736,8 @@ function AssignPickerModal({ visible, card, labId, C, sx, onClose, onAssigned }:
         : { data: [] };
       const counts = new Map<string, number>();
       for (const r of (workload ?? []) as any[]) counts.set(r.technician_id, (counts.get(r.technician_id) ?? 0) + 1);
-      setUsers(((skills ?? []) as any[]).map(s => ({
-        id: s.user_id,
-        full_name: s.profiles.full_name as string,
-        workload: counts.get(s.user_id) ?? 0,
-      })).sort((a, b) => a.workload - b.workload));
+      setUsers(people.map(u => ({ ...u, workload: counts.get(u.id) ?? 0 })).sort((a, b) => a.workload - b.workload));
+      setFallback(usedFallback);
       setLoading(false);
     })();
   }, [visible, card, stage, labId]);
@@ -690,17 +759,22 @@ function AssignPickerModal({ visible, card, labId, C, sx, onClose, onAssigned }:
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={mp.backdrop}>
-        <View style={mp.sheet}>
-          <View style={mp.handle} />
-          <Text style={mp.title}>{STAGE_LABEL[stage]}</Text>
-          <Text style={mp.subtitle}>İş yüküne göre sıralı</Text>
+      {/* Arka plan ortak token: bulanık scrim + ortalama. Dışına tıklayınca kapanır. */}
+      <Pressable style={U.modalOverlay} onPress={onClose}>
+        <Pressable style={mp.sheet} onPress={(e) => (e as any).stopPropagation?.()}>
+          <Text style={mp.title}>{autoT('Teknisyen ata')}</Text>
+          <Text style={mp.subtitle}>{card?.current_station_name || autoT(STAGE_LABEL[stage])}{'  ·  '}{autoT('İş yüküne göre sıralı')}</Text>
           {loading ? (
             <ActivityIndicator color={C.accent} style={{ marginVertical: 30 }} />
           ) : users.length === 0 ? (
-            <Text style={mp.empty}>Bu aşama için yetkili kullanıcı yok</Text>
+            <Text style={mp.empty}>{autoT('Atanabilecek aktif teknisyen yok')}</Text>
           ) : (
             <ScrollView style={{ maxHeight: 360 }}>
+              {fallback ? (
+                <Text style={{ fontSize: 12, color: C.ink3, paddingHorizontal: 4, paddingBottom: 8 }}>
+                  {autoT('Bu aşama için yetkili tanımlı değil; tüm aktif teknisyenler listeleniyor.')}
+                </Text>
+              ) : null}
               {users.map((u, i) => (
                 <TouchableOpacity
                   key={u.id}
@@ -717,8 +791,8 @@ function AssignPickerModal({ visible, card, labId, C, sx, onClose, onAssigned }:
           <TouchableOpacity onPress={onClose} style={mp.close}>
             <Text style={[mp.closeText, { color: C.accent }]}>Kapat</Text>
           </TouchableOpacity>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }
@@ -731,6 +805,8 @@ export function ProductionKanbanScreen() {
   // istasyon panelinden tıklayınca kullanıcıyı lab paneline atıyordu.
   const panelBase = String((useSegments() as string[])?.[0] ?? '(lab)');
   const { profile } = useAuthStore();
+  // Planlama yetkisi sipariş detayıyla aynı kural: müdür + admin.
+  const canPlan = (profile as any)?.role === 'manager' || (profile as any)?.user_type === 'admin';
   const { width: winWidth } = useWindowDimensions();
   // Ekran shell içinde (sol menü ~280px). Pencere değil GERÇEK konteyner
   // genişliği kullanılmazsa rail+kolon hesabı şişer ve kolonlar rail kenarında
@@ -786,14 +862,16 @@ export function ProductionKanbanScreen() {
         if (fAcil && !c.is_urgent) return false;
         if (fGeciken && !isOverdueCard(c)) return false;
         if (q) {
-          const hay = `${c.order_number ?? ''} ${c.work_type ?? ''} ${c.doctor_name ?? ''} ${c.clinic_name ?? ''} ${c.technician_name ?? ''}`.toLocaleLowerCase('tr-TR');
+          const hay = `${c.patient_name ?? ''} ${c.order_number ?? ''} ${c.work_type ?? ''} ${c.doctor_name ?? ''} ${c.clinic_name ?? ''} ${c.technician_name ?? ''}`.toLocaleLowerCase('tr-TR');
           if (!hay.includes(q)) return false;
         }
         return true;
       }),
     }))
     // İşlem olmayan istasyonları gizle (showEmpty kapalıyken). Atanmamış yalnız doluysa görünür.
-    .filter(col => col.isUnassigned ? col.cards.length > 0 : (showEmpty || col.cards.length > 0)),
+    .filter(col => col.isUnassigned ? col.cards.length > 0 : (showEmpty || col.cards.length > 0))
+    // Atanmamış = en acil kuyruk → en sağda ekran dışında kalmasın, ilk kolon olsun.
+    .sort((a, b) => Number(b.isUnassigned) - Number(a.isUnassigned)),
   [columns, fAcil, fGeciken, q, showEmpty]);
   const filtersActive = fAcil || fGeciken || !!q;
 
@@ -893,6 +971,7 @@ export function ProductionKanbanScreen() {
       onContinue={onContinue}
       onAutoAssign={onAutoAssign}
       onAssign={(card) => setAssignFor(card)}
+      onPlan={canPlan ? (card) => router.push(`/${panelBase}/order/plan/${card.id}` as any) : undefined}
       busyId={busyId}
     />
   ));
@@ -993,9 +1072,12 @@ export function ProductionKanbanScreen() {
                 <Text style={[s.clearTxt, { color: A }]}>Temizle</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={[s.refreshBtn, { backgroundColor: hexA(A, 0.12) }]} onPress={refresh} activeOpacity={0.7}>
-              <AppIcon name="refresh-cw" size={16} color={A} />
-            </TouchableOpacity>
+            <GlassTooltip placement="bottom" text={autoT('Yenile')}>
+              <TouchableOpacity style={[s.refreshBtn, { backgroundColor: hexA(A, 0.12) }]} onPress={refresh} activeOpacity={0.7}
+                accessibilityRole="button" accessibilityLabel={autoT('Yenile')}>
+                <AppIcon name="refresh-cw" size={16} color={A} />
+              </TouchableOpacity>
+            </GlassTooltip>
           </View>
         </View>
       )}
@@ -1008,6 +1090,25 @@ export function ProductionKanbanScreen() {
           <TouchableOpacity style={[s.retryBtn, { backgroundColor: A }]} onPress={refresh}>
             <Text style={s.retryText}>Tekrar Dene</Text>
           </TouchableOpacity>
+        </View>
+      ) : filteredColumns.length === 0 ? (
+        // Hiç kolon kalmadı: boş ekran yerine nedenini ve çıkışı söyle.
+        <View style={s.center}>
+          <AppIcon name="search" size={22} color={C.ink3} />
+          <Text style={{ fontSize: 15, fontWeight: '600', color: C.ink }}>
+            {filtersActive ? autoT('Sonuç bulunamadı') : autoT('Üretimde iş yok')}
+          </Text>
+          {filtersActive ? (
+            <>
+              <Text style={s.errorText}>{autoT('Arama veya filtreyle eşleşen iş yok.')}</Text>
+              <TouchableOpacity
+                style={{ paddingHorizontal: 16, height: 34, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.hairline, backgroundColor: C.card }}
+                onPress={() => { setSearch(''); setFAcil(false); setFGeciken(false); }} activeOpacity={0.7}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '600', color: C.ink }}>{autoT('Filtreleri temizle')}</Text>
+              </TouchableOpacity>
+            </>
+          ) : null}
         </View>
       ) : fits ? (
         // Rail yok, tüm kolonlar sığıyor → tek satır, ortalanmış (wrap yok).

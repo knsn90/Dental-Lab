@@ -10847,7 +10847,12 @@
   "Kargonun güncel durumunu Shipink'ten sorar ve kayda yazar": "وضعیت فعلی مرسوله را از Shipink می‌گیرد و ثبت می‌کند",
   "durum güncellendi": "وضعیت به‌روزرسانی شد",
   "Shipink durumu": "وضعیت Shipink",
+  "{n} diş": "{n} دندان",
+  "Üretimde iş yok": "کاری در تولید نیست",
+  "Arama veya filtreyle eşleşen iş yok.": "هیچ کاری با جستجو یا فیلتر مطابقت ندارد.",
   "Laboratuvarın yaptığı işler": "کارهای انجام‌شده توسط لابراتوار",
   "ör. metal döküm, opak, dentin + mine": "مثلاً ریخته‌گری فلز، اپک، عاج + مینا",
-  "Teknisyene / kliniğe not": "یادداشت برای تکنسین / کلینیک"
+  "Teknisyene / kliniğe not": "یادداشت برای تکنسین / کلینیک",
+  "Atanabilecek aktif teknisyen yok": "تکنسین فعالی برای تخصیص وجود ندارد",
+  "Bu aşama için yetkili tanımlı değil; tüm aktif teknisyenler listeleniyor.": "برای این مرحله فرد مجازی تعریف نشده است؛ همهٔ تکنسین‌های فعال نمایش داده می‌شوند."
 }
