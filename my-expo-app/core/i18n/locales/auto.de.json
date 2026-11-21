@@ -10842,5 +10842,9 @@
   "Çıktılar": "Ausdrucke",
   "İş kağıdı, prova fişi ve gönderi fişi tek pencerede": "Arbeitsblatt, Einprobe-Begleitschein und Versandetikett in einem Fenster",
   "Önizleme: İş Kağıdı": "Vorschau: Arbeitsblatt",
-  "Teslimat türünü sorar, A6 gönderi fişini basar": "Fragt die Lieferart ab und druckt das A6-Versandetikett"
+  "Teslimat türünü sorar, A6 gönderi fişini basar": "Fragt die Lieferart ab und druckt das A6-Versandetikett",
+  "Soruluyor…": "Wird abgefragt…",
+  "Kargonun güncel durumunu Shipink'ten sorar ve kayda yazar": "Fragt den aktuellen Sendungsstatus bei Shipink ab und speichert ihn",
+  "durum güncellendi": "Status aktualisiert",
+  "Shipink durumu": "Shipink-Status"
 }

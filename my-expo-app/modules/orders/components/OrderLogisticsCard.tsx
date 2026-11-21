@@ -120,6 +120,13 @@ interface Props {
   onCargoLabel?: (leg: DeliveryLeg) => void;
   /** Kargo etiketi alınan hareket — düğmesi o sırada "Alınıyor…" yazar. */
   cargoLabelLegId?: string | null;
+  /**
+   * Açık Shipink hareketinin durumunu Shipink'ten sorar ("Güncelle"). Sipariş
+   * teslim edilmiş olsa da hareket açıksa görünür. Yalnız yönetici.
+   */
+  onSyncCargo?: (leg: DeliveryLeg) => void;
+  /** Durumu sorulan hareket — düğmesi o sırada sönük. */
+  syncingLegId?: string | null;
   /** Fişi hazırlanan hareket — düğmesi o sırada sönük ve basılamaz. */
   printingLegId?: string | null;
   /** Kanıt penceresinin alt başlığı için sipariş no. */
@@ -175,7 +182,7 @@ export function OrderLogisticsCard({
   legs, accent, rowBg, isManager, canCall = true, onCall, onEditFee, fmtDate,
   frameless = false, tone,
   mapsApiKey, labAddress, clinicAddress, onOpenTracking, clientView = false,
-  onPrintLabel, onPrintForPurpose, onCargoLabel, cargoLabelLegId = null, printingLegId = null, orderNumber = null, onProofChanged,
+  onPrintLabel, onPrintForPurpose, onCargoLabel, cargoLabelLegId = null, onSyncCargo, syncingLegId = null, printingLegId = null, orderNumber = null, onProofChanged,
 }: Props) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -307,6 +314,9 @@ export function OrderLogisticsCard({
               : ([leg.external_carrier_name, leg.external_provider].filter(Boolean).join(' · ') || 'Dış kargo');
             // Kargo (toplayıcı) hareketi: canlı kurye yok → rota haritası anlamsız; takip no gösterilir.
             const isCargo = leg.external_provider === 'Shipink';
+            // Açık kargo hareketi elle sorgulanabilir (sipariş kapanmış olsa da).
+            const canSyncCargo = !!onSyncCargo && isManager && !clientView && isCargo && !!leg.external_tracking_code
+              && leg.status !== 'teslim_edildi' && leg.status !== 'iptal';
             const trackNo = isCargo && !clientView ? (leg.external_tracking_no ?? null) : null;
             const trackUrl = leg.external_tracking_url ?? null;
             const fee = leg.fee_amount != null
@@ -418,7 +428,7 @@ export function OrderLogisticsCard({
                 ) : null}
 
                 {/* 4) ETİKETLİ eylemler — ikon yerine ne yaptığını yazan düğmeler */}
-                {(onOpenTracking || (onPrintLabel && !clientView) || (onCargoLabel && isManager && !clientView && isCargo && (leg.external_label_url || leg.external_tracking_code))) ? (
+                {(onOpenTracking || (onPrintLabel && !clientView) || (onCargoLabel && isManager && !clientView && isCargo && (leg.external_label_url || leg.external_tracking_code)) || canSyncCargo) ? (
                   <View style={{ flexDirection: 'row', gap: 6, marginTop: 10 }}>
                     {/* TEK satır: düğmeler alanı eşit paylaşır, alt satıra düşmez (kullanıcı kararı) */}
                     {onOpenTracking ? (
@@ -431,6 +441,15 @@ export function OrderLogisticsCard({
                         accent={accent} isDark={isDark} title={toneEff.title}
                         disabled={cargoLabelLegId === leg.id}
                         onPress={() => onCargoLabel(leg)}
+                      />
+                    ) : null}
+                    {canSyncCargo ? (
+                      <LegAction
+                        label={autoT(syncingLegId === leg.id ? 'Soruluyor…' : 'Güncelle')}
+                        tip={autoT('Kargonun güncel durumunu Shipink\'ten sorar ve kayda yazar')}
+                        accent={accent} isDark={isDark} title={toneEff.title}
+                        disabled={syncingLegId === leg.id}
+                        onPress={() => onSyncCargo!(leg)}
                       />
                     ) : null}
                     {onPrintLabel && !clientView ? (

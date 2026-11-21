@@ -10842,5 +10842,9 @@
   "Çıktılar": "چاپ‌ها",
   "İş kağıdı, prova fişi ve gönderi fişi tek pencerede": "برگه کار، برگه پروا و برچسب ارسال در یک پنجره",
   "Önizleme: İş Kağıdı": "پیش‌نمایش: برگه کار",
-  "Teslimat türünü sorar, A6 gönderi fişini basar": "نوع تحویل را می‌پرسد و برچسب ارسال A6 را چاپ می‌کند"
+  "Teslimat türünü sorar, A6 gönderi fişini basar": "نوع تحویل را می‌پرسد و برچسب ارسال A6 را چاپ می‌کند",
+  "Soruluyor…": "در حال بررسی…",
+  "Kargonun güncel durumunu Shipink'ten sorar ve kayda yazar": "وضعیت فعلی مرسوله را از Shipink می‌گیرد و ثبت می‌کند",
+  "durum güncellendi": "وضعیت به‌روزرسانی شد",
+  "Shipink durumu": "وضعیت Shipink"
 }

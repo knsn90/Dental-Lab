@@ -10842,5 +10842,9 @@
   "Çıktılar": "Printouts",
   "İş kağıdı, prova fişi ve gönderi fişi tek pencerede": "Work sheet, try-in slip and shipping label in one window",
   "Önizleme: İş Kağıdı": "Preview: Work Sheet",
-  "Teslimat türünü sorar, A6 gönderi fişini basar": "Asks for the delivery type and prints the A6 shipping label"
+  "Teslimat türünü sorar, A6 gönderi fişini basar": "Asks for the delivery type and prints the A6 shipping label",
+  "Soruluyor…": "Checking…",
+  "Kargonun güncel durumunu Shipink'ten sorar ve kayda yazar": "Fetches the shipment's current status from Shipink and saves it",
+  "durum güncellendi": "status updated",
+  "Shipink durumu": "Shipink status"
 }

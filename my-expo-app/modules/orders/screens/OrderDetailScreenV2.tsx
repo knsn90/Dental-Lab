@@ -715,6 +715,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const [bbkTracking, setBbkTracking] = useState(false);
   const [cancelingDelivery, setCancelingDelivery] = useState(false);
   const [shpBusy, setShpBusy] = useState(false);
+  const [syncingLegId, setSyncingLegId] = useState<string | null>(null);   // lojistik satırı "Güncelle"
   const [cargoLabelLegId, setCargoLabelLegId] = useState<string | null>(null);   // Shipink etiketi alınıyor
   const [editDeliveryTarget, setEditDeliveryTarget] = useState<{ id: string; orderId: string } | null>(null);
   // Aşama aksiyon dropdown'u — hangi aşamanın menüsü açık (birincil "Tamamla" + ▼).
@@ -740,16 +741,16 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   // 'triage' station'ına atanmış teknisyen kontrolü ileride eklenebilir
   const canTriage = isManager;
 
-  // Shipink: takip numarası ve taşıyıcı gönderi ANINDA belli olmayabiliyor (taşıyıcı
-  // sonradan atar). Eksik bilgisi olan açık kargo hareketi, ekran açılınca bir kez
-  // sessizce eşitlenir; kayıt güncellenince realtime listeyi yeniler.
+  // Shipink: durum için arka planda sorgu/bildirim YOK. Açık (teslim/iptal olmamış)
+  // her kargo hareketi ekran açılınca bir kez sessizce eşitlenir — durum, takip no,
+  // taşıyıcı ve etiket; kayıt güncellenince realtime listeyi yeniler. (Eskiden yalnız
+  // takip no/taşıyıcı eksikse soruluyordu → teslim edilen kargo "Beklemede" kalıyordu.)
   const shpSyncedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!isManager) return;
     for (const l of deliveryLegs as any[]) {
       if (l.external_provider !== 'Shipink' || !l.external_tracking_code) continue;
       if (l.status === 'teslim_edildi' || l.status === 'iptal') continue;
-      if (l.external_tracking_no && l.external_carrier_name) continue;
       if (shpSyncedRef.current.has(l.id)) continue;
       shpSyncedRef.current.add(l.id);
       supabase.functions.invoke('shipink-dispatch', {
@@ -1216,6 +1217,24 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   };
   // Yalnız lab tarafı (kart klinik/hekimde zaten gizler) ve yalnız web.
   const shipLabelPurposeHandler = Platform.OS === 'web' ? printShipLabelForPurpose : undefined;
+  // Lojistik satırındaki "Güncelle": tek kargo hareketini Shipink'ten sorar.
+  const handleSyncCargoLeg = async (leg: any) => {
+    if (syncingLegId || !leg?.external_tracking_code) return;
+    setSyncingLegId(leg.id);
+    const { data, error: e } = await supabase.functions.invoke('shipink-dispatch', {
+      body: { action: 'sync', shipment_id: leg.external_tracking_code, delivery_id: leg.id },
+    });
+    setSyncingLegId(null);
+    if (e || !(data as any)?.ok) {
+      toast.error((data as any)?.message ?? e?.message ?? autoT('Durum alınamadı'));
+      return;
+    }
+    const raw = (data as any)?.status_raw || '—';
+    const mapped = (data as any)?.status ?? null;
+    setLegsTick(t => t + 1); refetch();
+    if (mapped && mapped !== leg.status) toast.success(`Shipink: ${raw} → ${autoT('durum güncellendi')}`);
+    else toast.success(`${autoT('Shipink durumu')}: ${raw}`);
+  };
   // Çıktılar penceresi (iş kağıdı + prova fişi + gönderi fişi) yalnız lab/yönetici + web'de;
   // klinik/hekim aynı düğmeden yalnız iş kağıdını görür.
   const allPrintouts = Platform.OS === 'web' && (panelGroup === '(lab)' || panelGroup === '(admin)');
@@ -1768,6 +1787,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             onPrintForPurpose={shipLabelPurposeHandler}
             onCargoLabel={handleShipinkLabel}
             cargoLabelLegId={cargoLabelLegId}
+            onSyncCargo={handleSyncCargoLeg}
+            syncingLegId={syncingLegId}
             printingLegId={printingLegId}
             frameless
           />
@@ -3496,6 +3517,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             onPrintForPurpose={shipLabelPurposeHandler}
             onCargoLabel={handleShipinkLabel}
             cargoLabelLegId={cargoLabelLegId}
+            onSyncCargo={handleSyncCargoLeg}
+            syncingLegId={syncingLegId}
             printingLegId={printingLegId}
           />
 
