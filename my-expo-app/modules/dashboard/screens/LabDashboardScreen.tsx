@@ -9,6 +9,7 @@
  *
  * Patterns NativeWind — NO StyleSheet.create().
  */
+import { LogoImage, DefaultLogo } from '../../../core/ui/LogoImage';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { HatchFill } from '../../../core/ui/HatchFill';
 import { firstName as displayFirstName } from '../../../core/util/personName';
@@ -1784,9 +1785,9 @@ export function LabDashboardScreen() {
                         borderWidth: 1, borderColor: (order as any).clinic_logo_url ? T.hairline : hexA(P, 0.15) }}
                     >
                       {(order as any).clinic_logo_url ? (
-                        <Image source={{ uri: (order as any).clinic_logo_url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                        <LogoImage uri={(order as any).clinic_logo_url} style={{ width: '100%', height: '100%' }} />
                       ) : (
-                        <Text style={{ fontSize: 9, fontWeight: '800', color: P }}>{initials((order as any).patient_name || drName)}</Text>
+                        <DefaultLogo size={15} color={P} />
                       )}
                     </View>
                     {/* Admin gibi: HASTA birincil, hekim ikincil satır */}

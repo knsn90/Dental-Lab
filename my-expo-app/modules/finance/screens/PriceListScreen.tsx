@@ -1,4 +1,6 @@
 import { localeTag } from '../../../core/i18n';
+import { LogoImage } from '../../../core/ui/LogoImage';
+import { Tooth } from '../../../core/ui/dentalIcons';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useFeature } from '../../../core/store/featureFlagsStore';
 import { toast } from '../../../core/ui/Toast';
@@ -2546,10 +2548,10 @@ function CustomTab({ initialClinicId, onExit }: {
                       // Zemin iki temada da BEYAZ: logolar saydam + koyu mürekkep,
                       // koyu kart üstünde kaybolur (Siparişler/Sağlık Kurumları ile aynı).
                       <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-                        <Image source={{ uri: logo }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                        <LogoImage uri={logo} style={{ width: '100%', height: '100%' }} />
                       </View>
                     ) : (
-                      <MobileTableIconX icon={Building2} tone={MU.chipTones.info} />
+                      <MobileTableIconX icon={Tooth} tone={MU.chipTones.info} />
                     )}
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={MT.title} numberOfLines={1}>{c.name}</Text>

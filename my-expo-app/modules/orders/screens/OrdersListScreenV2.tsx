@@ -1,4 +1,5 @@
 import { localeTag, isRTL } from '../../../core/i18n';
+import { LogoImage, DefaultLogo } from '../../../core/ui/LogoImage';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { holdBadgeText, isProvaHold } from '../holdCategories';
 import { useProvaFlags } from '../prova/useProvaFlags';
@@ -2021,14 +2022,14 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
             // siyah-üstü-siyah olup kayboluyorlardı.
             style={{ width: 34, height: 34, borderRadius: 17, flexShrink: 0, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: T.hairline }}
           >
-            <Image source={{ uri: clinicLogo }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+            <LogoImage uri={clinicLogo} style={{ width: '100%', height: '100%' }} fitStyle={{ width: '74%', height: '74%' }} />
           </View>
         ) : (
           <View
             className="items-center justify-center"
             style={{ width: 34, height: 34, borderRadius: 17, flexShrink: 0, backgroundColor: stageColor + '20' }}
           >
-            <Text style={{ fontSize: 11, fontWeight: '600', color: stageColor }}>{initials}</Text>
+            <DefaultLogo size={17} color={stageColor} />
           </View>
         )}
         <View style={{ flex: 1, minWidth: 0 }}>

@@ -1,4 +1,5 @@
 import { localeTag, isRTL } from '../../../core/i18n';
+import { LogoImage, DefaultLogo } from '../../../core/ui/LogoImage';
 import { autoT } from '../../../core/i18n/autoTranslate';
 /**
  * OperatorScreen — Teknisyen istasyon paneli
@@ -1766,8 +1767,8 @@ function QueueCard({
           alignItems: 'center', justifyContent: 'center',
         }}>
           {job.clinic_logo_url
-            ? <Image source={{ uri: job.clinic_logo_url }} style={{ width: 36, height: 36 }} resizeMode="cover" accessibilityLabel={job.clinic_name ?? undefined} />
-            : <Text style={{ fontSize: 12, fontWeight: '600', color: accentInk }}>{initialsOf(job.clinic_name || job.patient_name)}</Text>}
+            ? <LogoImage uri={job.clinic_logo_url} style={{ width: 36, height: 36 }} accessibilityLabel={job.clinic_name ?? undefined} />
+            : <DefaultLogo size={18} color={accentInk} />}
         </View>
 
         <View style={{ flex: 1, minWidth: 0 }}>

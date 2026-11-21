@@ -7,6 +7,7 @@
 //   • Week strip
 //   • Aktif işlerim list (or positive empty state)
 
+import { LogoImage, DefaultLogo } from '../../../core/ui/LogoImage';
 import React, { useEffect, useRef, useState } from 'react';
 import { HatchFill } from '../../../core/ui/HatchFill';
 import { firstName as displayFirstName } from '../../../core/util/personName';
@@ -553,8 +554,8 @@ export function QueueCard({ jobs, onOpen, onAll, flush, max = 4, wide }: { jobs:
               alignItems: 'center', justifyContent: 'center',
             }}>
               {j.clinicLogoUrl
-                ? <Image source={{ uri: j.clinicLogoUrl }} style={{ width: 36, height: 36 }} resizeMode="cover" accessibilityLabel={j.clinicName ?? undefined} />
-                : <Text style={{ fontSize: 12, fontWeight: '600', color: accentInk }}>{initialsOf(j.clinicName || j.patient)}</Text>}
+                ? <LogoImage uri={j.clinicLogoUrl} style={{ width: 36, height: 36 }} accessibilityLabel={j.clinicName ?? undefined} />
+                : <DefaultLogo size={18} color={accentInk} />}
             </View>
             {wide ? (
               /* Masaüstü: hasta + iş (iki satır) · rozet · teslim sağda */

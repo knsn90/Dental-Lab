@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { LogoImage, DefaultLogo } from '../../../core/ui/LogoImage';
 import {
   View, Text, ScrollView, TouchableOpacity, Image,
   Modal, TextInput,
@@ -1184,9 +1185,9 @@ function ClinicRow({
         {/* Icon — logo varsa logo, yoksa kategori ikonu */}
         <View style={{ width: isNarrow ? 36 : 48, height: isNarrow ? 36 : 48, borderRadius: R.md, overflow: 'hidden', backgroundColor: (clinic as any).logo_url ? '#FFFFFF' : (clinic.is_active ? cat.bg : DS.ink[100]), borderWidth: (clinic as any).logo_url ? 1 : 0, borderColor: 'rgba(0,0,0,0.06)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           {(clinic as any).logo_url ? (
-            <Image source={{ uri: (clinic as any).logo_url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+            <LogoImage uri={(clinic as any).logo_url} style={{ width: '100%', height: '100%' }} fitStyle={{ width: '86%', height: '86%' }} />
           ) : (
-            <AppIcon name={cat.icon as any} size={isNarrow ? 16 : 22} color={clinic.is_active ? cat.color : DS.ink[400]} />
+            <DefaultLogo size={isNarrow ? 18 : 24} color={clinic.is_active ? cat.color : DS.ink[400]} />
           )}
         </View>
 

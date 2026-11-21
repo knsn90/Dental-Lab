@@ -1,6 +1,7 @@
 // RecentOrdersMobile — mobil ana ekranlar için "Son Siparişler" kart listesi.
 // Desktop tablonun mobile-uygun karşılığı; 4 panelde (lab/admin/klinik/hekim) paylaşılır.
 // Durum etiketi/rengi çağıran panelde (STATUS_CFG) çözülür; bu bileşen yalnız sunum.
+import { LogoImage, DefaultLogo } from '../../../core/ui/LogoImage';
 import React from 'react';
 import { View, Text, Pressable, Image } from 'react-native';
 import { ClipboardList, ChevronRight, ChevronLeft, CornerDownRight, CornerDownLeft } from '../../../core/ui/icons';
@@ -216,8 +217,8 @@ export function RecentOrdersMobile({
                 alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
               }}>
                 {o.clinicLogoUrl
-                  ? <Image source={{ uri: o.clinicLogoUrl }} style={{ width: 38, height: 38 }} resizeMode="cover" />
-                  : <Text style={{ fontSize: 13, fontWeight: '700', color: accentReadable }}>{o.initials}</Text>}
+                  ? <LogoImage uri={o.clinicLogoUrl} style={{ width: 38, height: 38 }} />
+                  : <DefaultLogo size={19} color={accentReadable} />}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>

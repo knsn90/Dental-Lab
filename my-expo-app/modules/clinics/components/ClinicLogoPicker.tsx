@@ -9,6 +9,7 @@
  * storage yoluna upsert edildiği için damgasız URL'de CDN eski görseli servis
  * ediyordu.
  */
+import { LogoImage, DefaultLogo } from '../../../core/ui/LogoImage';
 import React, { useState } from 'react';
 import {
   View, Text, Pressable, Modal, TextInput, ScrollView, Image, Platform,
@@ -136,8 +137,8 @@ export function ClinicLogoPicker({
         }}
       >
         {logoUrl
-          ? <Image source={{ uri: logoUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-          : <Building2 size={26} color={accentColor} strokeWidth={1.6} />}
+          ? <LogoImage uri={logoUrl} style={{ width: '100%', height: '100%' }} fitStyle={{ width: '84%', height: '84%' }} />
+          : <DefaultLogo size={Math.round(size * 0.42)} color={accentColor} />}
       </Pressable>
 
       <View style={{ flex: 1, gap: 6 }}>

@@ -7,6 +7,7 @@ import { localeTag } from '../../../core/i18n';
  * Patterns cardSolid: bg-white rounded-[24px] p-[22px] + soft shadow.
  * Lucide ikonlar, Inter Tight Light display.
  */
+import { LogoImage, DefaultLogo } from '../../../core/ui/LogoImage';
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
@@ -1084,9 +1085,9 @@ function ClinicKurumTab({
               })}
             >
               {logoUri ? (
-                <Image source={{ uri: logoUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                <LogoImage uri={logoUri} style={{ width: '100%', height: '100%' }} fitStyle={{ width: '84%', height: '84%' }} />
               ) : (
-                <Building2 size={32} color={accentColor} strokeWidth={1.6} />
+                <DefaultLogo size={34} color={accentColor} />
               )}
               {/* Upload overlay badge */}
               <View style={{
