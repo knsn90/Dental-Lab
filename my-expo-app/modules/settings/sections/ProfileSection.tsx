@@ -20,6 +20,7 @@ import {
 } from '../../../core/ui/icons';
 import { useAuthStore } from '../../../core/store/authStore';
 import { supabase } from '../../../core/api/supabase';
+import { findClinicWebsite } from '../../clinics/lib/findClinicWebsite';
 import { ColorOrb } from '../../denty/components/ColorOrb';
 import { toast } from '../../../core/ui/Toast';
 import { isRTL } from '../../../core/i18n';
@@ -980,11 +981,12 @@ function ClinicKurumTab({
     setLogoSearching(true); setLogoSearched(false); setLogoResults([]);
     try {
       const { data } = await supabase.functions.invoke('clinic-logo-search', { body: { q, website } });
-      setLogoResults((data?.candidates ?? []) as any);
+      // Clearbit logo servisi kapandı (alan adı çözülmüyor) → boş kare olarak görünüyordu.
+      setLogoResults(((data?.candidates ?? []) as any[]).filter((c) => !/logo\.clearbit\.com/i.test(String(c?.url ?? ''))) as any);
     } catch { setLogoResults([]); }
     finally { setLogoSearching(false); setLogoSearched(true); }
   };
-  const openLogoFinder = () => {
+  const openLogoFinder = async () => {
     const q = clinic?.name ?? '';
     setLogoQuery(q);
     setLogoWebsite('');
@@ -992,7 +994,13 @@ function ClinicKurumTab({
     setLogoSearched(false);
     setShowManual(false);
     setLogoFinderOpen(true);
-    if (q) runSearch(q, '');   // Simanty otomatik arasın
+    if (!q) return;
+    // Simanty otomatik arasın — önce siteyi kendisi bulur (kurumsal e-posta → Google Places).
+    setLogoSearching(true);
+    const w = await findClinicWebsite(clinic?.id, q).catch(() => '');
+    setLogoSearching(false);
+    if (w) { setLogoWebsite(w); setShowManual(true); }
+    runSearch(q, w);
   };
   // Seçilen aday logoyu SERVER-SIDE indir+yükle (CORS yok) → clinics.logo_url
   const applyCandidate = async (url: string) => {

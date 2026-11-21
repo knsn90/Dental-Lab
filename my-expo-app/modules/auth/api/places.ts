@@ -233,6 +233,47 @@ export async function searchPlacesText(input: string, bias?: PlaceBias | null, r
 }
 
 /**
+ * Kurum adından web sitesi — tek `searchText` çağrısı, yalnız displayName+websiteUri.
+ * Sosyal medya sayfaları atlanır (logo kaynağı olarak işe yaramaz). Bulunamazsa ''.
+ * Kullanım: "Simanty ile Logo" (modules/clinics/lib/findClinicWebsite).
+ */
+export async function findPlaceWebsite(name: string, region?: string | null): Promise<string> {
+  const r = regionOf(region);
+  const q = name.trim();
+  if (!KEY || q.length < 3) return '';
+  try {
+    const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': KEY,
+        'X-Goog-FieldMask': 'places.displayName,places.websiteUri',
+      },
+      body: JSON.stringify({
+        textQuery: q,
+        languageCode: langOf(r),
+        regionCode: r,
+        maxResultCount: 3,
+        ...(r === 'tr' ? { locationRestriction: TR_BOUNDS } : {}),
+      }),
+    });
+    if (!res.ok) return '';
+    const j = await res.json();
+    const social = /(^|\.)(facebook|instagram|twitter|x|linkedin|youtube|tiktok|wa|whatsapp|google|goo|linktr)\.[a-z.]+$/i;
+    for (const p of (j.places ?? []) as any[]) {
+      const w = String(p?.websiteUri ?? '').trim();
+      if (!w) continue;
+      let host = '';
+      try { host = new URL(w).hostname.replace(/^www\./, ''); } catch { continue; }
+      if (!social.test(host)) return w;
+    }
+    return '';
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Geniş arama — kullanıcı ne yazarsa yazsın bir sonuç çıkarmaya çalışır.
  *
  * İki kademe, çünkü ikinci kademe daha pahalı bir SKU: ilki yeterliyse hiç

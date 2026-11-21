@@ -21,6 +21,7 @@ import { autoT } from '../../../core/i18n/autoTranslate';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { ColorOrb } from '../../denty/components/ColorOrb';
+import { findClinicWebsite } from '../lib/findClinicWebsite';
 
 interface Candidate { url: string; domain?: string; name?: string }
 
@@ -53,16 +54,23 @@ export function ClinicLogoPicker({
     setSearching(true); setSearched(false); setResults([]);
     try {
       const { data } = await supabase.functions.invoke('clinic-logo-search', { body: { q, website: w } });
-      setResults((data?.candidates ?? []) as Candidate[]);
+      // Clearbit logo servisi kapandı (alan adı çözülmüyor) → boş kare olarak görünüyordu.
+      setResults(((data?.candidates ?? []) as Candidate[]).filter((c) => !/logo\.clearbit\.com/i.test(c.url)));
     } catch { setResults([]); }
     finally { setSearching(false); setSearched(true); }
   };
 
-  const openFinder = () => {
+  const openFinder = async () => {
     setQuery(clinicName ?? '');
     setWebsite(''); setResults([]); setSearched(false); setShowManual(false);
     setOpen(true);
-    if (clinicName) runSearch(clinicName, '');
+    if (!clinicName) return;
+    // Önce siteyi kendisi bulur (kurumsal e-posta → Google Places); bulduğu alana yazılır.
+    setSearching(true);
+    const w = await findClinicWebsite(clinicId, clinicName).catch(() => '');
+    setSearching(false);
+    if (w) { setWebsite(w); setShowManual(true); }
+    runSearch(clinicName, w);
   };
 
   const applyCandidate = async (url: string) => {
