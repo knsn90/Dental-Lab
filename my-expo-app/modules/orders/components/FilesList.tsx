@@ -314,6 +314,38 @@ export function FilesList({
     const dlUrl = url + (url.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent(name);
     // Native: sistem indiricisi/tarayıcısı. Web (desktop + PWA): <a download> ile tetikle.
     if (Platform.OS !== 'web' || typeof document === 'undefined') { openFileUrl(dlUrl); return; }
+    // Masaüstü web: dosya sayfa İÇİNDE çekilip aynı-köken blob'tan kaydedilir.
+    // NEDEN (2026-11-21): supabase.co'ya giden çapraz-köken <a download> tıklaması bazı
+    // masaüstü tarayıcılarda sessizce yutuluyordu (kod çalışıyor, sunucu attachment dönüyor,
+    // ama indirme başlamıyor; düğme de geri bildirim vermediği için "etkisiz" görünüyordu).
+    // Blob URL aynı kökenli → `download` adı her tarayıcıda geçerli; satırda dönen gösterge,
+    // hata olursa toast. iOS/iPadOS'ta blob indirme (özellikle ana ekran uygulaması)
+    // güvenilmez → orada eski yol (imzalı URL + download parametresi) kalır.
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && typeof navigator !== 'undefined' && (navigator as any).maxTouchPoints > 1);
+    if (!isIOS) {
+      if (extractingId === f.id) return;   // aynı dosya zaten iniyor
+      setExtractingId(f.id);
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(String(res.status));
+        const blobUrl = URL.createObjectURL(await res.blob());
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { try { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); } catch {} }, 1000);
+        return;
+      } catch (e) {
+        // Çoğunlukla süresi dolmuş imzalı URL (1 saat) ya da ağ kesintisi — sessiz kalma.
+        console.warn('[files] indirme başarısız', e);
+        toast.error(autoT('Dosya indirilemedi. Sayfayı yenileyip tekrar deneyin.'));
+        return;
+      } finally {
+        setExtractingId(null);
+      }
+    }
     try {
       const a = document.createElement('a');
       a.href = dlUrl;

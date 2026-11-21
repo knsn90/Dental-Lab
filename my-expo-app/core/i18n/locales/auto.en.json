@@ -10854,5 +10854,6 @@
   "ör. metal döküm, opak, dentin + mine": "e.g. metal casting, opaque, dentin + enamel",
   "Teknisyene / kliniğe not": "Note to technician / clinic",
   "Atanabilecek aktif teknisyen yok": "No active technician to assign",
-  "Bu aşama için yetkili tanımlı değil; tüm aktif teknisyenler listeleniyor.": "No one is authorized for this stage; showing all active technicians."
+  "Bu aşama için yetkili tanımlı değil; tüm aktif teknisyenler listeleniyor.": "No one is authorized for this stage; showing all active technicians.",
+  "Dosya indirilemedi. Sayfayı yenileyip tekrar deneyin.": "Could not download the file. Refresh the page and try again."
 }
