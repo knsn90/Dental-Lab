@@ -31,6 +31,9 @@ export interface WorkLabelDocOptions {
   qrUrl: string;
   /** Önizlemede kağıdın arkasındaki zemin (koyu temada koyu). Baskıya girmez. */
   screenBg?: string;
+  /** Alttaki kutulara basılacak metinler (boşsa kutu elle yazmaya çizgili kalır). */
+  labWork?: string | null;
+  labNotes?: string | null;
 }
 
 type PrintItem = { name: string; quantity: number; tooth_numbers?: number[] | null; notes?: string | null };
@@ -128,6 +131,8 @@ export async function buildOrderPrintDoc(order: WorkOrder, opts: WorkLabelDocOpt
     teeth,
     note: order.notes,
     ops,
+    labWork: opts.labWork,
+    labNotes: opts.labNotes,
     qrSvg: await localQrSvg(opts.qrUrl),
     qrUrl: opts.qrUrl,
     t: autoT,

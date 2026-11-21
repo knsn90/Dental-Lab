@@ -16,7 +16,7 @@ import { autoT } from '../../../core/i18n/autoTranslate';
  *     Tur 4: Action handlers + permissions + edge cases
  */
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image, ActivityIndicator, Alert, Linking, Animated } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image, ActivityIndicator, Alert, TextInput, Linking, Animated } from 'react-native';
 import { useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 import { webTitle } from '../../../core/util/webTitle';
@@ -323,6 +323,10 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const [printErr, setPrintErr] = useState<string | null>(null);
   const [labelSize, setLabelSize] = useLabelSize();      // A4/A5/A6 — cihazda hatırlanır
   const printReq = useRef(0);                             // hızlı boyut değişiminde eski önizleme yenisini ezmesin
+  // İş kağıdının altındaki kutular: uygulamada yazılır, boşsa kutu elle yazmaya çizgili basılır.
+  const [labWorkText, setLabWorkText] = useState('');
+  const [labNotesText, setLabNotesText] = useState('');
+  const labBoxTimer = useRef<any>(null);
   const [printingLegId, setPrintingLegId] = useState<string | null>(null);   // gönderi fişi hazırlanıyor
   const U = useInkUI();
   const [addStageOpen, setAddStageOpen] = useState(false);
@@ -1951,13 +1955,21 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   // ── Print popup ─────────────────────────────────────────────────
   // İş emri etiketi önizlemesi — seçili boyutta. Kağıt hep açık; arkasındaki
   // zemin temaya uyar (yalnız ekranda, baskıya girmez).
-  const buildLabelPreview = async (size: LabelSize) => {
+  const buildLabelPreview = async (
+    size: LabelSize,
+    boxes: { labWork: string; labNotes: string } = { labWork: labWorkText, labNotes: labNotesText },
+    keepPreview = false,
+  ) => {
     if (typeof window === 'undefined' || !order) return;
     const req = ++printReq.current;
-    setPrintPreviewHtml(null);
+    // Kutulara yazarken önizleme boşalıp yanıp sönmesin: eskisi yenisi gelene dek kalır.
+    if (!keepPreview) setPrintPreviewHtml(null);
     setPrintErr(null);
     try {
-      const html = await buildOrderPrintDoc(order, { size, qrUrl, screenBg: isDark ? '#141312' : '#EEF0F3' });
+      const html = await buildOrderPrintDoc(order, {
+        size, qrUrl, screenBg: isDark ? '#141312' : '#EEF0F3',
+        labWork: boxes.labWork, labNotes: boxes.labNotes,
+      });
       if (req === printReq.current) setPrintPreviewHtml(html);
     } catch (e) {
       console.error('print preview build failed', e);
@@ -1972,8 +1984,16 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     setLabelSize(size);
     buildLabelPreview(size);
   };
+  // Kutu metni değişince önizleme kısa gecikmeyle yeniden kurulur.
+  const changeLabBox = (which: 'work' | 'notes', v: string) => {
+    const next = { labWork: which === 'work' ? v : labWorkText, labNotes: which === 'notes' ? v : labNotesText };
+    if (which === 'work') setLabWorkText(v); else setLabNotesText(v);
+    clearTimeout(labBoxTimer.current);
+    labBoxTimer.current = setTimeout(() => { void buildLabelPreview(labelSize, next, true); }, 350);
+  };
   const closePrint = () => {
     printReq.current++;
+    clearTimeout(labBoxTimer.current);
     setPrintOpen(false);
     setPrintPreviewHtml(null);
     setPrintErr(null);
@@ -4198,6 +4218,29 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
               </View>
             </View>
 
+            {allPrintouts && labelSize !== 'A6' ? (
+              <View style={{ flexDirection: width < 640 ? 'column' : 'row', gap: 10, paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+                {([
+                  ['work', 'Laboratuvarın yaptığı işler', labWorkText, 'ör. metal döküm, opak, dentin + mine'],
+                  ['notes', 'Notlar', labNotesText, 'Teknisyene / kliniğe not'],
+                ] as const).map(([key, label, value, ph]) => (
+                  <View key={key} style={{ flex: 1, minWidth: 0, gap: 6 }}>
+                    <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 1.1, color: U.ink[500], textTransform: 'uppercase' }}>{autoT(label)}</Text>
+                    <TextInput
+                      value={value}
+                      onChangeText={(v) => changeLabBox(key, v)}
+                      multiline
+                      placeholder={autoT(ph)}
+                      placeholderTextColor={U.ink[400]}
+                      style={{
+                        minHeight: 56, maxHeight: 110, borderRadius: 14, borderWidth: 1, borderColor: U.fieldBorder,
+                        backgroundColor: U.surface, color: U.ink[900], fontSize: 13, padding: 10, outlineStyle: 'none',
+                      } as any}
+                    />
+                  </View>
+                ))}
+              </View>
+            ) : null}
             {Platform.OS === 'web' && printPreviewHtml ? (
               React.createElement('iframe', {
                 id: 'print-iframe',

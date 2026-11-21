@@ -32,6 +32,13 @@ export interface WorkLabelInput {
   note?: string | null;
   /** Yalnız A4'te basılan işlem tablosu. */
   ops?: LabelOpRow[];
+  /**
+   * Alttaki iki kutu (A4/A5): "Laboratuvarın yaptığı işler" ve "Notlar". Uygulamada
+   * yazılan metin basılır; altında kalan alan elle yazmak için çizgilidir. Boşsa
+   * kutu tamamen çizgili basılır. A6'da yer olmadığı için basılmaz.
+   */
+  labWork?: string | null;
+  labNotes?: string | null;
   /** Hazır QR SVG'si (tercih edilen). Yoksa qrUrl'den dış servis görseli. */
   qrSvg?: string;
   qrUrl?: string;
@@ -160,6 +167,17 @@ function opsTable(p: WorkLabelInput, t: (x: string) => string): string {
     + `</tbody></table></div>`;
 }
 
+function labBoxes(p: WorkLabelInput, s: SizeSpec, t: (x: string) => string): string {
+  if (p.size === 'A6') return '';
+  const box = (label: string, text: string | null | undefined) => {
+    const v = (text ?? '').trim();
+    return `<div class="fbox"><span class="lbl">${esc(t(label))}</span>`
+      + (v ? `<div class="ftext" style="font-size:${u(s.noteFont)}">${esc(v)}</div>` : '')
+      + `<div class="ruled"></div></div>`;
+  };
+  return `<div class="fill">${box('Laboratuvarın yaptığı işler', p.labWork)}${box('Notlar', p.labNotes)}</div>`;
+}
+
 const CSS = `
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#fff}
@@ -205,7 +223,12 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .tbl{width:100%;border-collapse:collapse;font-size:calc(var(--u)*2.8)}
 .tbl th{text-align:start;font-size:var(--lbl);letter-spacing:.12em;text-transform:uppercase;color:#6B6B6B;padding:calc(var(--u)*1) calc(var(--u)*2) calc(var(--u)*1) 0;border-bottom:1px solid #D4D4D4;font-weight:700}
 .tbl td{padding:calc(var(--u)*1.2) calc(var(--u)*2) calc(var(--u)*1.2) 0;border-bottom:1px solid #EFEFEF;vertical-align:top}
-.tbl .mono{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-weight:700;white-space:nowrap;direction:ltr;text-align:start}
+.tbl td:first-child{min-width:calc(var(--u)*42)}
+.tbl .mono{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-weight:700;white-space:normal;overflow-wrap:anywhere;direction:ltr;text-align:start}
+.fill{flex:1 1 auto;min-height:calc(var(--u)*24);display:grid;grid-template-columns:1fr 1fr;gap:calc(var(--u)*3);margin-top:auto}
+.fbox{border:1.5px solid #0A0A0A;border-radius:calc(var(--u)*1.6);padding:calc(var(--u)*2.4) calc(var(--u)*3);display:flex;flex-direction:column;gap:calc(var(--u)*1.2);min-height:0;overflow:hidden}
+.ftext{line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere;color:#0A0A0A}
+.ruled{flex:1 1 auto;min-height:calc(var(--u)*7);background-image:repeating-linear-gradient(to bottom,transparent 0,transparent calc(var(--u)*7 - 1px),#C9C9C9 calc(var(--u)*7 - 1px),#C9C9C9 calc(var(--u)*7))}
 @media screen{
   html,body{background:var(--stage,#E9EDF2)}
   body{padding:24px 16px;min-height:100vh}
@@ -229,7 +252,8 @@ export function buildWorkLabelHtml(p: WorkLabelInput): string {
     + work(p, s, t)
     + cross(p, s)
     + note(p, s, t)
-    + (p.size === 'A4' ? opsTable(p, t) : '');
+    + (p.size === 'A4' ? opsTable(p, t) : '')
+    + labBoxes(p, s, t);
   const stage = p.screenBg ? `<style>:root{--stage:${esc(p.screenBg)}}</style>` : '';
   return `<!DOCTYPE html><html ${p.htmlAttrs ?? 'lang="tr" dir="ltr"'}><head><meta charset="utf-8">`
     + `<meta name="viewport" content="width=device-width,initial-scale=1">`

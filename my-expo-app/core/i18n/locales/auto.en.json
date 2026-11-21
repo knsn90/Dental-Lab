@@ -10846,5 +10846,8 @@
   "Soruluyor…": "Checking…",
   "Kargonun güncel durumunu Shipink'ten sorar ve kayda yazar": "Fetches the shipment's current status from Shipink and saves it",
   "durum güncellendi": "status updated",
-  "Shipink durumu": "Shipink status"
+  "Shipink durumu": "Shipink status",
+  "Laboratuvarın yaptığı işler": "Work done by the lab",
+  "ör. metal döküm, opak, dentin + mine": "e.g. metal casting, opaque, dentin + enamel",
+  "Teknisyene / kliniğe not": "Note to technician / clinic"
 }
