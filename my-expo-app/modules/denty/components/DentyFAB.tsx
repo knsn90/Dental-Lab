@@ -97,8 +97,10 @@ export function DentyFAB() {
   const userType = (profile as any)?.user_type as string | undefined;
   const reportAudience: 'lab' | 'clinic' = (userType === 'lab' || userType === 'admin') ? 'lab' : 'clinic';
   const onOrderDetail = (segments ?? []).includes('order') && (segments ?? []).length > 1;
+  // Plan önizleme yoğun bir çalışma ekranı: özet balonu üretim şeritlerinin üstüne biniyordu.
+  const onPlanReview = (segments ?? []).includes('plan');
   const [hintDismissed, setHintDismissed] = useState(false);
-  const showHint = onOrderDetail && !hintDismissed && !isOpen && isWide;
+  const showHint = onOrderDetail && !onPlanReview && !hintDismissed && !isOpen && isWide;
   useEffect(() => { setHintDismissed(false); }, [String(segments ?? [])]);
   const hoverAnim = useRef(new Animated.Value(0)).current;
 

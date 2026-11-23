@@ -11179,5 +11179,10 @@
   "Anatomik": "آناتومیک",
   "Tekli": "تکی",
   "Bone Level": "Bone Level",
-  "Tissue Level": "Tissue Level"
+  "Tissue Level": "Tissue Level",
+  "şerit": "مسیر",
+  "model/platform yok": "بدون مدل/پلتفرم",
+  "Şablonla Başlat": "شروع با الگو",
+  "Diş, işlem, teslim tarihi gibi sipariş bilgilerini düzelt": "اصلاح اطلاعات سفارش مانند دندان‌ها، خدمات و تاریخ تحویل",
+  "Her işlemin kendi şeridi var; zorunlu ayrımda taşınmaz": "هر خدمت مسیر خودش را دارد؛ در تفکیک اجباری جابه‌جا نمی‌شود"
 }

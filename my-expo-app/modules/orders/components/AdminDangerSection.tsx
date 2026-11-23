@@ -25,7 +25,9 @@ const DARK_FG: Record<string, string> = {
   '#1F5689': '#93C5FD', '#92400E': '#E8B45E', '#1F6B47': '#6EE7B7', '#9C2E2E': '#FCA5A5',
 };
 // Admin düzenleme artık yeni-sipariş SİHİRBAZINI (aynı 4 adım) düzenleme modunda açar.
-const NewOrderEditWizard: any = React.lazy(() => import('../screens/NewOrderScreen').then((m) => ({ default: (m as any).NewOrderScreen })));
+// lazyRoute (React.lazy değil): bayat modül grafiğinde export undefined dönüp sayfayı çökertiyordu.
+import { lazyRoute } from '../../../core/_lazyRoute';
+const NewOrderEditWizard: any = lazyRoute(() => import('../screens/NewOrderScreen'), 'NewOrderScreen');
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 interface Props {

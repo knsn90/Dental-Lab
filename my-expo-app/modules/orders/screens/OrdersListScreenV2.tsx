@@ -64,7 +64,9 @@ import { Search, X, Stethoscope, SlidersHorizontal, ArrowUpDown, ChevronLeft, Ch
 import { RowActionsMenu, type RowAction } from '../../../core/ui/RowActionsMenu';
 import { ScanWorkOrderModal } from '../components/ScanWorkOrderModal';
 // Admin düzenleme artık yeni-sipariş SİHİRBAZINI (aynı 4 adım) düzenleme modunda açar.
-const NewOrderEditWizard: any = React.lazy(() => import('./NewOrderScreen').then((m) => ({ default: (m as any).NewOrderScreen })));
+// lazyRoute (React.lazy değil): bayat modül grafiğinde export undefined dönüp sayfayı çökertiyordu.
+import { lazyRoute } from '../../../core/_lazyRoute';
+const NewOrderEditWizard: any = lazyRoute(() => import('./NewOrderScreen'), 'NewOrderScreen');
 import { archiveOrder, restoreOrder, hardDeleteOrder } from '../api';
 import { titleCaseTR } from '../../../core/utils/textCase';
 

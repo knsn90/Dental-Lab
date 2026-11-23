@@ -11179,5 +11179,10 @@
   "Anatomik": "Anatomical",
   "Tekli": "Single",
   "Bone Level": "Bone Level",
-  "Tissue Level": "Tissue Level"
+  "Tissue Level": "Tissue Level",
+  "şerit": "lanes",
+  "model/platform yok": "no model/platform",
+  "Şablonla Başlat": "Start with template",
+  "Diş, işlem, teslim tarihi gibi sipariş bilgilerini düzelt": "Correct order details such as teeth, procedures and delivery date",
+  "Her işlemin kendi şeridi var; zorunlu ayrımda taşınmaz": "Each procedure has its own lane; it cannot be moved when lanes are required"
 }

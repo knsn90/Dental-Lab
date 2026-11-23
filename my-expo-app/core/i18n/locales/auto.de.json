@@ -11179,5 +11179,10 @@
   "Anatomik": "Anatomisch",
   "Tekli": "Einzeln",
   "Bone Level": "Bone Level",
-  "Tissue Level": "Tissue Level"
+  "Tissue Level": "Tissue Level",
+  "şerit": "Spuren",
+  "model/platform yok": "kein Modell/Plattform",
+  "Şablonla Başlat": "Mit Vorlage starten",
+  "Diş, işlem, teslim tarihi gibi sipariş bilgilerini düzelt": "Auftragsdaten wie Zähne, Leistungen und Liefertermin korrigieren",
+  "Her işlemin kendi şeridi var; zorunlu ayrımda taşınmaz": "Jede Leistung hat ihre eigene Spur; bei Pflichttrennung nicht verschiebbar"
 }

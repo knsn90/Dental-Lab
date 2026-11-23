@@ -17,7 +17,7 @@ import { useRouter, useSegments } from 'expo-router';
 import {
   GripVertical, X, Plus, AlertTriangle, Sparkles, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Download,
   Play, FileText, Stethoscope, ChevronDown as Caret, Check, ArrowLeft, Layers, Box, MessageSquare, Save, Clock, Eye, Printer,
-  Phone, Mail, User,
+  Phone, Mail, User, Pencil,
 } from '../../../core/ui/icons';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { DS } from '../../../core/theme/dsTokens';
@@ -33,6 +33,7 @@ import { getStationKind, type StationKind } from '../../orders/stations/registry
 
 // Lazy viewer-3d (three.js ayrı chunk) — tek paylaşılan retry'lı lazy instance.
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
+import { lazyRoute } from '../../../core/_lazyRoute';
 import type { FileFormat } from '../../viewer-3d/types';
 import { unzipToViewer, isArchiveExt } from '../../orders/fileArchive';
 import { LivingToothChart } from '../../orders/components/LivingToothChart';
@@ -79,6 +80,13 @@ const FILE_CAT_META: { key: FileCat; label: string }[] = [
   { key: 'photo', label: 'Fotoğraflar' },
   { key: 'doc',   label: 'Belgeler' },
 ];
+
+// Sipariş düzenleme = yeni-sipariş sihirbazı düzenleme modunda (sipariş detayı ve
+// liste ile aynı yol). Lazy: sihirbaz büyük, plan ekranı açılışını yavaşlatmasın.
+// React.lazy DEĞİL: bayat modül grafiğinde adlandırılmış export undefined dönüp
+// sayfayı çökertiyordu ("Lazy element type must resolve..."). lazyRoute default'a düşer
+// ve kendi yükleniyor iskeletini çizer.
+const NewOrderEditWizard: any = lazyRoute(() => import('../../orders/screens/NewOrderScreen'), 'NewOrderScreen');
 
 const INK = DS.ink;
 const DISPLAY = Platform.select({ web: 'Inter Tight, Inter, sans-serif', default: 'InterTight_300Light' }) as string;
@@ -346,6 +354,10 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   const A_DEEP = isDark ? mixWhite(A, 0.55) : theme.primaryDeep;
   const PAGE = isDark ? U.pageBg : (PANEL_BGPAGE[theme.key] ?? theme.bg);
   const { profile } = useAuthStore();
+  // Planlama aşamasında sipariş düzenleme (diş/işlem/teslim düzeltmesi) — planı
+  // onaylayabilen kişiyle aynı kapı; sunucu admin_update_order lab kullanıcısını ayrıca doğrular.
+  const canEditOrder = (profile as any)?.role === 'manager' || (profile as any)?.user_type === 'admin';
+  const [editOpen, setEditOpen] = useState(false);
   const labId = (profile as any)?.lab_id ?? null;
   const { width: winW } = useWindowDimensions();
   const isNarrow = winW < 768; // Faz 6: mobil/dar ekran düzeni
@@ -1061,11 +1073,11 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                     </View>
                   )}
                 </View>
-                <Text style={{ ...WHITE_HERO_DISPLAY, fontSize: isNarrow ? 32 : 44, letterSpacing: isNarrow ? -1 : -1.5, lineHeight: isNarrow ? 36 : 48, color: HI.ink, marginTop: 6 }} numberOfLines={isNarrow ? 2 : 1}>
+                <Text style={{ ...WHITE_HERO_DISPLAY, fontSize: isNarrow ? 32 : 44, letterSpacing: isNarrow ? -1 : -1.5, lineHeight: isNarrow ? 36 : 48, color: HI.ink, marginTop: 6 }} numberOfLines={2}>
                   {o?.patient_name ?? 'Hasta'}
                 </Text>
                 <Text style={{ fontSize: 14, lineHeight: 21, color: HI.inkSoft, marginTop: 4 }} numberOfLines={1}>
-                  #{o?.order_number ?? '—'}{distinctProcs.length > 0 ? ` · ${distinctProcs.join(' · ')}` : ''}
+                  {/* İşlemler aşağıdaki çiplerde ve şeritlerde zaten var — burada tekrar yok */}#{o?.order_number ?? '—'}
                 </Text>
                 {/* Revizyon / devam siparişi: ASIL sipariş — tıklayınca o sipariş popup'ta açılır */}
                 {data?.parentOrder ? (
@@ -1123,6 +1135,24 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                     </Pressable>
                   </Tip>
                 )}
+                {canEditOrder && (
+                  <Tip label="Diş, işlem, teslim tarihi gibi sipariş bilgilerini düzelt">
+                    <Pressable
+                      onPress={() => setEditOpen(true)}
+                      accessibilityLabel={autoT('Siparişi düzenle')}
+                      style={rowStyle(({ pressed, hovered }: any) => ({
+                        flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
+                        backgroundColor: hovered ? (isDark ? U.plainBtn.hoverBg : 'rgba(0,0,0,0.05)') : 'transparent',
+                        borderWidth: 1, borderColor: HAIR,
+                        ...press(pressed),
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                      }))}
+                    >
+                      <Pencil size={14} color={INK[700]} strokeWidth={1.9} />
+                      <Text style={{ ...TYPE.meta, fontWeight: '600', color: INK[700] }}>Düzenle</Text>
+                    </Pressable>
+                  </Tip>
+                )}
                 {/* Sipariş yazışması — sorun olursa hekim/klinikle mesajlaş */}
                 <Tip label="Hekim ve klinikle bu sipariş üzerinden yazış">
                   <Pressable
@@ -1149,7 +1179,8 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 ...(o?.shade ? [{ label: 'Renk', value: prettyValue(o.shade) }] : []),
                 ...(o?.model_type ? [{ label: 'Model', value: prettyValue(o.model_type) }] : []),
                 ...(o?.machine_type ? [{ label: 'Makine', value: prettyValue(o.machine_type) }] : []),
-                ...(o?.patient_gender ? [{ label: 'Cinsiyet', value: prettyValue(o.patient_gender) }] : []),
+                // Cinsiyet planlama kararını etkilemiyor → künyeden çıktı; yerine tahmini süre.
+                ...(planTiming.anyDuration ? [{ label: autoT('Tahmini süre'), value: fmtDuration(planTiming.totalMin) }] : []),
                 ...(o?.created_at ? [{ label: 'Oluşturma', value: new Date(o.created_at).toLocaleDateString(localeTag()) }] : []),
                 // Teslim en sonda ve VURGULU: künyedeki tek karar-kritik alan,
                 // yedi eşit sütundan biri olarak kaybolmamalı.
@@ -1185,7 +1216,64 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               );
             })()}
 
-            {/* Kartı diş şeması yüksekliğine tamamlayan esnek ara */}
+            {/* İmplant bilgisi künyenin içinde: eskiden diş şemasının altında ayrı
+                kart olarak duruyordu, sağ sütunu uzatıp bu kartın ortasında ~180px
+                ölü alan bırakıyordu. */}
+            {implantInfo.hasAny && (
+              <View style={{ paddingHorizontal: 26, paddingTop: 10 }}>
+            {/* ── İMPLANT ── Hekimin sipariş sırasında girdiği marka/tür/abutment/
+                vida bilgisi. Planlamada görünmezse teknisyen kütüphane/parça
+                seçemiyor ve iş kliniğe geri soruluyor. */}
+            {implantInfo.hasAny && (
+              <View style={{ borderRadius: 22, backgroundColor: SURF, borderWidth: 1, borderColor: HAIR, padding: 16, gap: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: IMPLANT_COLOR }} />
+                  <Text style={{ ...TYPE.label, color: INK[400] }}>{autoT('İmplant')}</Text>
+                  <View style={{ flex: 1 }} />
+                  {implantInfo.teeth.length > 0 && (
+                    <Text style={{ ...TYPE.meta, color: INK[400] }}>
+                      {implantInfo.teeth.length} {autoT('diş')}
+                    </Text>
+                  )}
+                </View>
+
+                {/* Vaka geneli marka — diş bazlı marka girilmediğinde tek kaynak budur. */}
+                {!!implantInfo.brand && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={{ ...TYPE.meta, color: INK[400] }}>{autoT('Marka')}</Text>
+                    <Text style={{ ...TYPE.body, fontWeight: '600', color: INK[900], flex: 1 }} numberOfLines={2}>
+                      {implantInfo.brand}
+                    </Text>
+                  </View>
+                )}
+
+                {implantInfo.teeth.length > 0 && (
+                  <View style={{ gap: 6, paddingTop: implantInfo.brand ? 10 : 0, borderTopWidth: implantInfo.brand ? 1 : 0, borderTopColor: HAIR }}>
+                    {implantInfo.teeth.map(t => {
+                      const det = implantLineFor(implantInfo, t);
+                      return (
+                        <View key={t} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                          <View style={{ minWidth: 30, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: tint(IMPLANT_COLOR, 0.14), alignItems: 'center' }}>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: IMPLANT_DEEP, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>{t}</Text>
+                          </View>
+                          <Text style={{ ...TYPE.meta, color: det ? INK[800] : INK[400], flex: 1, lineHeight: 17, fontStyle: det ? 'normal' : 'italic' }}>
+                            {det || autoT('detay girilmedi')}
+                          </Text>
+                          {/* Yalnız marka varsa teknisyen kütüphane/parça seçemez → görünür uyarı */}
+                          {!!det && !(['model', 'type', 'platform', 'abutment', 'screw'] as const).some(k => String((implantInfo.details[t] as any)?.[k] ?? '').trim()) && (
+                            <Text style={{ fontSize: 11, color: FG.amber, flexShrink: 0 }}>{autoT('model/platform yok')}</Text>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
+              </View>
+            )}
+
+            {/* Kalan fark (varsa) künye ile lejant arasına */}
             <View style={{ flex: 1, minHeight: 8 }} />
 
             {/* İşlem lejantı (tıkla → şemada vurgula) + seçili diş.
@@ -1236,7 +1324,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
           </View>
 
           {/* ── SAĞ: diş şeması + implant ── */}
-          {(teeth.length > 0 || implantInfo.hasAny) && (
+          {teeth.length > 0 && (
           <View style={{ width: isNarrow ? '100%' : 360, gap: 12 }}>
           {teeth.length > 0 && (
             // BEYAZ HERO kabuğu — solundaki künye kartıyla aynı anatomi: panel
@@ -1290,51 +1378,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             </View>
           )}
 
-          {/* ── İMPLANT ── Hekimin sipariş sırasında girdiği marka/tür/abutment/
-              vida bilgisi. Planlamada görünmezse teknisyen kütüphane/parça
-              seçemiyor ve iş kliniğe geri soruluyor. */}
-          {implantInfo.hasAny && (
-            <View style={{ borderRadius: 22, backgroundColor: SURF, borderWidth: 1, borderColor: HAIR, padding: 16, gap: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: IMPLANT_COLOR }} />
-                <Text style={{ ...TYPE.label, color: INK[400] }}>{autoT('İmplant')}</Text>
-                <View style={{ flex: 1 }} />
-                {implantInfo.teeth.length > 0 && (
-                  <Text style={{ ...TYPE.meta, color: INK[400] }}>
-                    {implantInfo.teeth.length} {autoT('diş')}
-                  </Text>
-                )}
-              </View>
 
-              {/* Vaka geneli marka — diş bazlı marka girilmediğinde tek kaynak budur. */}
-              {!!implantInfo.brand && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ ...TYPE.meta, color: INK[400] }}>{autoT('Marka')}</Text>
-                  <Text style={{ ...TYPE.body, fontWeight: '600', color: INK[900], flex: 1 }} numberOfLines={2}>
-                    {implantInfo.brand}
-                  </Text>
-                </View>
-              )}
-
-              {implantInfo.teeth.length > 0 && (
-                <View style={{ gap: 6, paddingTop: implantInfo.brand ? 10 : 0, borderTopWidth: implantInfo.brand ? 1 : 0, borderTopColor: HAIR }}>
-                  {implantInfo.teeth.map(t => {
-                    const det = implantLineFor(implantInfo, t);
-                    return (
-                      <View key={t} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                        <View style={{ minWidth: 30, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: tint(IMPLANT_COLOR, 0.14), alignItems: 'center' }}>
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: IMPLANT_DEEP, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>{t}</Text>
-                        </View>
-                        <Text style={{ ...TYPE.meta, color: det ? INK[800] : INK[400], flex: 1, lineHeight: 17, fontStyle: det ? 'normal' : 'italic' }}>
-                          {det || autoT('detay girilmedi')}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
-          )}
 
           </View>
           )}
@@ -1740,19 +1784,21 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             {laneCount > 1 && (data?.items?.length ?? 0) > 0 && (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
                 {(data?.items ?? []).map(it => (
-                  <Tip key={it.id} label="Bu işlemi bir sonraki şeride taşı">
-                  <Pressable onPress={() => cycleItemLane(it.id)}
+                  <Tip key={it.id} label={lanesRequired ? 'Her işlemin kendi şeridi var; zorunlu ayrımda taşınmaz' : 'Bu işlemi bir sonraki şeride taşı'}>
+                  {/* Zorunlu ayrımda (farklı işlemler) çip KİLİTLİ: döngüyle iki işlem aynı
+                      şeride düşüp bir şerit işsiz kalıyordu (ekranda ikisi de "Ş2" görünüyordu). */}
+                  <Pressable onPress={lanesRequired ? undefined : () => cycleItemLane(it.id)} disabled={lanesRequired}
                     style={rowStyle(({ pressed, hovered }: any) => ({
                       flexDirection: 'row', alignItems: 'center', gap: 8, paddingStart: 11, paddingEnd: 6, paddingVertical: 6, borderRadius: 999,
-                      backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: hovered ? tint(A, 0.4) : HAIR,
+                      backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: hovered && !lanesRequired ? tint(A, 0.4) : HAIR,
                       ...press(pressed),
-                      ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), border-color 140ms ease' } as any : {}),
+                      ...(Platform.OS === 'web' ? { cursor: lanesRequired ? 'default' : 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), border-color 140ms ease' } as any : {}),
                     }))}>
                     <Text style={{ ...TYPE.meta, fontWeight: '600', color: INK[700] }} numberOfLines={1}>
                       {it.name}{it.tooth_numbers?.length ? ` (${it.tooth_numbers.join(',')})` : ''}
                     </Text>
                     <View style={{ minWidth: 22, height: 20, paddingHorizontal: 6, borderRadius: 999, backgroundColor: tint(A, 0.14), alignItems: 'center', justifyContent: 'center' }}>
-                      <Text style={{ fontSize: 10.5, fontWeight: '700', color: A_DEEP }}>Ş{itemLaneOf(it.id)}</Text>
+                      <Text style={{ fontSize: 10.5, fontWeight: '700', color: A_DEEP }}>{`${autoT('Şerit')} ${itemLaneOf(it.id)}`}</Text>
                     </View>
                   </Pressable>
                   </Tip>
@@ -1985,21 +2031,23 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
           <View style={{
             width: '100%', flexDirection: isNarrow ? 'column' : 'row', alignItems: isNarrow ? 'stretch' : 'center', gap: isNarrow ? 12 : 16,
             borderRadius: 22, paddingVertical: 13, paddingHorizontal: 18,
-            backgroundColor: (Platform.OS !== 'web' || solidGlass) ? SURF : 'rgba(255,255,255,0.08)',
+            // %8 cam, altından lacivert Hekim kartı geçince istatistik yazılarını okunmaz yapıyordu →
+            // buzlu (yüksek opaklık) cam: hâlâ hafifçe sızar ama metin her zeminde okunur.
+            backgroundColor: (Platform.OS !== 'web' || solidGlass) ? SURF : (isDark ? 'rgba(27,25,22,0.82)' : 'rgba(255,255,255,0.82)'),
             ...((Platform.OS !== 'web' || solidGlass) ? {
               borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)',
             } : {}),
             ...(Platform.OS === 'web' ? {
               ...(solidGlass ? {} : {
-                backdropFilter: 'blur(10px) saturate(125%)',
-                WebkitBackdropFilter: 'blur(10px) saturate(125%)',
+                backdropFilter: 'blur(18px) saturate(140%)',
+                WebkitBackdropFilter: 'blur(18px) saturate(140%)',
               }),
               boxShadow: '0 12px 32px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.6)',
             } as any : {}),
           }}>
             {/* Özet — hairline ayraçlı (mobilde sarar) */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flexWrap: 'wrap', flexShrink: 1 }}>
-            <FooterStat icon={<Layers size={13} color={A} strokeWidth={2} />} label={laneCount > 1 ? 'Şerit·Aşama' : 'Aşama'} value={laneCount > 1 ? `${laneCount}·${planRows.length}` : String(planRows.length)} />
+            <FooterStat icon={<Layers size={13} color={A} strokeWidth={2} />} label={laneCount > 1 ? 'Plan' : 'Aşama'} value={laneCount > 1 ? `${laneCount} ${autoT('şerit')} · ${planRows.length} ${autoT('aşama')}` : String(planRows.length)} />
             <View style={{ width: 1, height: 30, backgroundColor: SEP }} />
             <FooterStat icon={<Play size={12} color={A} strokeWidth={2} />} label="İlk istasyon" value={firstStation} />
             <View style={{ width: 1, height: 30, backgroundColor: SEP }} />
@@ -2084,7 +2132,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                   }))}
                 >
                   <Sparkles size={14} color={A_DEEP} strokeWidth={2} />
-                  <Text style={{ fontSize: 13, fontWeight: '600', letterSpacing: -0.1, color: A_DEEP }}>Tek Tıkla Uygula</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '600', letterSpacing: -0.1, color: A_DEEP }}>Şablonla Başlat</Text>
                 </Pressable>
               </Tip>
             )}
@@ -2289,6 +2337,23 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
           </View>
         </View>
       </Modal>
+
+      {/* Sipariş düzenleme — yeni-sipariş sihirbazı (aynı 4 adım), dolu açılır.
+          Kayıttan sonra plan verisi yeniden okunur (diş/işlem değiştiyse şeritler de). */}
+      {editOpen && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setEditOpen(false)}>
+          <View style={[U.modalOverlay as any, { padding: winW >= 768 ? 24 : 0 }]}>
+            <View style={{ width: '100%', maxWidth: 1120, flex: 1, maxHeight: winW >= 768 ? '94%' : '100%', borderRadius: winW >= 768 ? 20 : 0, overflow: 'hidden', backgroundColor: isDark ? '#0E0E0E' : '#F1F5F9', ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 60px rgba(15,23,42,0.28)' } as any) : {}) }}>
+              <NewOrderEditWizard
+                panel={panelGroup.replace(/[()]/g, '') || 'lab'}
+                editOrderId={orderId}
+                onClose={() => setEditOpen(false)}
+                onSaved={() => { setEditOpen(false); load(); }}
+              />
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
