@@ -73,6 +73,8 @@ import { statusBuckets } from '../lib/distributions';
 import { StatusDistCard, WorkTypeCard, STATUS_CFG as DIST_STATUS_CFG, STATUS_KEYS as DIST_STATUS_KEYS, STATUS_BUCKET as DIST_STATUS_BUCKET } from '../components/DistributionCards';
 import { useManagerDistributions } from '../hooks/useManagerDistributions';
 import { TopClinicsCard } from '../../clinicSummary/components/TopClinicsCard';
+import { ClinicHoverCard } from '../../clinicSummary/components/ClinicHoverCard';
+import { useClinicSummaryModal } from '../../clinicSummary/components/ClinicSummaryModal';
 import { TechWorkloadCard } from '../components/TechWorkloadCard';
 
 // Display font — Patterns: Inter Tight Light (300), tight tracking
@@ -746,6 +748,9 @@ export function LabDashboardScreen() {
   const notificationsPulse = useUiOverlayStore(s => s.notificationsPulse);
   useEffect(() => { if (notificationsPulse > 0) setNotificationsOpen(true); }, [notificationsPulse]);
   const [hovered,         setHovered]        = useState<string | null>(null);
+  // Klinik kartındaki "Klinik özetini aç" → ekran düzeyinde tek popup.
+  const clinicModal = useClinicSummaryModal();
+  const openClinicSummary = clinicModal.open;
   const [stationStats,    setStationStats]   = useState<StationStat[]>(cache?.stationStats ?? []);
   const [topTechs,        setTopTechs]       = useState<TechStat[]>(cache?.topTechs ?? []);
   const [pendingCount,    setPendingCount]   = useState(cache?.pendingCount ?? 0);
@@ -864,6 +869,7 @@ export function LabDashboardScreen() {
       const doctorNameMap = new Map<string, string>();
       const doctorClinicMap = new Map<string, string>();
       const clinicLogoMap   = new Map<string, string>();
+      const clinicNameMap   = new Map<string, string>();
       if (docIds.length > 0) {
         const [{ data: profs }, { data: docs }] = await Promise.all([
           supabase.from('profiles').select('id, full_name, clinic_id').in('id', docIds),
@@ -877,8 +883,11 @@ export function LabDashboardScreen() {
         (docs  ?? []).forEach((d: any) => { if (d.clinic_id && !doctorClinicMap.has(d.id)) doctorClinicMap.set(d.id, d.clinic_id); });
         const clinicIds = Array.from(new Set(Array.from(doctorClinicMap.values())));
         if (clinicIds.length) {
-          const { data: cls } = await supabase.from('clinics').select('id, logo_url').in('id', clinicIds);
-          (cls ?? []).forEach((c: any) => { if (c.logo_url) clinicLogoMap.set(c.id, c.logo_url); });
+          const { data: cls } = await supabase.from('clinics').select('id, name, logo_url').in('id', clinicIds);
+          (cls ?? []).forEach((c: any) => {
+            if (c.logo_url) clinicLogoMap.set(c.id, c.logo_url);
+            if (c.name) clinicNameMap.set(c.id, c.name);
+          });
         }
       }
       const recent5 = data.slice(0, 5).map((o: any) => ({
@@ -889,6 +898,9 @@ export function LabDashboardScreen() {
         clinic_logo_url: o.doctor_id
           ? (clinicLogoMap.get(doctorClinicMap.get(o.doctor_id) ?? '') ?? null)
           : null,
+        // Logo üzerine gelince açılan klinik kartı (ClinicHoverCard) için.
+        clinic_id: o.doctor_id ? (doctorClinicMap.get(o.doctor_id) ?? null) : null,
+        clinic_name: o.doctor_id ? (clinicNameMap.get(doctorClinicMap.get(o.doctor_id) ?? '') ?? null) : null,
       }));
       setRecentOrders(recent5);
 
@@ -1714,6 +1726,7 @@ export function LabDashboardScreen() {
           </Pressable>
         </View>
 
+        {clinicModal.element}
         {/* Table header */}
         <View
           className="flex-row items-center"
@@ -1777,7 +1790,15 @@ export function LabDashboardScreen() {
                     )}
                   </View>
                   <View className="flex-row items-center" style={{ flex: 2, gap: 8 }}>
-                    {/* Klinik logosu varsa o, yoksa hekim baş harfleri */}
+                    {/* Klinik logosu varsa o, yoksa hekim baş harfleri.
+                        Üzerine gelince büyür + klinik kartı açılır (web). */}
+                    <ClinicHoverCard
+                      clinicId={(order as any).clinic_id}
+                      clinicName={(order as any).clinic_name}
+                      logoUrl={(order as any).clinic_logo_url}
+                      doctorName={drName !== '--' ? drName : null}
+                      onOpenSummary={clinicModal.enabled ? openClinicSummary : undefined}
+                    >
                     <View
                       className="items-center justify-center rounded-full"
                       style={{ width: 28, height: 28, overflow: 'hidden',
@@ -1790,6 +1811,7 @@ export function LabDashboardScreen() {
                         <DefaultLogo size={15} color={P} />
                       )}
                     </View>
+                    </ClinicHoverCard>
                     {/* Admin gibi: HASTA birincil, hekim ikincil satır */}
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }} numberOfLines={1}>{(order as any).patient_name || drName}</Text>

@@ -1426,9 +1426,13 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             // BEYAZ HERO kabuğu — solundaki künye kartıyla aynı anatomi: panel
             // tonu dış kabuk (28/14) + %55 beyaz cam iç kart (22). İki kart yan
             // yana tek bir aile olarak okunur.
-            <View style={{ borderRadius: 28, padding: 14, ...(isDark ? heroOuter : { backgroundColor: theme.bg }) }}>
+            // Masaüstünde satır yüksekliğine uzar (flex:1) — eskiden içeriği kadar
+            // kalıyor, soldaki künye kartından kısa görünüyordu. Başlık, künyedeki
+            // "Plan önizleme" satırıyla aynı hizada başlasın diye üst dolgu 26.
+            <View style={{ borderRadius: 28, padding: 14, ...(isNarrow ? null : { flex: 1 }), ...(isDark ? heroOuter : { backgroundColor: theme.bg }) }}>
             <View style={{
-              borderRadius: 22, padding: 16, gap: 8,
+              borderRadius: 22, padding: 16, paddingTop: isNarrow ? 16 : 26, gap: 8,
+              ...(isNarrow ? null : { flex: 1 }),
               backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.55)',
               borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.7)',
             }}>
@@ -1448,7 +1452,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                   </Tip>
                 )}
               </View>
-              <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ alignItems: 'center', justifyContent: 'center', ...(isNarrow ? null : { flex: 1 }) }}>
                 <LivingToothChart
                   order={chartOrder}
                   // Gerçek iç genişlik: kabuk dolgusu 2×14 + iç kenarlık 2×1 + iç dolgu 2×16 = 62.

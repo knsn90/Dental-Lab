@@ -1,5 +1,7 @@
 import { localeTag, isRTL } from '../../../core/i18n';
 import { LogoImage, DefaultLogo } from '../../../core/ui/LogoImage';
+import { ClinicHoverCard } from '../../clinicSummary/components/ClinicHoverCard';
+import { useClinicSummaryModal } from '../../clinicSummary/components/ClinicSummaryModal';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { holdBadgeText, isProvaHold } from '../holdCategories';
 import { useProvaFlags } from '../prova/useProvaFlags';
@@ -1750,6 +1752,12 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
   // Avatar: lab tarafı panellerde klinik logosu, klinik/hekimde hasta baş harfleri
   const tablePanel = detectPanel(useSegments() as string[]);
   const panelTheme = usePanelTheme();
+  // Logo kartındaki "Klinik özetini aç" → tablo düzeyinde tek popup. Satırlar
+  // memo'lu: sabit kimlikli geri çağırım (ref üzerinden en güncel open).
+  const clinicModal = useClinicSummaryModal();
+  const clinicOpenRef = useRef(clinicModal.open);
+  clinicOpenRef.current = clinicModal.open;
+  const openClinicSummary = useCallback((id: string) => clinicOpenRef.current(id), []);
   // Hekim kendi siparişlerini görür → Hekim sütunu boş tekrar; yalnız hekim panelinde gizli.
   const showDoctorCol = tablePanel !== 'doctor';
   // Tablo başlığı VE alt şeridi düz PANEL ACCENT'i — her iki temada. Gri-üstü-gri
@@ -1826,8 +1834,10 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
           onArchive={onArchive ? () => onArchive(order) : undefined}
           onDelete={onDelete ? () => onDelete(order) : undefined}
           onAwaitDoctor={onAwaitDoctor ? () => onAwaitDoctor(order) : undefined}
+          onOpenClinic={clinicModal.enabled ? openClinicSummary : undefined}
         />
       ))}
+      {clinicModal.element}
 
       {/* Footer — title varsa "YENİ" + ortalanmış başlık, yoksa sayaç */}
       <View
@@ -1896,7 +1906,9 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
   );
 }
 
-const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, isLast, useClinicLogoAvatar, showDoctorCol = true, showCreatedCol = true, showProgress = false, selected = false, onPress, onAssign, onEdit, onArchive, onDelete, onAwaitDoctor }: {
+const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, isLast, useClinicLogoAvatar, showDoctorCol = true, showCreatedCol = true, showProgress = false, selected = false, onPress, onAssign, onEdit, onArchive, onDelete, onAwaitDoctor, onOpenClinic }: {
+  /** Klinik logosu kartındaki "Klinik özetini aç" (lab/admin). */
+  onOpenClinic?: (clinicId: string) => void;
   order: WorkOrder;
   /** Hekim panelinde false — Hekim sütunu çizilmez. */
   showDoctorCol?: boolean;
@@ -2017,6 +2029,13 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
           ACİL = öncelik (durum değil); ilişki (devam/revizyon) = alt-satır. */}
       <View style={{ flex: 26, minWidth: 0, paddingEnd: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         {clinicLogo ? (
+          <ClinicHoverCard
+            clinicId={(order as any)?.doctor?.clinic?.id ?? null}
+            clinicName={(order as any)?.doctor?.clinic?.name ?? null}
+            logoUrl={clinicLogo}
+            doctorName={order.doctor?.full_name ?? null}
+            onOpenSummary={onOpenClinic}
+          >
           <View
             className="items-center justify-center overflow-hidden"
             // Zemin HER İKİ temada da BEYAZ: klinik logoları saydam zeminli ve
@@ -2026,13 +2045,24 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
           >
             <LogoImage uri={clinicLogo} style={{ width: '100%', height: '100%' }} fitStyle={{ width: '74%', height: '74%' }} />
           </View>
+          </ClinicHoverCard>
         ) : (
+          // Logosuz klinik: varsayılan diş ikonu — kart burada da açılır
+          // (yalnız lab/admin listesinde, klinik bilinen satırda).
+          <ClinicHoverCard
+            clinicId={useClinicLogoAvatar ? ((order as any)?.doctor?.clinic?.id ?? null) : null}
+            clinicName={(order as any)?.doctor?.clinic?.name ?? null}
+            logoUrl={null}
+            doctorName={order.doctor?.full_name ?? null}
+            onOpenSummary={onOpenClinic}
+          >
           <View
             className="items-center justify-center"
             style={{ width: 34, height: 34, borderRadius: 17, flexShrink: 0, backgroundColor: stageColor + '20' }}
           >
             <DefaultLogo size={17} color={stageColor} />
           </View>
+          </ClinicHoverCard>
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
           <View className="flex-row items-center" style={{ gap: 8 }}>

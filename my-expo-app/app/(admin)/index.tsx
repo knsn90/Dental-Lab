@@ -77,6 +77,8 @@ import { ScanCalendarCard, useScanCardVisibleFast } from '../../modules/scans/co
 import { DashRow, DashHalf, DashCell, DashThird, DashHalfSpacer } from '../../modules/dashboard/components/DashGrid';
 import { TechWorkloadCard } from '../../modules/dashboard/components/TechWorkloadCard';
 import { TopClinicsCard } from '../../modules/clinicSummary/components/TopClinicsCard';
+import { ClinicHoverCard } from '../../modules/clinicSummary/components/ClinicHoverCard';
+import { useClinicSummaryModal } from '../../modules/clinicSummary/components/ClinicSummaryModal';
 import {
   STATUS_CFG, STATUS_KEYS, STATUS_BUCKET,
   SpineCard, SpineRow, StatusDistCard, WorkTypeCard,
@@ -1400,6 +1402,8 @@ export default function AdminDashboard() {
   const [recentOrders, setRecentOrders]   = useState<any[]>(cache?.recentOrders ?? []);
   const [upcoming, setUpcoming]           = useState<any[]>(cache?.upcoming ?? []);
   const [hovered, setHovered]             = useState<string | null>(null);
+  // Logo kartındaki "Klinik özetini aç" → ekran düzeyinde tek popup.
+  const clinicModal = useClinicSummaryModal();
   const [pipelineCounts, setPipelineCounts] = useState<Record<string, number>>(cache?.pipelineCounts ?? {});
   // Planlama bekleyen = status 'alindi' VE triaged_at NULL (planlanmamış). pipelineCounts['alindi']
   // planlanmışları da sayıyordu → planlanmış sipariş "planlamayı başlat" olarak kalıyordu.
@@ -1526,6 +1530,7 @@ export default function AdminDashboard() {
     const nameMap: Record<string, string> = {};
     const clinicOf: Record<string, string> = {};   // doctor_id → clinic_id
     const logoOf: Record<string, string> = {};     // clinic_id → logo_url
+    const clinicNameOf: Record<string, string> = {}; // clinic_id → ad (logo kartı)
     if (doctorIds.length) {
       // doctor_id polimorfik (doctors.id VEYA profiles.id) — iki tabloyu da çöz,
       // doctors öncelikli.
@@ -1541,8 +1546,11 @@ export default function AdminDashboard() {
       (profsR.data ?? []).forEach((p: any) => { if (p.clinic_id && !clinicOf[p.id]) clinicOf[p.id] = p.clinic_id; });
       const clinicIds = Array.from(new Set(Object.values(clinicOf)));
       if (clinicIds.length) {
-        const { data: cls } = await supabase.from('clinics').select('id, logo_url').in('id', clinicIds);
-        (cls ?? []).forEach((c: any) => { if (c.logo_url) logoOf[c.id] = c.logo_url; });
+        const { data: cls } = await supabase.from('clinics').select('id, name, logo_url').in('id', clinicIds);
+        (cls ?? []).forEach((c: any) => {
+          if (c.logo_url) logoOf[c.id] = c.logo_url;
+          if (c.name) clinicNameOf[c.id] = c.name;
+        });
       }
     }
     // revision_of_id + revision_no + hold_status BURADA DA TAŞINMALI: sorgu
@@ -1562,6 +1570,7 @@ export default function AdminDashboard() {
       created_at: o.created_at ?? null,
       doctor_id: o.doctor_id ?? null,
       clinic_id: clinicOf[o.doctor_id] ?? null,
+      clinic_name: clinicNameOf[clinicOf[o.doctor_id] ?? ''] ?? null,
     })));
   }, []);
 
@@ -2319,6 +2328,7 @@ export default function AdminDashboard() {
         </View>
       ) : (
         <>
+          {clinicModal.element}
           {/* Son Siparişler — Patterns table */}
           <Card style={{ marginBottom: 16 }}>
             {/* Kart başlığı — sade (lacivert bant kaldırıldı: tablo başlığı veriyle yarışmasın) */}
@@ -2389,7 +2399,15 @@ export default function AdminDashboard() {
                         )}
                       </View>
                       <View className="flex-row items-center" style={{ flex: 2, gap: 8 }}>
-                        {/* Klinik logosu varsa o, yoksa hekim baş harfleri */}
+                        {/* Klinik logosu varsa o, yoksa hekim baş harfleri.
+                            Üzerine gelince büyür + klinik kartı açılır (web). */}
+                        <ClinicHoverCard
+                          clinicId={(order as any).clinic_id}
+                          clinicName={(order as any).clinic_name}
+                          logoUrl={(order as any).clinic_logo_url}
+                          doctorName={order.doctor_name !== '--' ? order.doctor_name : null}
+                          onOpenSummary={clinicModal.enabled ? clinicModal.open : undefined}
+                        >
                         <View
                           className="items-center justify-center rounded-full"
                           style={{ width: 28, height: 28, overflow: 'hidden',
@@ -2402,6 +2420,7 @@ export default function AdminDashboard() {
                             <DefaultLogo size={15} color={PB} />
                           )}
                         </View>
+                        </ClinicHoverCard>
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }} numberOfLines={1}>{(order as any).patient_name || order.doctor_name}</Text>
                           {(order as any).patient_name ? (
