@@ -1008,7 +1008,10 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   teeth.forEach(t => { toothColorMap[t] = toothProc[t] ? procColor(toothProc[t]) : A; });
   // Lejantta bir işlem seçiliyse yalnız o dişleri vurgula, gerisini soluk göster.
   const displayColorMap: Record<number, string> = {};
-  teeth.forEach(t => { displayColorMap[t] = selProc ? (toothProc[t] === selProc ? procColor(selProc) : INK[200]) : toothColorMap[t]; });
+  // Aynı dişte birden fazla işlem olabilir (implant: Custom Abutment + Zirkon Kron).
+  // toothProc yalnız SONUNCUYU tutar; seçim kontrolü procTeeth'ten yapılır, yoksa
+  // ortak dişler seçilen işlemde soluk kalıyordu.
+  teeth.forEach(t => { displayColorMap[t] = selProc ? ((procTeeth[selProc] ?? []).includes(t) ? procColor(selProc) : INK[200]) : toothColorMap[t]; });
   const chartOrder = { tooth_numbers: teeth } as unknown as WorkOrder;
   const chartCardW = isNarrow ? Math.max(200, winW - 32) : 360;   // kart iç genişliği referansı
 
@@ -1325,7 +1328,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                     <View style={{ width: 22, height: 22, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: procColor(toothProc[selTooth]) }}>
                       <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFF' }}>{selTooth}</Text>
                     </View>
-                    <Text style={{ ...TYPE.body, fontWeight: '600', color: INK[900] }}>Diş {selTooth} · {toothProc[selTooth]}</Text>
+                    <Text style={{ ...TYPE.body, fontWeight: '600', color: INK[900] }}>Diş {selTooth} · {distinctProcs.filter(p => (procTeeth[p] ?? []).includes(selTooth)).join(' + ') || toothProc[selTooth]}</Text>
                   </View>
                 )}
               </View>
