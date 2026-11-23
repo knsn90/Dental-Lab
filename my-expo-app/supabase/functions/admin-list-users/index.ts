@@ -29,12 +29,17 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerProfile } = await adminClient
       .from('profiles')
-      .select('user_type, lab_id')
+      .select('user_type, role, lab_id')
       .eq('id', userData.user.id)
       .single();
 
-    if (!callerProfile || callerProfile.user_type !== 'admin') {
-      throw new Error('Sadece adminler kullanıcı listesini görebilir');
+    // Liste: lab-başına exec admin VEYA lab mesul müdürü. admin-update-user ile
+    // aynı kapsam — müdür kullanıcıyı düzenleyebiliyor ama listeyi göremiyordu
+    // (sayfa sessizce yalnız personel kayıtlarını gösteriyordu).
+    const callerIsExecAdmin  = callerProfile?.user_type === 'admin';
+    const callerIsLabManager = callerProfile?.user_type === 'lab' && callerProfile?.role === 'manager';
+    if (!callerProfile || !(callerIsExecAdmin || callerIsLabManager)) {
+      throw new Error('Kullanıcı listesini görme yetkiniz yok');
     }
 
     // KİRACI SINIRI — bu fonksiyon service-role ile çalışır, yani RLS'i baypas eder;

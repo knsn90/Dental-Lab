@@ -45,11 +45,19 @@ import {
   type LabBilling, type LabBillingField,
 } from '../labBilling';
 import { fetchLabBilling, saveLabBilling } from '../labBillingApi';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import * as ImagePicker from 'expo-image-picker';
+import { myLabMemberships } from '../../lab-connections/api';
 
 // ── Types ───────────────────────────────────────────────────────────────
 interface Props {
   panelType: string;
   accentColor: string;
+  /** 'personal' = Genel sekmesi (tema, dil, takvim — yalnız bu kullanıcı).
+   *  'lab' = Laboratuvar sekmesi (marka, bölge, kimlik, iş akışı, gizlilik — tüm ekip).
+   *  Eskiden ikisi tek sayfadaydı; hangi ayarın kimi etkilediği belli değildi ve
+   *  paylaşılan tabletten lab ayarı değiştirilebiliyordu. */
+  view?: 'personal' | 'lab';
 }
 
 // Bugünün tarihini seçilen formatta gösterir
@@ -105,20 +113,13 @@ const THEMES: { key: ThemeMode; label: string; icon: any }[] = [
   { key: 'system', label: 'Sistem', icon: Laptop },
 ];
 
-// ── Auto logout options ─────────────────────────────────────────────────
-const AUTO_LOGOUT: { value: number; label: string }[] = [
-  { value: 0,  label: 'Kapalı' },
-  { value: 15, label: '15 dakika' },
-  { value: 30, label: '30 dakika' },
-  { value: 60, label: '1 saat' },
-];
+// Teslim süresi seçenekleri (iş günü)
+const LEAD_DAY_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 30];
+const URGENT_DAY_OPTIONS = [1, 2, 3, 4, 5];
 
-// ── Items per page options ──────────────────────────────────────────────
-const ITEMS_PER_PAGE: { value: number; label: string }[] = [
-  { value: 25,  label: '25' },
-  { value: 50,  label: '50' },
-  { value: 100, label: '100' },
-];
+// Otomatik Çıkış · Sayfa Başına Kayıt · Çalışma Saatleri ekrandan kaldırıldı
+// (2026-11-22): üçünü de okuyan hiçbir kod yoktu, değiştirmek hiçbir şey
+// yapmıyordu. lab_settings sütunları duruyor — işlevi bağlanınca geri gelir.
 
 // ── Tema önizleme seçici (macOS "Appearance" tarzı) ────────────────────
 //
@@ -163,6 +164,10 @@ function ThemeTileSplit() {
     </View>
   );
 }
+
+// Kaydedilen ama henüz hiçbir ekranın okumadığı kişisel tercihler (tarih/saat
+// biçimi, hekim unvanı, varsayılan lab). Bağlanınca true yapılır.
+const SHOW_UNWIRED_PREFS = false;
 
 export function ThemePreviewPicker({ value, onChange }: {
   value: ThemeMode; onChange: (v: ThemeMode) => void;
@@ -223,6 +228,25 @@ export function ThemePreviewPicker({ value, onChange }: {
   );
 }
 
+// ── Vurgu rengi okunabilirliği ──────────────────────────────────────────
+// Panel accent'leri (safran #F5C24B, zümrüt #32BB78…) ZEMİN için seçilmiş;
+// beyaz kart üstünde METİN/ikon olarak kullanılınca okunmuyordu (safran ≈1.6:1).
+// Metin/ikon için aynı rengin koyu tonu (açık tema) ya da açık tonu (koyu tema).
+const ACCENT_INK: Record<string, { light: string; dark: string }> = {
+  '#F5C24B': { light: '#8A6410', dark: '#F5C24B' },   // lab safran
+  '#32BB78': { light: '#0A7247', dark: '#74E1A8' },   // klinik/hekim zümrüt
+  '#004B87': { light: '#004B87', dark: '#93C5FD' },   // admin lacivert
+  '#3B82F6': { light: '#1E5FBF', dark: '#93C5FD' },   // istasyon mavi
+};
+export function accentInk(accent: string, isDark: boolean): string {
+  const m = ACCENT_INK[(accent ?? '').toUpperCase()];
+  return m ? (isDark ? m.dark : m.light) : accent;
+}
+/** Accent ZEMİN üstündeki metin: açık accent'te (safran) koyu, diğerlerinde beyaz. */
+export function onAccentFg(accent: string): string {
+  return (accent ?? '').toUpperCase() === '#F5C24B' ? '#0A0A0A' : '#FFFFFF';
+}
+
 // ── Segment picker (3-option pill) ─────────────────────────────────────
 export function SegmentPicker<T extends string>({
   options,
@@ -266,7 +290,7 @@ export function SegmentPicker<T extends string>({
               ? ((({ pressed, hovered }: any) => ({
                   flex: 1,
                   flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const,
-                  gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 9,
+                  gap: 6, paddingVertical: 6, paddingHorizontal: 6, borderRadius: 9,
                   backgroundColor: active
                     ? pillBg
                     : hovered ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') : 'transparent',
@@ -281,7 +305,7 @@ export function SegmentPicker<T extends string>({
               : {
                   flex: 1,
                   flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const,
-                  gap: 6, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 9,
+                  gap: 6, paddingVertical: 8, paddingHorizontal: 6, borderRadius: 9,
                   backgroundColor: active ? pillBg : 'transparent',
                   borderWidth: 1,
                   borderColor: active ? pillEdge : 'transparent',
@@ -358,7 +382,7 @@ export function DropdownSelect<T extends string | number>({
                     <View className="flex-1">
                       <Text
                         className="text-[14px]"
-                        style={isSelected ? { fontWeight: '600', color: accentColor } : { color: T.ink }}
+                        style={isSelected ? { fontWeight: '600', color: accentInk(accentColor, isDark) } : { color: T.ink }}
                       >
                         {renderLabel ? renderLabel(opt) : opt.label}
                       </Text>
@@ -366,7 +390,7 @@ export function DropdownSelect<T extends string | number>({
                         <Text className="text-[12px] mt-0.5" style={{ color: T.ink3 }}>{opt.sub}</Text>
                       )}
                     </View>
-                    {isSelected && <Check size={16} color={accentColor} strokeWidth={2} />}
+                    {isSelected && <Check size={16} color={accentInk(accentColor, isDark)} strokeWidth={2} />}
                   </Pressable>
                 );
               })}
@@ -389,12 +413,12 @@ export function SettingGroup({ title, sub, children, first }: {
 }) {
   const T = useMobileTokens();
   return (
-    <View style={{ marginTop: first ? 4 : 22 }}>
-      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: T.ink3 }}>
+    <View style={{ marginTop: first ? 4 : 30 }}>
+      <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: T.ink2 }}>
         {title}
       </Text>
       {!!sub && <Text style={{ fontSize: 11.5, color: T.ink3, marginTop: 2 }}>{sub}</Text>}
-      <View className="h-px" style={{ backgroundColor: T.hairline2, marginTop: 8, marginBottom: 2 }} />
+      <View className="h-px" style={{ backgroundColor: T.hairline, marginTop: 10, marginBottom: 2 }} />
       {children}
     </View>
   );
@@ -409,6 +433,7 @@ export function SettingGroup({ title, sub, children, first }: {
 function SaveHint({ saving, dirty, accentColor }: {
   saving: boolean; dirty: boolean; accentColor: string;
 }) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const T = useMobileTokens();
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [, tick] = useState(0);
@@ -431,7 +456,7 @@ function SaveHint({ saving, dirty, accentColor }: {
     return <Text style={{ fontSize: 11.5, color: T.ink3 }}>Kaydediliyor…</Text>;
   }
   if (dirty) {
-    return <Text style={{ fontSize: 11.5, color: accentColor }}>Çıkınca kaydedilir</Text>;
+    return <Text style={{ fontSize: 11.5, fontWeight: '600', color: accentInk(accentColor, isDark) }}>Çıkınca kaydedilir</Text>;
   }
   if (savedAt != null) {
     const mins = Math.floor((Date.now() - savedAt) / 60_000);
@@ -502,6 +527,28 @@ function SettingInput({ accentColor, style, multiline, ...rest }: any) {
  * Diğer satırlar alan alan "çıkınca kaydet" çalışır; bu blok alanlar birbirine
  * bağlı (zorunluluk) olduğu için tek "Kaydet" ile kaydeder.
  */
+/**
+ * Fatura Bilgileri — Finans Ayarları'nda gösterilir (eskiden Genel'deydi).
+ * Lab adresi henüz girilmemişse kurye entegrasyonundaki alış adresini önerir.
+ */
+export function LabBillingCard({ labId, accentColor }: { labId: string; accentColor: string }) {
+  const [pickup, setPickup] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data } = await supabase.from('labs').select('address').eq('id', labId).maybeSingle();
+      if (String((data as any)?.address ?? '').trim()) return;
+      const { data: pc } = await supabase
+        .from('provider_credentials').select('credentials')
+        .eq('lab_id', labId).eq('type', 'courier').eq('is_active', true).maybeSingle();
+      const addr = (pc as any)?.credentials?.pickup_address;
+      if (alive && addr) setPickup(String(addr));
+    })();
+    return () => { alive = false; };
+  }, [labId]);
+  return <LabBillingRow labId={labId} accentColor={accentColor} pickupAddress={pickup} />;
+}
+
 function LabBillingRow({ labId, accentColor, pickupAddress }: {
   labId: string; accentColor: string; pickupAddress?: string | null;
 }) {
@@ -613,8 +660,8 @@ function LabBillingRow({ labId, accentColor, pickupAddress }: {
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
             })}
           >
-            <Download size={12} color={accentColor} strokeWidth={2} />
-            <Text style={{ fontSize: 11.5, fontWeight: '600', color: accentColor }}>Kurye ayarındaki alış adresini kullan</Text>
+            <Download size={12} color={accentInk(accentColor, isDark)} strokeWidth={2} />
+            <Text style={{ fontSize: 11.5, fontWeight: '600', color: accentInk(accentColor, isDark) }}>Kurye ayarındaki alış adresini kullan</Text>
           </Pressable>
         ) : null}
         <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -647,8 +694,8 @@ function LabBillingRow({ labId, accentColor, pickupAddress }: {
               ...(Platform.OS === 'web' && dirty && !saving ? { cursor: 'pointer' } as any : {}),
             })}
           >
-            {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : null}
-            <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF' }}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</Text>
+            {saving ? <ActivityIndicator size="small" color={onAccentFg(accentColor)} /> : null}
+            <Text style={{ fontSize: 12.5, fontWeight: '700', color: onAccentFg(accentColor) }}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</Text>
           </Pressable>
         </View>
       </View>
@@ -684,6 +731,8 @@ export function SettingRow({
   const { width: _vw } = useWindowDimensions();
   const isNarrow = _vw < 560;
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const iconInk = accentInk(accentColor, isDark);
   return (
     <>
       {isNarrow ? (
@@ -693,11 +742,12 @@ export function SettingRow({
               className="w-9 h-9 rounded-xl items-center justify-center"
               style={{ backgroundColor: `${accentColor}20` }}
             >
-              <Icon size={16} color={accentColor} strokeWidth={1.9} />
+              <Icon size={16} color={iconInk} strokeWidth={1.9} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text className="text-[14px] font-semibold mb-0.5" style={{ color: T.ink }} numberOfLines={1}>{label}</Text>
-              <Text className="text-[12px]" style={{ color: T.ink3 }} numberOfLines={2}>{sub}</Text>
+              {/* Satır sınırı YOK: uzun açıklamaların sonu önemli bilgi taşıyordu */}
+              <Text className="text-[12px]" style={{ color: T.ink3 }}>{sub}</Text>
             </View>
           </View>
           <View style={{ width: '100%', paddingStart: 48 }}>
@@ -710,7 +760,7 @@ export function SettingRow({
             className="w-9 h-9 rounded-xl items-center justify-center"
             style={{ backgroundColor: `${accentColor}20` }}
           >
-            <Icon size={16} color={accentColor} strokeWidth={1.9} />
+            <Icon size={16} color={iconInk} strokeWidth={1.9} />
           </View>
           <View className="flex-1">
             <Text className="text-[14px] font-semibold mb-0.5" style={{ color: T.ink }}>{label}</Text>
@@ -732,21 +782,15 @@ const LOCAL_DEFAULTS = {
   week_start: 'monday' as WeekStart,
   theme_mode: 'light' as ThemeMode,
   order_prefix: 'LAB',
-  default_tax_rate: 20,
-  working_hours_start: '08:00',
-  working_hours_end: '18:00',
-  auto_logout_minutes: 0,
-  items_per_page: 50,
   technician_name_visibility: 'full',
-  payment_reminder_auto: false,
-  payment_reminder_frequency_days: 7,
-  payment_reminder_channels: ['in_app', 'email', 'whatsapp'] as string[],
-  payment_reminder_tone: 'standard',
-  payment_reminder_min_days_overdue: 1,
+  default_lead_days: 5,
+  urgent_lead_days: 1,
 };
 
 // ── Component ───────────────────────────────────────────────────────────
-export function GeneralSection({ panelType, accentColor }: Props) {
+export function GeneralSection({ panelType, accentColor, view = 'personal' }: Props) {
+  const P = view === 'personal';
+  const L = view === 'lab';
   const { settings, loading, saving, load, update } = useLabSettingsStore();
   const [local, setLocal] = useState(LOCAL_DEFAULTS);
   const { t, i18n } = useTranslation();
@@ -754,8 +798,9 @@ export function GeneralSection({ panelType, accentColor }: Props) {
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const themeMode = useThemeModeStore(s => s.mode);   // toggle bunu sürer; resolvedDark → .dark sınıfı
   const { width: _vw } = useWindowDimensions();
-  // Sayfa kenarı: mobilde standart 16, desktop'ta 28
-  const sidePad = _vw < 768 ? 16 : 28;
+  const U = useInkUI();
+  // Sayfa kenarı: platform-genel sözleşme — her genişlikte PAGE_PADDING (16)
+  const sidePad = PAGE_PADDING;
 
   useEffect(() => { load(); }, []);
 
@@ -767,26 +812,28 @@ export function GeneralSection({ panelType, accentColor }: Props) {
         week_start: settings.week_start,
         theme_mode: settings.theme_mode,
         order_prefix: settings.order_prefix,
-        default_tax_rate: settings.default_tax_rate,
-        working_hours_start: settings.working_hours_start,
-        working_hours_end: settings.working_hours_end,
-        auto_logout_minutes: settings.auto_logout_minutes,
-        items_per_page: settings.items_per_page,
         technician_name_visibility: settings.technician_name_visibility ?? 'full',
-        payment_reminder_auto: settings.payment_reminder_auto ?? false,
-        payment_reminder_frequency_days: settings.payment_reminder_frequency_days ?? 7,
-        payment_reminder_channels: settings.payment_reminder_channels ?? ['in_app', 'email'],
-        payment_reminder_tone: settings.payment_reminder_tone ?? 'standard',
-        payment_reminder_min_days_overdue: settings.payment_reminder_min_days_overdue ?? 1,
+        default_lead_days: settings.default_lead_days ?? 5,
+        urgent_lead_days: settings.urgent_lead_days ?? 1,
       });
     }
   }, [settings]);
 
-  const handleUpdate = useCallback((patch: Record<string, any>) => {
-    // Always update local state immediately
-    setLocal(prev => ({ ...prev, ...patch }));
-    // Try to persist to DB
-    update(patch);
+  const handleUpdate = useCallback(async (patch: Record<string, any>) => {
+    // İyimser: ekran hemen değişir; kayıt tutmazsa eski değere döner ve
+    // kullanıcı neden döndüğünü görür (eskiden sessizce kayboluyordu).
+    let prevSnap: Record<string, any> = {};
+    setLocal(prev => {
+      prevSnap = Object.fromEntries(Object.keys(patch).map(k => [k, (prev as any)[k]]));
+      return { ...prev, ...patch };
+    });
+    const ok = await update(patch);
+    if (ok) toast.success(autoT('Kaydedildi'));
+    else {
+      setLocal(prev => ({ ...prev, ...prevSnap }));
+      toast.error(autoT('Ayar kaydedilemedi — yetkini ve bağlantını kontrol et'));
+    }
+    return ok;
   }, [update]);
 
   const isLab    = panelType === 'lab' || panelType === 'admin';
@@ -812,13 +859,24 @@ export function GeneralSection({ panelType, accentColor }: Props) {
   useEffect(() => {
     if (!isDoctor) return;
     (async () => {
-      const { data } = await supabase.from('labs').select('id, name').order('name');
+      // Yalnız hekimin ÜYE olduğu (aktif) laboratuvarlar — tüm lab tablosu değil.
+      try {
+        const ms = await myLabMemberships();
+        const list = ms
+          .filter(m => m.status === 'active')
+          .map(m => ({ id: m.lab_id, name: m.lab_name ?? '—' }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+        if (list.length) { setLabs(list); return; }
+      } catch { /* RPC yoksa profildeki lab'a düş */ }
+      const ownLab = (useAuthStore.getState().profile as any)?.lab_id;
+      if (!ownLab) return;
+      const { data } = await supabase.from('labs').select('id, name').eq('id', ownLab);
       if (Array.isArray(data)) setLabs(data as any);
     })();
   }, [isDoctor]);
 
   // ── Lab logo (genel ayarlar) ─────────────────────────────────────────
-  const labId = (useAuthStore.getState().profile as any)?.lab_id ?? null;
+  const labId = useAuthStore(st => (st.profile as any)?.lab_id ?? null) as string | null;
   const [labLogoUrl, setLabLogoUrl] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const [brandMode, setBrandMode] = useState<'logo' | 'logo_text'>('logo_text');
@@ -834,44 +892,46 @@ export function GeneralSection({ panelType, accentColor }: Props) {
   const [labSiteInput, setLabSiteInput]   = useState('');
   const [labSiteSaved, setLabSiteSaved]   = useState('');
   const [labContactSaving, setLabContactSaving] = useState(false);
-  /** Kurye entegrasyonuna girilmiş alış adresi — adres boşsa tek tıkla kopyalanır. */
-  const [pickupAddr, setPickupAddr] = useState<{ address: string; phone: string } | null>(null);
   const bumpLabBrand = useLabBrandStore(s => s.bump);
 
   useEffect(() => {
     if (!labId || !isLab) return;
     (async () => {
       const { data } = await supabase.from('labs').select('name, address, phone, website, logo_url, sidebar_brand_mode, sidebar_logo_scale').eq('id', labId).maybeSingle();
-      const addr = (data as any)?.address ?? '';
       const tel  = (data as any)?.phone ?? '';
       const site = (data as any)?.website ?? '';
       setLabPhoneInput(tel);  setLabPhoneSaved(tel);
       setLabSiteInput(site);  setLabSiteSaved(site);
-      // Adres henüz girilmemişse kurye ayarındaki alış adresini öner
-      if (!String(addr).trim()) {
-        const { data: pc } = await supabase
-          .from('provider_credentials').select('credentials')
-          .eq('lab_id', labId).eq('type', 'courier').eq('is_active', true).maybeSingle();
-        const cred = (pc as any)?.credentials ?? {};
-        if (cred.pickup_address) {
-          setPickupAddr({ address: String(cred.pickup_address), phone: String(cred.pickup_phone ?? '') });
-        }
-      }
       if (data?.logo_url) setLabLogoUrl(data.logo_url);
       if ((data as any)?.sidebar_brand_mode) setBrandMode((data as any).sidebar_brand_mode === 'logo' ? 'logo' : 'logo_text');
-      if ((data as any)?.sidebar_logo_scale != null) setLogoScale(Number((data as any).sidebar_logo_scale) || 1);
+      if ((data as any)?.sidebar_logo_scale != null) {
+        const sc = Number((data as any).sidebar_logo_scale) || 1;
+        setLogoScale(sc); logoScaleSaved.current = sc;
+      }
       if ((data as any)?.name != null) { setLabNameInput((data as any).name); setLabNameSaved((data as any).name); }
     })();
   }, [labId, isLab]);
+
+  /** labs satırını günceller; RLS 0 satır döndürürse de BAŞARISIZ sayar
+   *  (hata vermeden etkisiz kalan güncelleme sessiz kayıp demekti). */
+  // okMsg null → başarıda bildirim YOK (satırında "Kaydedildi" göstergesi olan alanlar)
+  const updateLab = useCallback(async (patch: Record<string, any>, okMsg: string | null = 'Kaydedildi'): Promise<boolean> => {
+    if (!labId) return false;
+    const { data, error } = await supabase.from('labs').update(patch).eq('id', labId).select('id');
+    const ok = !error && Array.isArray(data) && data.length > 0;
+    if (ok && okMsg) toast.success(autoT(okMsg));
+    else toast.error(autoT('Kaydedilemedi — yetkini ve bağlantını kontrol et'));
+    return ok;
+  }, [labId]);
 
   const saveLabName = useCallback(async () => {
     const v = labNameInput.trim();
     if (!labId || !v || v === labNameSaved || labNameSaving) return;
     setLabNameSaving(true);
-    const { error } = await supabase.from('labs').update({ name: v }).eq('id', labId);
+    const ok = await updateLab({ name: v }, null);
     setLabNameSaving(false);
-    if (!error) { setLabNameSaved(v); bumpLabBrand(); }
-  }, [labId, labNameInput, labNameSaved, labNameSaving, bumpLabBrand]);
+    if (ok) { setLabNameSaved(v); bumpLabBrand(); }
+  }, [labId, labNameInput, labNameSaved, labNameSaving, bumpLabBrand, updateLab]);
 
   const saveLabContact = useCallback(async () => {
     if (!labId || labContactSaving) return;
@@ -881,28 +941,73 @@ export function GeneralSection({ panelType, accentColor }: Props) {
     setLabContactSaving(true);
     // Adres burada YAZILMAZ: labs.address, Fatura Bilgileri'ndeki yapılandırılmış
     // alanlardan oluşturulur (iki ayrı adres tutulmasın).
-    const { error } = await supabase.from('labs')
-      .update({ phone: t || null, website: w || null }).eq('id', labId);
+    const ok = await updateLab({ phone: t || null, website: w || null }, null);
     setLabContactSaving(false);
-    if (!error) {
+    if (ok) {
       setLabPhoneSaved(t); setLabSiteSaved(w);
       // Kenar çubuğundaki logo bağlantısı anında güncellensin
       bumpLabBrand();
     }
-  }, [labId, labPhoneInput, labSiteInput, labPhoneSaved, labSiteSaved, labContactSaving, bumpLabBrand]);
+  }, [labId, labPhoneInput, labSiteInput, labPhoneSaved, labSiteSaved, labContactSaving, bumpLabBrand, updateLab]);
 
   const saveBrandMode = useCallback(async (mode: 'logo' | 'logo_text') => {
+    const prev = brandMode;
     setBrandMode(mode);
-    if (labId) { await supabase.from('labs').update({ sidebar_brand_mode: mode }).eq('id', labId); bumpLabBrand(); }
-  }, [labId, bumpLabBrand]);
+    if (!labId) return;
+    if (await updateLab({ sidebar_brand_mode: mode })) bumpLabBrand();
+    else setBrandMode(prev);
+  }, [labId, brandMode, bumpLabBrand, updateLab]);
+  // Kaydedilmiş ölçek — kayıt tutmazsa kaydırıcı buraya geri döner
+  const logoScaleSaved = useRef(1);
   const saveLogoScale = useCallback(async (next: number) => {
     const v = Math.max(0.6, Math.min(1.8, Math.round(next * 20) / 20));
     setLogoScale(v);
-    if (labId) { await supabase.from('labs').update({ sidebar_logo_scale: v }).eq('id', labId); bumpLabBrand(); }
-  }, [labId, bumpLabBrand]);
+    if (!labId || v === logoScaleSaved.current) return;
+    if (await updateLab({ sidebar_logo_scale: v })) { logoScaleSaved.current = v; bumpLabBrand(); }
+    else setLogoScale(logoScaleSaved.current);
+  }, [labId, bumpLabBrand, updateLab]);
 
-  const pickAndUploadLogo = useCallback(() => {
-    if (Platform.OS !== 'web' || !labId) return;
+  /** Dosyayı depoya yükler, labs.logo_url'i yazar; her hata kullanıcıya görünür. */
+  const uploadLogoBody = useCallback(async (body: Blob | Uint8Array, mime: string, ext: string) => {
+    if (!labId) return;
+    setLogoUploading(true);
+    try {
+      const path = `${labId}/logo-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('lab-logos')
+        .upload(path, body as any, { contentType: mime, upsert: true });
+      if (upErr) { toast.error(`${autoT('Logo yüklenemedi')}: ${upErr.message}`); return; }
+      const { data: pub } = supabase.storage.from('lab-logos').getPublicUrl(path);
+      const url = pub.publicUrl;
+      if (await updateLab({ logo_url: url }, 'Logo güncellendi')) {
+        setLabLogoUrl(url);
+        bumpLabBrand();
+      }
+    } catch (e: any) {
+      toast.error(`${autoT('Logo yüklenemedi')}: ${e?.message ?? ''}`);
+    } finally {
+      setLogoUploading(false);
+    }
+  }, [labId, bumpLabBrand, updateLab]);
+
+  const pickAndUploadLogo = useCallback(async () => {
+    if (!labId || logoUploading) return;
+    if (Platform.OS !== 'web') {
+      // iOS/Android: galeriden seç (eskiden native'de düğme hiçbir şey yapmıyordu)
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { toast.warning(autoT('Galeri erişimi için izin verin.')); return; }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.9, base64: true,
+      });
+      if (result.canceled || !result.assets[0]?.base64) return;
+      const asset = result.assets[0];
+      const byteStr = atob(asset.base64!);
+      const bytes = new Uint8Array(byteStr.length);
+      for (let i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
+      const mime = asset.mimeType ?? 'image/jpeg';
+      await uploadLogoBody(bytes, mime, (mime.split('/')[1] ?? 'jpg').replace('jpeg', 'jpg'));
+      return;
+    }
     // @ts-ignore — web
     const input = document.createElement('input');
     input.type = 'file';
@@ -910,36 +1015,36 @@ export function GeneralSection({ panelType, accentColor }: Props) {
     input.onchange = async (e: any) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      setLogoUploading(true);
-      try {
-        const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png';
-        const path = `${labId}/logo-${Date.now()}.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from('lab-logos')
-          .upload(path, file, { contentType: file.type, upsert: true });
-        if (upErr) { console.error('[lab-logo] upload', upErr); setLogoUploading(false); return; }
-        const { data: pub } = supabase.storage.from('lab-logos').getPublicUrl(path);
-        const url = pub.publicUrl;
-        await supabase.from('labs').update({ logo_url: url }).eq('id', labId);
-        setLabLogoUrl(url);
-        bumpLabBrand();
-      } finally {
-        setLogoUploading(false);
-      }
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png';
+      await uploadLogoBody(file, file.type, ext);
     };
     // @ts-ignore
     document.body.appendChild(input);
     input.click();
     // @ts-ignore
     setTimeout(() => { try { document.body.removeChild(input); } catch {} }, 60_000);
-  }, [labId, bumpLabBrand]);
+  }, [labId, logoUploading, uploadLogoBody]);
 
   const removeLogo = useCallback(async () => {
     if (!labId) return;
-    await supabase.from('labs').update({ logo_url: null }).eq('id', labId);
-    setLabLogoUrl(null);
-    bumpLabBrand();
-  }, [labId, bumpLabBrand]);
+    if (await updateLab({ logo_url: null }, 'Logo kaldırıldı')) {
+      setLabLogoUrl(null);
+      bumpLabBrand();
+    }
+  }, [labId, bumpLabBrand, updateLab]);
+
+  // Sipariş ön eki: yazarken yerel taslak, alandan çıkınca/Enter'da tek kayıt.
+  // (Eskiden her harf ayrı kayıttı; alan boşaltılınca '' yazılıp numaralar
+  // sessizce 'LAB'a düşüyordu.)
+  const [prefixDraft, setPrefixDraft] = useState<string | null>(null);
+  const commitPrefix = useCallback(async () => {
+    if (prefixDraft == null) return;
+    const v = prefixDraft.trim();
+    if (!v) { toast.warning(autoT('Ön ek boş bırakılamaz')); setPrefixDraft(null); return; }
+    if (v === local.order_prefix) { setPrefixDraft(null); return; }
+    await handleUpdate({ order_prefix: v });
+    setPrefixDraft(null);
+  }, [prefixDraft, local.order_prefix, handleUpdate]);
 
   if (loading) {
     return <CenteredLoader color={accentColor} label="Ayarlar yükleniyor…" />;
@@ -950,18 +1055,15 @@ export function GeneralSection({ panelType, accentColor }: Props) {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerStyle={{ paddingHorizontal: sidePad, paddingTop: 0, paddingBottom: 120 }}
+      // Geniş ekranda satırlar 1400px'e yayılınca başlıkla kontrol arası boş kalıyordu
+      contentContainerStyle={{ paddingHorizontal: sidePad, paddingTop: 0, paddingBottom: 120, width: '100%', maxWidth: 920 + 2 * sidePad, alignSelf: 'center' }}
       showsVerticalScrollIndicator={false}
     >
       {/* ── Genel Ayarlar kartı ──────────────────────────────── */}
       <View className="rounded-[24px] p-[22px]" style={[CARD_SHADOW, { backgroundColor: T.card }]}>
-        <View className="flex-row items-center gap-2 mb-1">
-          <Text style={{ ...DISPLAY_FONT, fontSize: 18, letterSpacing: -0.3, color: T.ink }}>
-            Genel
-          </Text>
-        </View>
+        {/* Başlık hub üst çubuğunda ("Genel") zaten var — kartta tekrarlanmaz */}
         <Text className="text-[13px] mb-4" style={{ color: T.ink3 }}>
-          {isLab ? 'Kimlik, görünüm, bölge, iş akışı ve güvenlik ayarları.' : 'Görünüm ve bölge ayarları.'}
+          {L ? 'Bu ayarlar tüm ekip için geçerlidir.' : 'Bu ayarlar yalnız senin hesabın için geçerlidir.'}
         </Text>
 
         {/* Ayarlar ARTIK ANLAMA göre gruplu — "kim yönetiyor"a göre değil.
@@ -970,8 +1072,263 @@ export function GeneralSection({ panelType, accentColor }: Props) {
             başına kayıt lab kartında, otomatik çıkış ise hiçbir güvenlik
             başlığı altında değildi. Tek kart, altı anlam grubu. */}
 
-        {isLab && (
-        <SettingGroup title="Laboratuvar Kimliği" sub="Fatura, iş kâğıdı ve yazışmalarda görünen bilgiler" first>
+        {P && (
+        <SettingGroup title="Görünüm" sub="Açık, koyu veya sistem teması" first>
+        {/* Tema — görsel önizlemeli seçici, diğer kontrollerle aynı sağ kolonda */}
+        <SettingRow
+          icon={Sun}
+          label="Tema"
+          sub="Arayüz görünüm tercihi · yalnız bu cihazda"
+          accentColor={accentColor}
+          isLast
+        >
+          <ThemePreviewPicker
+            value={themeMode}
+            onChange={(v) => useThemeModeStore.getState().setMode(v)}
+          />
+        </SettingRow>
+        </SettingGroup>
+        )}
+
+        {L && isLab && canManageSettings && labLogoUrl && (
+        <SettingGroup title="Marka" sub="Kenar çubuğunda logo görünümü" first>
+        <>
+
+          <SettingRow
+            icon={ImageIcon}
+            label="Sidebar Markası"
+            sub="Kenar çubuğunda logo nasıl görünsün"
+            accentColor={accentColor}
+          >
+            <View style={{ flexDirection: 'row', gap: 4, padding: 3, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : T.hairline2, alignSelf: 'flex-end' }}>
+              {([
+                { k: 'logo_text', label: 'Logo + İsim' },
+                { k: 'logo',      label: 'Sadece Logo' },
+              ] as const).map(opt => {
+                const active = brandMode === opt.k;
+                return (
+                  <Pressable
+                    key={opt.k}
+                    onPress={() => saveBrandMode(opt.k)}
+                    style={Platform.OS === 'web'
+                      ? ((({ pressed, hovered }: any) => ({
+                          paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+                          backgroundColor: active
+                            ? (isDark ? 'rgba(255,255,255,0.14)' : '#FFFFFF')
+                            : hovered ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') : 'transparent',
+                          borderWidth: 1,
+                          borderColor: active ? (isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.07)') : 'transparent',
+                          transform: [{ scale: pressed ? 0.97 : 1 }],
+                          cursor: 'pointer', transitionProperty: 'background-color, transform', transitionDuration: '140ms',
+                          ...(active && !isDark ? { boxShadow: '0 1px 3px rgba(0,0,0,0.10)' } : {}),
+                        })) as any)
+                      : {
+                          paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8,
+                          backgroundColor: active ? (isDark ? 'rgba(255,255,255,0.14)' : '#FFFFFF') : 'transparent',
+                          borderWidth: 1,
+                          borderColor: active ? (isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.07)') : 'transparent',
+                        }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: active ? (T.ink as string) : (T.ink3 as string) }}>{opt.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </SettingRow>
+
+
+        {/* Logo Boyutu — sidebar logo ölçeği */}
+
+          <SettingRow
+            icon={ImageIcon}
+            label="Logo Boyutu"
+            sub="Sidebar'daki logonun büyüklüğü"
+            accentColor={accentColor}
+            isLast
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-end', flex: 1, justifyContent: 'flex-end' }}>
+              <Text style={{ fontSize: 11, color: T.ink3 }}>Küçük</Text>
+              {Platform.OS === 'web' ? (
+                React.createElement('input' as any, {
+                  type: 'range', min: 0.6, max: 1.8, step: 0.05, value: logoScale,
+                  onChange: (e: any) => setLogoScale(parseFloat(e.target.value)),
+                  onMouseUp: (e: any) => saveLogoScale(parseFloat(e.target.value)),
+                  onTouchEnd: (e: any) => saveLogoScale(parseFloat(e.target.value)),
+                  style: { flex: 1, maxWidth: 150, accentColor, cursor: 'pointer' },
+                })
+              ) : (
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <GlassTooltip title={autoT('Küçült')} text={autoT('Kenar çubuğundaki logoyu bir kademe küçültür')} enabled={logoScale > 0.6}>
+                    <Pressable onPress={() => saveLogoScale(logoScale - 0.1)} disabled={logoScale <= 0.6} style={{ width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border, opacity: logoScale <= 0.6 ? 0.4 : 1 }}>
+                      <Text style={{ fontSize: 18, fontWeight: '700', color: U.plainBtn.fg, marginTop: -2 }}>−</Text>
+                    </Pressable>
+                  </GlassTooltip>
+                  <GlassTooltip title={autoT('Büyüt')} text={autoT('Kenar çubuğundaki logoyu bir kademe büyütür')} enabled={logoScale < 1.8}>
+                    <Pressable onPress={() => saveLogoScale(logoScale + 0.1)} disabled={logoScale >= 1.8} style={{ width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border, opacity: logoScale >= 1.8 ? 0.4 : 1 }}>
+                      <Text style={{ fontSize: 18, fontWeight: '700', color: U.plainBtn.fg, marginTop: -2 }}>+</Text>
+                    </Pressable>
+                  </GlassTooltip>
+                </View>
+              )}
+              <Text style={{ fontSize: 11, color: T.ink3 }}>Büyük</Text>
+              {/* Çıplak "%60" neye göre olduğunu söylemiyordu; uçlara etiket. */}
+              <Text style={{ fontSize: 11, color: T.ink3, minWidth: 40, textAlign: 'end' as any }}>
+                %{Math.round(logoScale * 100)}
+              </Text>
+            </View>
+          </SettingRow>
+        </>
+
+        </SettingGroup>
+        )}
+
+        {(P || (isLab && canManageSettings)) && (
+        <SettingGroup title={P ? 'Dil ve Takvim' : 'Bölge'} sub={P ? 'Uygulama dili ve takvim gösterimi' : 'Mevzuat bölgesi ve hafta başlangıcı'} first={L && !(isLab && canManageSettings && labLogoUrl)}>
+
+        {/* Uygulama Dili */}
+        {P && (
+        <SettingRow
+          icon={Globe}
+          label={t('common.language')}
+          sub={t('settings.languageSub')}
+          accentColor={accentColor}
+        >
+          <DropdownSelect
+            options={(SUPPORTED as readonly Lang[]).map(l => ({ key: l, label: ({ tr: 'Türkçe', en: 'English', de: 'Deutsch', fa: 'فارسی' } as Record<string, string>)[l] ?? l }))}
+            value={i18n.language as Lang}
+            onChange={(v) => setLanguage(v as Lang)}
+            accentColor={accentColor}
+          />
+        </SettingRow>
+        )}
+
+        {/* Bölge — mevzuata bağlı özellikleri tek yerden açar/kapatır.
+            TR: e-Fatura + iyzico POS + %20 KDV · IR: ikisi de kapalı, %10 KDV.
+            Lab mevzuat ayarı → yalnız lab/admin panelinde; klinik/hekime gösterilmez. */}
+        {L && isLab && canManageSettings && (
+        <SettingRow
+          icon={Globe}
+          label="Bölge"
+          sub="Mevzuat bölgesi — dil, takvim, e-Fatura, POS ve KDV varsayılanını belirler"
+          accentColor={accentColor}
+        >
+          <DropdownSelect
+            options={[
+              { key: 'TR', label: 'Türkiye', sub: 'e-Fatura · POS · %20 KDV' },
+              { key: 'IR', label: 'İran',    sub: 'e-Fatura/POS yok · %10 KDV' },
+            ]}
+            value={labRegion}
+            onChange={(v) => {
+              // Bölge değişimi KDV varsayılanını da taşır (TR %20 · IR %10).
+              // Bilinçli bir kullanıcı eylemi olduğu için mevcut oranı günceller.
+              const r = v as LabRegion;
+              if (r === labRegion) return;
+              const rate = defaultTaxRateFor(r);
+              void updateLabSettings({ region: r, default_tax_rate: rate }).then(ok => {
+                if (ok) toast.success(`${autoT('Bölge güncellendi · varsayılan KDV')} %${rate} — ${autoT('Finans ayarlarından değiştirebilirsin')}`);
+                else toast.error(autoT('Ayar kaydedilemedi — yetkini ve bağlantını kontrol et'));
+              });
+            }}
+            accentColor={accentColor}
+          />
+        </SettingRow>
+        )}
+
+        {/* Takvim — YALNIZ Farsça'da anlamlı, o yüzden yalnız orada gösterilir.
+            Farsça konuşan herkes Şemsi kullanmaz: İran'da resmîdir ama Afgan/
+            diaspora kullanıcı ya da Farsça arayüz kullanan Türk lab Miladi bekler.
+            'Otomatik' cihaz saat dilimine bakar (Asia/Tehran → Şemsi).
+            Saklanan veri ETKİLENMEZ — bu yalnız görüntüleme biçimidir. */}
+        {P && i18n.language === 'fa' && (
+          <SettingRow
+            icon={CalendarDays}
+            label="تقویم"
+            sub={calPref === 'auto'
+              ? `خودکار — اکنون ${usesPersianCalendar() ? 'شمسی' : 'میلادی'}`
+              : 'تقویمی که تاریخ‌ها با آن نمایش داده می‌شوند'}
+            accentColor={accentColor}
+          >
+            <DropdownSelect
+              options={[
+                { key: 'auto',      label: 'خودکار',  sub: 'بر اساس منطقهٔ دستگاه' },
+                { key: 'persian',   label: 'شمسی',    sub: 'تقویم هجری شمسی' },
+                { key: 'gregorian', label: 'میلادی',  sub: 'تقویم میلادی' },
+              ]}
+              value={calPref}
+              onChange={(v) => { void setCalendarPref(v as CalendarPref); setCalPref(v as CalendarPref); }}
+              accentColor={accentColor}
+            />
+          </SettingRow>
+        )}
+
+        {/* Hafta Başlangıcı — lab ayarı (lab_settings.week_start) → Laboratuvar sekmesi */}
+        {L && isLab && canManageSettings && (
+          <SettingRow
+            icon={Calendar}
+            label="Hafta Başlangıcı"
+            sub="Takvim ve raporlarda haftanın ilk günü"
+            accentColor={accentColor}
+            isLast
+          >
+            <DropdownSelect
+              options={WEEK_STARTS.map(w => ({ key: w.key, label: w.label }))}
+              value={s.week_start}
+              onChange={(v) => handleUpdate({ week_start: v })}
+              accentColor={accentColor}
+            />
+          </SettingRow>
+        )}
+
+        {/* Tarih/Saat formatı: tercih kaydediliyor ama uygulamadaki hiçbir tarih
+            gösterimi okumuyordu (değiştirmek hiçbir şeyi değiştirmiyordu). Ortak
+            biçimleyiciye bağlanana kadar gizli — SHOW_UNWIRED_PREFS. */}
+        {SHOW_UNWIRED_PREFS && (<>
+        {/* Tarih Formatı */}
+        <SettingRow
+          icon={CalendarDays}
+          label="Tarih Formatı"
+          sub="Tarihlerin gösterim biçimi"
+          accentColor={accentColor}
+        >
+          <DropdownSelect
+            options={[
+              { key: 'dd.MM.yyyy', label: formatDatePreview('dd.MM.yyyy'), sub: 'Gün.Ay.Yıl (TR)' },
+              { key: 'MM/dd/yyyy', label: formatDatePreview('MM/dd/yyyy'), sub: 'Ay/Gün/Yıl (US)' },
+              { key: 'yyyy-MM-dd', label: formatDatePreview('yyyy-MM-dd'), sub: 'Yıl-Ay-Gün (ISO)' },
+            ]}
+            value={dateFormat}
+            onChange={(v) => setUserPref('date_format', v as any)}
+            accentColor={accentColor}
+            renderLabel={(opt) => opt.label}
+          />
+        </SettingRow>
+
+        {/* Saat Formatı */}
+        <SettingRow
+          icon={Watch}
+          label="Saat Formatı"
+          sub="24 saat veya 12 saat AM/PM"
+          accentColor={accentColor}
+          isLast
+        >
+          <SegmentPicker
+            options={[
+              { key: '24h', label: '24 saat' },
+              { key: '12h', label: '12 saat' },
+            ]}
+            value={timeFormat}
+            onChange={(v) => setUserPref('time_format', v as any)}
+            accentColor={accentColor}
+          />
+        </SettingRow>
+
+        </>)}
+
+        </SettingGroup>
+        )}
+
+        {L && isLab && (
+        <SettingGroup title="Laboratuvar Kimliği" sub="Fatura, iş kâğıdı ve yazışmalarda görünen bilgiler">
 
         {isLab && canManageSettings && (
           <SettingRow
@@ -1001,9 +1358,7 @@ export function GeneralSection({ panelType, accentColor }: Props) {
           </SettingRow>
         )}
 
-        {isLab && canManageSettings && labId ? (
-          <LabBillingRow labId={labId} accentColor={accentColor} pickupAddress={pickupAddr?.address ?? null} />
-        ) : null}
+        {/* Fatura Bilgileri → Finans Ayarları'na taşındı (LabBillingCard). */}
 
         {/* ── Laboratuvar adresi + telefon ──────────────────────────
             Kurye entegrasyonundaki "alış adresi" BanaBiKurye'ye özeldi;
@@ -1076,7 +1431,7 @@ export function GeneralSection({ panelType, accentColor }: Props) {
                   anlaşılmıyordu. Şeffaflığı göstermek için damalı zemin. */}
               {/* Ayrı "Değiştir" butonu yerine karonun KENDİSİ hedef: eylem
                   değiştirdiği nesnenin üzerinde durur (Apple: doğrudan manipülasyon). */}
-              <GlassTooltip title={autoT('Logo yükle')} text={autoT('Laboratuvar logosunu yükler veya mevcut logoyu değiştirir')} enabled={!logoUploading}>
+              <GlassTooltip title={autoT(labLogoUrl ? 'Logoyu değiştir' : 'Logo yükle')} text={autoT('Laboratuvar logosunu yükler veya mevcut logoyu değiştirir')} enabled={!logoUploading}>
                 <Pressable
                   onPress={pickAndUploadLogo}
                   disabled={logoUploading}
@@ -1084,7 +1439,9 @@ export function GeneralSection({ panelType, accentColor }: Props) {
                   style={{
                     width: 84, height: 84, borderRadius: 14,
                     borderWidth: 1, borderColor: T.hairline,
-                    backgroundColor: T.cardSoft,
+                    // Logo önizlemesi koyu temada da AÇIK zemin: logolar kağıt/beyaz
+                    // için çizilir, koyu karoda lacivert logo kayboluyordu.
+                    backgroundColor: labLogoUrl ? '#F7F7F5' : T.cardSoft,
                     alignItems: 'center', justifyContent: 'center',
                     overflow: 'hidden', flexShrink: 0,
                     ...(Platform.OS === 'web'
@@ -1155,7 +1512,7 @@ export function GeneralSection({ panelType, accentColor }: Props) {
                 <View style={{ flexDirection: 'row', gap: 4 }}>
                   {['PNG', 'JPG', 'SVG'].map(tag => (
                     <View key={tag} style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: T.cardSoft, borderWidth: 1, borderColor: T.hairline }}>
-                      <Text style={{ fontSize: 9.5, fontWeight: '600', color: T.ink3 }}>{tag}</Text>
+                      <Text style={{ fontSize: 10.5, fontWeight: '600', color: T.ink3 }}>{tag}</Text>
                     </View>
                   ))}
                 </View>
@@ -1192,311 +1549,74 @@ export function GeneralSection({ panelType, accentColor }: Props) {
         </SettingGroup>
         )}
 
-        <SettingGroup title="Görünüm" sub="Tema, kenar çubuğu markası ve liste yoğunluğu" first={!isLab}>
-
-        {/* Tema — görsel önizlemeli seçici, diğer kontrollerle aynı sağ kolonda */}
-        <SettingRow
-          icon={Sun}
-          label="Tema"
-          sub="Arayüz görünüm tercihi"
-          accentColor={accentColor}
-        >
-          <ThemePreviewPicker
-            value={themeMode}
-            onChange={(v) => { useThemeModeStore.getState().setMode(v); handleUpdate({ theme_mode: v }); }}
-          />
-        </SettingRow>
-
-        {isLab && canManageSettings && labLogoUrl && (
-          <SettingRow
-            icon={ImageIcon}
-            label="Sidebar Markası"
-            sub="Kenar çubuğunda logo nasıl görünsün"
-            accentColor={accentColor}
-          >
-            <View style={{ flexDirection: 'row', gap: 4, padding: 3, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : T.hairline2, alignSelf: 'flex-end' }}>
-              {([
-                { k: 'logo_text', label: 'Logo + İsim' },
-                { k: 'logo',      label: 'Sadece Logo' },
-              ] as const).map(opt => {
-                const active = brandMode === opt.k;
-                return (
-                  <Pressable
-                    key={opt.k}
-                    onPress={() => saveBrandMode(opt.k)}
-                    style={Platform.OS === 'web'
-                      ? ((({ pressed, hovered }: any) => ({
-                          paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
-                          backgroundColor: active
-                            ? (isDark ? 'rgba(255,255,255,0.14)' : '#FFFFFF')
-                            : hovered ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') : 'transparent',
-                          borderWidth: 1,
-                          borderColor: active ? (isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.07)') : 'transparent',
-                          transform: [{ scale: pressed ? 0.97 : 1 }],
-                          cursor: 'pointer', transitionProperty: 'background-color, transform', transitionDuration: '140ms',
-                          ...(active && !isDark ? { boxShadow: '0 1px 3px rgba(0,0,0,0.10)' } : {}),
-                        })) as any)
-                      : {
-                          paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8,
-                          backgroundColor: active ? (isDark ? 'rgba(255,255,255,0.14)' : '#FFFFFF') : 'transparent',
-                          borderWidth: 1,
-                          borderColor: active ? (isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.07)') : 'transparent',
-                        }}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: active ? (T.ink as string) : (T.ink3 as string) }}>{opt.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </SettingRow>
-        )}
-
-        {/* Logo Boyutu — sidebar logo ölçeği */}
-        {isLab && canManageSettings && labLogoUrl && (
-          <SettingRow
-            icon={ImageIcon}
-            label="Logo Boyutu"
-            sub="Sidebar'daki logonun büyüklüğü"
-            accentColor={accentColor}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-end', flex: 1, justifyContent: 'flex-end' }}>
-              <Text style={{ fontSize: 11, color: T.ink3 }}>Küçük</Text>
-              {Platform.OS === 'web' ? (
-                React.createElement('input' as any, {
-                  type: 'range', min: 0.6, max: 1.8, step: 0.05, value: logoScale,
-                  onChange: (e: any) => setLogoScale(parseFloat(e.target.value)),
-                  onMouseUp: (e: any) => saveLogoScale(parseFloat(e.target.value)),
-                  onTouchEnd: (e: any) => saveLogoScale(parseFloat(e.target.value)),
-                  style: { flex: 1, maxWidth: 150, accentColor, cursor: 'pointer' },
-                })
-              ) : (
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <GlassTooltip title={autoT('Küçült')} text={autoT('Kenar çubuğundaki logoyu bir kademe küçültür')} enabled={logoScale > 0.6}>
-                    <Pressable onPress={() => saveLogoScale(logoScale - 0.1)} disabled={logoScale <= 0.6} style={{ width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: T.cardSoft, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', opacity: logoScale <= 0.6 ? 0.4 : 1 }}>
-                      <Text style={{ fontSize: 18, fontWeight: '700', color: T.ink, marginTop: -2 }}>−</Text>
-                    </Pressable>
-                  </GlassTooltip>
-                  <GlassTooltip title={autoT('Büyüt')} text={autoT('Kenar çubuğundaki logoyu bir kademe büyütür')} enabled={logoScale < 1.8}>
-                    <Pressable onPress={() => saveLogoScale(logoScale + 0.1)} disabled={logoScale >= 1.8} style={{ width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: T.cardSoft, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', opacity: logoScale >= 1.8 ? 0.4 : 1 }}>
-                      <Text style={{ fontSize: 18, fontWeight: '700', color: T.ink, marginTop: -2 }}>+</Text>
-                    </Pressable>
-                  </GlassTooltip>
-                </View>
-              )}
-              <Text style={{ fontSize: 11, color: T.ink3 }}>Büyük</Text>
-              {/* Çıplak "%60" neye göre olduğunu söylemiyordu; uçlara etiket. */}
-              <Text style={{ fontSize: 11, color: T.ink3, minWidth: 40, textAlign: 'end' as any }}>
-                %{Math.round(logoScale * 100)}
-              </Text>
-            </View>
-          </SettingRow>
-        )}
-
-        {/* Sayfa Başına Kayıt */}
-        <SettingRow
-          icon={List}
-          label="Sayfa Başına Kayıt"
-          sub="Tablo ve listelerde gösterilecek kayıt sayısı"
-          accentColor={accentColor}
-          isLast
-        >
-          <SegmentPicker
-            options={ITEMS_PER_PAGE.map(p => ({ key: p.value as any, label: p.label }))}
-            value={s.items_per_page as any}
-            onChange={(v) => handleUpdate({ items_per_page: v })}
-            accentColor={accentColor}
-          />
-        </SettingRow>
-
-        </SettingGroup>
-
-        <SettingGroup title="Bölge ve Biçim" sub="Dil, mevzuat bölgesi, takvim ve tarih/saat gösterimi">
-
-        {/* Uygulama Dili */}
-        <SettingRow
-          icon={Globe}
-          label={t('common.language')}
-          sub={t('settings.languageSub')}
-          accentColor={accentColor}
-        >
-          <DropdownSelect
-            options={(SUPPORTED as readonly Lang[]).map(l => ({ key: l, label: ({ tr: 'Türkçe', en: 'English', de: 'Deutsch', fa: 'فارسی' } as Record<string, string>)[l] ?? l }))}
-            value={i18n.language as Lang}
-            onChange={(v) => setLanguage(v as Lang)}
-            accentColor={accentColor}
-          />
-        </SettingRow>
-
-        {/* Bölge — mevzuata bağlı özellikleri tek yerden açar/kapatır.
-            TR: e-Fatura + iyzico POS + %20 KDV · IR: ikisi de kapalı, %10 KDV.
-            Lab mevzuat ayarı → yalnız lab/admin panelinde; klinik/hekime gösterilmez. */}
-        {isLab && canManageSettings && (
-        <SettingRow
-          icon={Globe}
-          label="Bölge"
-          sub="Mevzuat bölgesi — dil, takvim, e-Fatura, POS ve KDV varsayılanını belirler"
-          accentColor={accentColor}
-        >
-          <DropdownSelect
-            options={[
-              { key: 'TR', label: '🇹🇷 Türkiye', sub: 'e-Fatura · POS · %20 KDV' },
-              { key: 'IR', label: '🇮🇷 İran',    sub: 'e-Fatura/POS yok · %10 KDV' },
-            ]}
-            value={labRegion}
-            onChange={(v) => {
-              // Bölge değişimi KDV varsayılanını da taşır (TR %20 · IR %10).
-              // Bilinçli bir kullanıcı eylemi olduğu için mevcut oranı günceller.
-              const r = v as LabRegion;
-              void updateLabSettings({ region: r, default_tax_rate: defaultTaxRateFor(r) });
-            }}
-            accentColor={accentColor}
-          />
-        </SettingRow>
-        )}
-
-        {/* Takvim — YALNIZ Farsça'da anlamlı, o yüzden yalnız orada gösterilir.
-            Farsça konuşan herkes Şemsi kullanmaz: İran'da resmîdir ama Afgan/
-            diaspora kullanıcı ya da Farsça arayüz kullanan Türk lab Miladi bekler.
-            'Otomatik' cihaz saat dilimine bakar (Asia/Tehran → Şemsi).
-            Saklanan veri ETKİLENMEZ — bu yalnız görüntüleme biçimidir. */}
-        {i18n.language === 'fa' && (
-          <SettingRow
-            icon={CalendarDays}
-            label="تقویم"
-            sub={calPref === 'auto'
-              ? `خودکار — اکنون ${usesPersianCalendar() ? 'شمسی' : 'میلادی'}`
-              : 'تقویمی که تاریخ‌ها با آن نمایش داده می‌شوند'}
-            accentColor={accentColor}
-          >
-            <DropdownSelect
-              options={[
-                { key: 'auto',      label: 'خودکار',  sub: 'بر اساس منطقهٔ دستگاه' },
-                { key: 'persian',   label: 'شمسی',    sub: 'تقویم هجری شمسی' },
-                { key: 'gregorian', label: 'میلادی',  sub: 'تقویم میلادی' },
-              ]}
-              value={calPref}
-              onChange={(v) => { void setCalendarPref(v as CalendarPref); setCalPref(v as CalendarPref); }}
-              accentColor={accentColor}
-            />
-          </SettingRow>
-        )}
-
-        {/* Hafta Başlangıcı — manage_settings yetkisi gerekir */}
-        {canManageSettings && (
-          <SettingRow
-            icon={Calendar}
-            label="Hafta Başlangıcı"
-            sub="Takvim ve raporlarda haftanın ilk günü"
-            accentColor={accentColor}
-          >
-            <DropdownSelect
-              options={WEEK_STARTS.map(w => ({ key: w.key, label: w.label }))}
-              value={s.week_start}
-              onChange={(v) => handleUpdate({ week_start: v })}
-              accentColor={accentColor}
-            />
-          </SettingRow>
-        )}
-
-        {/* Tarih Formatı */}
-        <SettingRow
-          icon={CalendarDays}
-          label="Tarih Formatı"
-          sub="Tarihlerin gösterim biçimi"
-          accentColor={accentColor}
-        >
-          <DropdownSelect
-            options={[
-              { key: 'dd.MM.yyyy', label: formatDatePreview('dd.MM.yyyy'), sub: 'Gün.Ay.Yıl (TR)' },
-              { key: 'MM/dd/yyyy', label: formatDatePreview('MM/dd/yyyy'), sub: 'Ay/Gün/Yıl (US)' },
-              { key: 'yyyy-MM-dd', label: formatDatePreview('yyyy-MM-dd'), sub: 'Yıl-Ay-Gün (ISO)' },
-            ]}
-            value={dateFormat}
-            onChange={(v) => setUserPref('date_format', v as any)}
-            accentColor={accentColor}
-            renderLabel={(opt) => opt.label}
-          />
-        </SettingRow>
-
-        {/* Saat Formatı */}
-        <SettingRow
-          icon={Watch}
-          label="Saat Formatı"
-          sub="24 saat veya 12 saat AM/PM"
-          accentColor={accentColor}
-          isLast
-        >
-          <SegmentPicker
-            options={[
-              { key: '24h', label: '24 saat' },
-              { key: '12h', label: '12 saat' },
-            ]}
-            value={timeFormat}
-            onChange={(v) => setUserPref('time_format', v as any)}
-            accentColor={accentColor}
-          />
-        </SettingRow>
-
-        </SettingGroup>
-
-        {isLab && canManageSettings && (
-        <SettingGroup title="İş Akışı" sub="Sipariş numaralandırma ve mesai saatleri">
+        {L && isLab && canManageSettings && (
+        <SettingGroup title="İş Akışı" sub="Sipariş numaralandırma ve teslim süreleri">
 
         {/* Sipariş Prefix */}
         <SettingRow
           icon={Hash}
           label="Sipariş Ön Eki"
-          sub="Sipariş numarası formatı (ör: LAB-2026-0001)"
+          sub="Yeni siparişlerin numarası bu ön ekle başlar · eski siparişler değişmez"
           accentColor={accentColor}
         >
+          <View style={{ gap: 4 }}>
           <TextInput
             className="text-[14px] border rounded-[14px] px-3.5"
             style={{ height: 36, width: '100%', borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : T.card, color: T.ink, outlineWidth: 0 } as any}
-            value={s.order_prefix}
-            onChangeText={(v) => handleUpdate({ order_prefix: v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) })}
+            value={prefixDraft ?? s.order_prefix}
+            onChangeText={(v) => setPrefixDraft(v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+            onBlur={commitPrefix}
+            onSubmitEditing={commitPrefix}
             placeholder="LAB"
             placeholderTextColor={T.ink3}
             maxLength={6}
             autoCapitalize="characters"
           />
+          <Text style={{ fontSize: 11, color: T.ink3, textAlign: 'right' }}>
+            {autoT('Örnek')}: {((prefixDraft ?? s.order_prefix) || 'LAB')}-{new Date().getFullYear()}-0001
+          </Text>
+          </View>
         </SettingRow>
 
-        {/* Çalışma Saatleri */}
+        {/* Varsayılan teslim süresi — sihirbaz bu kadar iş günü sonrasını en erken
+            tarih yapar ve tarihi kendiliğinden doldurur. Hizmette (Fiyat Listesi)
+            üretim süresi girilmişse o hizmet için o süre geçerlidir. */}
+        <SettingRow
+          icon={Timer}
+          label="Varsayılan Teslim Süresi"
+          sub="Yeni siparişte en erken teslim · iş günü, hafta sonu sayılmaz · hizmette süre girilmişse o kullanılır"
+          accentColor={accentColor}
+        >
+          <DropdownSelect
+            options={LEAD_DAY_OPTIONS.map(n => ({ key: n, label: `${n} ${autoT('iş günü')}` }))}
+            value={(s as any).default_lead_days ?? 5}
+            onChange={(v) => handleUpdate({ default_lead_days: Number(v) })}
+            accentColor={accentColor}
+            renderLabel={(opt) => opt.label}
+          />
+        </SettingRow>
+
         <SettingRow
           icon={Clock}
-          label="Çalışma Saatleri"
-          sub="Mesai başlangıç ve bitiş saatleri"
+          label="Acil Teslim Süresi"
+          sub="Acil işaretlenen siparişte en erken teslim · iş günü"
           accentColor={accentColor}
           isLast
         >
-          <View className="flex-row items-center gap-1.5">
-            <TextInput
-              className="text-[14px] text-center border rounded-[14px]"
-              style={{ height: 36, width: 84, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : T.card, color: T.ink, outlineWidth: 0 } as any}
-              value={s.working_hours_start}
-              onChangeText={(v) => handleUpdate({ working_hours_start: v })}
-              placeholder="08:00"
-              placeholderTextColor={T.ink3}
-              maxLength={5}
-            />
-            <Text className="text-[14px] px-1" style={{ color: T.ink3 }}>–</Text>
-            <TextInput
-              className="text-[14px] text-center border rounded-[14px]"
-              style={{ height: 36, width: 84, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : T.card, color: T.ink, outlineWidth: 0 } as any}
-              value={s.working_hours_end}
-              onChangeText={(v) => handleUpdate({ working_hours_end: v })}
-              placeholder="18:00"
-              placeholderTextColor={T.ink3}
-              maxLength={5}
-            />
-          </View>
+          <DropdownSelect
+            options={URGENT_DAY_OPTIONS.map(n => ({ key: n, label: `${n} ${autoT('iş günü')}` }))}
+            value={(s as any).urgent_lead_days ?? 1}
+            onChange={(v) => handleUpdate({ urgent_lead_days: Number(v) })}
+            accentColor={accentColor}
+            renderLabel={(opt) => opt.label}
+          />
         </SettingRow>
 
         </SettingGroup>
         )}
 
-        {isLab && canManageSettings && (
-        <SettingGroup title="Gizlilik ve Güvenlik" sub="Teknisyen adı görünürlüğü ve oturum güvenliği">
+        {L && isLab && canManageSettings && (
+        <SettingGroup title="Gizlilik" sub="Teknisyen adı görünürlüğü">
 
         {/* Teknisyen adı görünürlüğü — hekim/kliniklere nasıl görünsün */}
         <SettingRow
@@ -1504,6 +1624,7 @@ export function GeneralSection({ panelType, accentColor }: Props) {
           label="Teknisyen Adı (hekim/klinik)"
           sub="Sipariş aşamalarında teknisyen adı hekim ve kliniklere nasıl görünsün"
           accentColor={accentColor}
+          isLast
         >
           <SegmentPicker
             options={[
@@ -1517,26 +1638,11 @@ export function GeneralSection({ panelType, accentColor }: Props) {
           />
         </SettingRow>
 
-        {/* Otomatik Çıkış */}
-        <SettingRow
-          icon={LogOut}
-          label="Otomatik Çıkış"
-          sub="İşlem yapılmadığında otomatik oturum kapatma"
-          accentColor={accentColor}
-          isLast
-        >
-          <DropdownSelect
-            options={AUTO_LOGOUT.map(a => ({ key: a.value, label: a.label }))}
-            value={s.auto_logout_minutes}
-            onChange={(v) => handleUpdate({ auto_logout_minutes: v })}
-            accentColor={accentColor}
-          />
-        </SettingRow>
-
         </SettingGroup>
         )}
 
-        {isDoctor && (
+        {/* Unvan + varsayılan lab da yeni sipariş/isim gösteriminde okunmuyordu → gizli. */}
+        {P && isDoctor && SHOW_UNWIRED_PREFS && (
         <SettingGroup title="Hekim Tercihleri" sub="Unvan ve varsayılan laboratuvar">
 
         {/* Hekim Unvanı */}
@@ -1584,11 +1690,13 @@ export function GeneralSection({ panelType, accentColor }: Props) {
       {/* Bilgi notu */}
       <View
         className="flex-row gap-3 rounded-2xl p-4 mt-4"
-        style={{ backgroundColor: `${accentColor}08`, borderWidth: 1, borderColor: `${accentColor}30` }}
+        style={{ backgroundColor: T.cardSoft, borderWidth: 1, borderColor: T.hairline }}
       >
-        <Info size={15} color={accentColor} strokeWidth={1.8} style={{ marginTop: 1 }} />
-        <Text className="flex-1 text-[13px] leading-5" style={{ color: accentColor }}>
-          Ayarlar değiştirildiğinde otomatik olarak kaydedilir. Tüm kullanıcılar için geçerli olur.
+        <Info size={15} color={T.ink3} strokeWidth={1.8} style={{ marginTop: 1 }} />
+        <Text className="flex-1 text-[13px] leading-5" style={{ color: T.ink2 }}>
+          {L
+            ? 'Ayarlar değiştirildiğinde otomatik kaydedilir ve tüm ekip için geçerlidir. Dil ve tema her kişinin kendi Genel sekmesindedir.'
+            : 'Ayarlar değiştirildiğinde otomatik kaydedilir ve yalnız senin hesabın için geçerlidir.'}
         </Text>
       </View>
     </ScrollView>

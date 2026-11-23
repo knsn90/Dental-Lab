@@ -364,18 +364,30 @@ export async function fetchWorkOrderById(idOrNumber: string) {
 
   if (result.error || !result.data) return result;
 
+  // Kalem birimi (Üye / Çene / Adet / Seans / Vaka) — hizmet kataloğundan; Çalışma tablosu
+  // adedi bununla yazar (eskiden her kalem "diş" görünüyordu).
+  try {
+    const items = ((result.data as any).order_items ?? []) as any[];
+    const sids = Array.from(new Set(items.map((it) => it?.service_id).filter(Boolean)));
+    if (sids.length > 0) {
+      const { data: svc } = await supabase.from('lab_services').select('id, unit').in('id', sids);
+      const um = new Map(((svc ?? []) as any[]).map((r) => [r.id, r.unit]));
+      for (const it of items) if (it?.service_id) it.unit = um.get(it.service_id) ?? null;
+    }
+  } catch { /* birim yalnız görüntü — hata akışı bozmasın */ }
+
   const doctorId: string | null = (result.data as any).doctor_id ?? null;
   if (doctorId) {
     // doctor_id polymorphic — iki tabloyu paralel sorgula, ilk bulunanı kullan.
     const [extRes, profRes] = await Promise.all([
       supabase
         .from('doctors')
-        .select('id, full_name, phone, clinic:clinics(id, name)')
+        .select('id, full_name, phone, clinic:clinics(id, name, address, phone)')
         .eq('id', doctorId)
         .maybeSingle(),
       supabase
         .from('profiles')
-        .select('id, full_name, phone, clinic_name')
+        .select('id, full_name, phone, clinic_name, clinic_id')
         .eq('id', doctorId)
         .maybeSingle(),
     ]);
@@ -383,13 +395,20 @@ export async function fetchWorkOrderById(idOrNumber: string) {
     if (extRes.data) {
       (result.data as any).doctor = extRes.data;
     } else if (profRes.data) {
+      // Hesaplı hekim: klinik kaydı (adres/telefon) clinic_id üzerinden — yoksa yalnız ad.
+      const pcid = (profRes.data as any).clinic_id as string | null;
+      const { data: pc } = pcid
+        ? await supabase.from('clinics').select('id, name, address, phone').eq('id', pcid).maybeSingle()
+        : { data: null as any };
       (result.data as any).doctor = {
         id: profRes.data.id,
         full_name: profRes.data.full_name,
         phone: profRes.data.phone,
-        clinic: profRes.data.clinic_name
-          ? { id: null, name: profRes.data.clinic_name }
-          : null,
+        clinic: pc
+          ? { ...pc, name: (pc as any).name || profRes.data.clinic_name }
+          : profRes.data.clinic_name
+            ? { id: null, name: profRes.data.clinic_name }
+            : null,
       };
     } else {
       (result.data as any).doctor = null;

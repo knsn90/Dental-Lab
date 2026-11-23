@@ -186,7 +186,7 @@ export function flagLabel(f: DiagnosticFlag): string {
 
 export function flagDescription(f: DiagnosticFlag): string {
   switch (f) {
-    case 'holes':         return 'Mesh\'te kapatılmamış açık yüzeyler var';
+    case 'holes':         return 'Mesh\'te kapatılmamış açık yüzeyler var';  // ağız içi taramada olağan
     case 'non-manifold':  return '3+ yüzeyin paylaştığı kenarlar (yanlış topology)';
     case 'inverted':      return 'Bazı yüzlerin normalleri içe dönük — yanlış görünebilir';
     case 'low-density':   return 'Düşük poligon sayısı — tarama kalitesi düşük';

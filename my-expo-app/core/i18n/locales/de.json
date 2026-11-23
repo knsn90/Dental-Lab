@@ -390,7 +390,7 @@
       },
       "general": {
         "label": "Allgemein",
-        "sub": "Sprache, Zeitzone, Format"
+        "sub": "Design, Sprache und Kalender"
       },
       "users": {
         "label": "Benutzer",
@@ -414,7 +414,7 @@
       },
       "finance": {
         "label": "Finanzen",
-        "sub": "Währung, Steuer und Zahlungserinnerungen"
+        "sub": "Währung, MwSt., Rechnungsdaten, Erinnerungen"
       },
       "currency": {
         "label": "Wechselkurse",
@@ -430,11 +430,11 @@
       },
       "workflows": {
         "label": "Arbeitsabläufe",
-        "sub": "Designer für Produktionsabläufe"
+        "sub": "Stationen, Ablaufdesign und Regeln"
       },
       "mycode": {
-        "label": "Mein Anmeldecode",
-        "sub": "Tablet-Anmeldecode (PIN)"
+        "label": "Tablet-Anmeldung",
+        "sub": "Anmeldecode und Tablet-Verwaltung"
       },
       "devices": {
         "label": "Tablets",
@@ -451,6 +451,14 @@
       "implants": {
         "label": "Implantatmarken",
         "sub": "Marken- und Modellliste"
+      },
+      "equipment": {
+        "label": "Geräte",
+        "sub": "Geräte, Inventar und Scanner"
+      },
+      "laboratory": {
+        "label": "Labor",
+        "sub": "Identität, Marke, Region, Aufträge und Datenschutz"
       }
     },
     "modules": {

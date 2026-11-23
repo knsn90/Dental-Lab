@@ -15,6 +15,7 @@ import {
   Animated, Easing, useWindowDimensions,
 } from 'react-native';
 import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { F } from '../../../core/theme/typography';
 import { LinearProgressX, PercentRingX } from '../../../core/ui/ProgressX';
@@ -45,6 +46,16 @@ function shortLabel(name: string): string {
   const first = String(name ?? '').split('·')[0].trim();
   if (first && first !== name.trim()) return first;
   return first.replace(/\.[a-z0-9]{2,5}$/i, '');
+}
+
+/** "Kapanış Taraması · erenbekin BiteScan2.stl" → "erenbekin BiteScan2".
+ *  Kart zaten kendi kutusunun (slot) içinde — kutu adını tekrar yazmak aynı
+ *  kutudaki dosyaları ayırt edilemez yapıyordu. Ayraç yoksa adın kendisi. */
+function fileDisplayName(name: string): string {
+  const raw = String(name ?? '');
+  const i = raw.indexOf('·');
+  const rest = (i >= 0 ? raw.slice(i + 1) : raw).trim();
+  return (rest || raw).replace(/\.[a-z0-9]{2,5}$/i, '');
 }
 
 function isPreviewable(att: UploadAttachment): boolean {
@@ -313,7 +324,7 @@ export function FilesUploadModal({
               <AppIcon name={iconName as any} size={28} color="#22C55E" />
             </View>
           )}
-          <Text style={[s.uploadCardLabel, { color: T.ink }]} numberOfLines={2}>{att.name}</Text>
+          <Text style={[s.uploadCardLabel, { color: T.ink }]} numberOfLines={2}>{fileDisplayName(att.name)}</Text>
           {!isImg && /^[a-z0-9]{2,5}$/i.test(ext) && (
             <Text style={[s.uploadCardFileName, { color: '#22C55E' }]} numberOfLines={1}>
               {ext.toUpperCase()}
@@ -324,36 +335,48 @@ export function FilesUploadModal({
           position: 'absolute', bottom: 6, left: 6, right: 6,
           flexDirection: 'row', justifyContent: 'center', gap: 5,
         }}>
-          <TouchableOpacity
-            style={{ flex: 1, height: 26, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: '#22C55E' }}
-            onPress={(e) => { (e as any).stopPropagation?.(); onPreview?.(att); }}
-            activeOpacity={0.85}
-          >
-            <AppIcon name={'eye-outline' as any} size={13} color="#FFFFFF" />
-          </TouchableOpacity>
-          {onDownload && (
+          <GlassTooltip title="Önizle" text="Dosyayı uygulama içinde aç" style={{ flex: 1 }}>
             <TouchableOpacity
-              style={{ flex: 1, height: 26, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: '#94A3B8' }}
-              onPress={(e) => { (e as any).stopPropagation?.(); onDownload(att); }}
+              style={{ flex: 1, height: 26, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: '#22C55E' }}
+              onPress={(e) => { (e as any).stopPropagation?.(); onPreview?.(att); }}
               activeOpacity={0.85}
+              accessibilityLabel="Önizle"
             >
-              <AppIcon name={'download' as any} size={13} color="#FFFFFF" />
+              <AppIcon name={'eye-outline' as any} size={13} color="#FFFFFF" />
             </TouchableOpacity>
+          </GlassTooltip>
+          {onDownload && (
+            <GlassTooltip title="İndir" text="Dosyayı bilgisayarına kaydet" style={{ flex: 1 }}>
+              <TouchableOpacity
+                // Gri (#94A3B8) devre dışı gibi okunuyordu → nötr koyu ton.
+                style={{ flex: 1, height: 26, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#475569' : '#64748B' }}
+                onPress={(e) => { (e as any).stopPropagation?.(); onDownload(att); }}
+                activeOpacity={0.85}
+                accessibilityLabel="İndir"
+              >
+                <AppIcon name={'download' as any} size={13} color="#FFFFFF" />
+              </TouchableOpacity>
+            </GlassTooltip>
           )}
           {/* Sona "+" — aynı slota yeni dosya ekle, butonu hep yerinde kalır */}
-          <TouchableOpacity
-            style={{ flex: 1, height: 26, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: color }}
-            onPress={(e) => { (e as any).stopPropagation?.(); onAdd(); }}
-            activeOpacity={0.85}
-          >
-            <AppIcon name={'plus' as any} size={15} color="#FFFFFF" />
-          </TouchableOpacity>
+          <GlassTooltip title="Dosya ekle" text="Bu kutuya bir dosya daha yükle" style={{ flex: 1 }}>
+            <TouchableOpacity
+              style={{ flex: 1, height: 26, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: color }}
+              onPress={(e) => { (e as any).stopPropagation?.(); onAdd(); }}
+              activeOpacity={0.85}
+              accessibilityLabel="Dosya ekle"
+            >
+              <AppIcon name={'plus' as any} size={15} color="#FFFFFF" />
+            </TouchableOpacity>
+          </GlassTooltip>
         </View>
         {onRemove && att.canRemove && (
           <TouchableOpacity
             style={s.uploadCardDel}
-            onPress={(e) => { (e as any).stopPropagation?.(); onRemove(att.id); }}
+            // Sağ listedeki gibi ONAYLI silme — eskiden tek dokunuşta siliyordu.
+            onPress={(e) => { (e as any).stopPropagation?.(); askRemove(att); }}
             activeOpacity={0.8}
+            accessibilityLabel="Dosyayı sil"
           >
             <AppIcon name={'close' as any} size={12} color="#EF4444" />
           </TouchableOpacity>
@@ -479,7 +502,7 @@ export function FilesUploadModal({
   const askRemove = React.useCallback((att: UploadAttachment) => {
     setConfirm({
       title: 'Dosyayı sil',
-      highlight: shortLabel(att.name),
+      highlight: att.name,
       message: 'dosyası siparişten kaldırılacak. Bu işlem geri alınamaz.',
       variant: 'danger',
       label: 'Evet, sil',

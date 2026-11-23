@@ -68,8 +68,9 @@ export function parseImplantDetails(notes?: string | null): Record<number, Impla
     if (eq === -1) continue;
     const n = parseInt(seg.slice(0, eq).trim(), 10);
     if (!Number.isFinite(n)) continue;
-    const [system = '', type = '', abutment = '', screw = ''] = seg.slice(eq + 1).split('|').map(s => s.trim());
-    out[n] = { system, type, abutment, screw };
+    // 5. alan (platform) 2026-11'de eklendi; eski kayıtlarda yoktur.
+    const [system = '', type = '', abutment = '', screw = '', platform = ''] = seg.slice(eq + 1).split('|').map(s => s.trim());
+    out[n] = { system, type, abutment, screw, ...(platform ? { platform } : {}) };
   }
   return out;
 }
@@ -114,15 +115,17 @@ export function parseItemNotes(notes?: string | null): {
 // ─── Okuma ───────────────────────────────────────────────────────────────────
 
 function isBlankDetail(d?: ImplantDetail | null): boolean {
-  return !d || !(d.system || d.model || d.type || d.abutment || d.screw);
+  return !d || !(d.system || d.model || d.type || d.platform || d.abutment || d.screw);
 }
 
 function normalizeDetail(raw: any): ImplantDetail {
   const model = String(raw?.model ?? '').trim();
+  const platform = String(raw?.platform ?? '').trim();
   return {
     system:   String(raw?.system   ?? '').trim(),
     ...(model ? { model } : {}),
     type:     String(raw?.type     ?? '').trim(),
+    ...(platform ? { platform } : {}),
     abutment: String(raw?.abutment ?? '').trim(),
     screw:    String(raw?.screw    ?? '').trim(),
   };
@@ -221,7 +224,7 @@ export function readImplantInfo(
 /** Bir dişin detayını okunur tek satıra çevirir: "Neodent · Bone Level · Ti-base". */
 export function formatImplantDetail(d?: ImplantDetail | null): string {
   if (!d) return '';
-  return [brandWithModel(d.system, d.model), d.type, d.abutment, d.screw].map(s => (s ?? '').trim()).filter(Boolean).join(' · ');
+  return [brandWithModel(d.system, d.model), d.type, d.platform, d.abutment, d.screw].map(s => (s ?? '').trim()).filter(Boolean).join(' · ');
 }
 
 /**
@@ -233,7 +236,7 @@ export function formatImplantDetail(d?: ImplantDetail | null): string {
 export function implantLineFor(info: ImplantInfo, tooth: number): string {
   const d = info.details[tooth];
   const system = brandWithModel((d?.system ?? '').trim() || info.brand, d?.model);
-  return [system, d?.type, d?.abutment, d?.screw].map(s => (s ?? '').trim()).filter(Boolean).join(' · ');
+  return [system, d?.type, d?.platform, d?.abutment, d?.screw].map(s => (s ?? '').trim()).filter(Boolean).join(' · ');
 }
 
 /**
@@ -296,4 +299,18 @@ export function implantFieldsPayload(form: ImplantFormShape): {
     implant_teeth:   teeth.length > 0 ? teeth : null,
     implant_details: Object.keys(details).length > 0 ? details : null,
   };
+}
+
+/**
+ * Diş-başı detayı order_items.notes kodlamasına çevirir:
+ *   "15 = Straumann BLX|Bone Level|Kişiye özel (Custom)|Tekli|RP (Standart)"
+ * Ayraç karakterleri (· | ; =) serbest metinden temizlenir — aksi halde
+ * findNotePart/parseImplantDetails kaydı yanlış böler.
+ */
+export function encodeImplantDetailSegment(tooth: number, d: ImplantDetail): string {
+  const clean = (v?: string | null) => String(v ?? '').replace(/[·|;=]/g, ' ').replace(/\s+/g, ' ').trim();
+  const fields = [clean(brandWithModel(d.system, d.model)), clean(d.type), clean(d.abutment), clean(d.screw)];
+  const platform = clean(d.platform);
+  if (platform) fields.push(platform);
+  return `${tooth} = ${fields.join('|')}`;
 }

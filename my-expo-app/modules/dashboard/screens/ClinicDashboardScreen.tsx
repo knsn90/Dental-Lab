@@ -77,7 +77,7 @@ const INK   = DS.ink[900];
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
   alindi:          { label: 'Alındı',          color: DS.ink[500],  bg: 'rgba(0,0,0,0.05)' },
   atama_bekleniyor:{ label: 'Atama Bekliyor',  color: DS.ink[500], bg: 'rgba(0,0,0,0.05)' },
-  asamada:         { label: 'Üretimde',        color: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)' },
+  asamada:         { label: 'Üretim Aşamasında',        color: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)' },
   uretimde:        { label: 'Üretimde',        color: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)' },
   kalite_kontrol:  { label: 'Kalite Kontrol',  color: '#1F5689',   bg: 'rgba(74,143,201,0.12)' },
   kurye_bekleniyor:{ label: 'Kurye Bekleniyor',color: '#1F5689',   bg: 'rgba(74,143,201,0.12)' },

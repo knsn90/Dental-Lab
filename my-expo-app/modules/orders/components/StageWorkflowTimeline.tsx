@@ -12,6 +12,7 @@ import {
 import { confirmAsync } from '../../../core/util/confirm';
 import { forceActivateStage, revertStage, updateDeliveryStatus, advanceOrderStatus } from '../api';
 import { toast } from '../../../core/ui/Toast';
+import { lightenForDark } from '../../../core/ui/HeroGlow';
 import type { WorkOrderStatus } from '../../../lib/types';
 
 export function StageWorkflowTimeline(p: any) {
@@ -30,6 +31,9 @@ export function StageWorkflowTimeline(p: any) {
   // Dar ekran (mobil): kompakt satırı 2 satıra aç — isim kırpılmasın.
   const { width } = useWindowDimensions();
   const isNarrow = width < 768;
+  // Kart her temada koyu (lacivert) → koyu panel accent'i (kobalt) üstünde okunmuyordu.
+  // Rozet metni için accent'in açık tonu; zemin/kenarlık accent'te kalır.
+  const accentOnDark = lightenForDark(panelAccent, 0.45);
   return (
     <>
             {/* Aşama Detayları — collapse trigger (siyah kart içinde) */}
@@ -56,7 +60,7 @@ export function StageWorkflowTimeline(p: any) {
                     backgroundColor: panelAccent + '22',
                     borderWidth: 1, borderColor: panelAccent + '40',
                   }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: panelAccent }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: accentOnDark }}>
                       {combinedStages.filter((s: any) => s.status === 'tamamlandi' || s.status === 'onaylandi').length}/{combinedStages.length}
                     </Text>
                   </View>
@@ -80,7 +84,7 @@ export function StageWorkflowTimeline(p: any) {
                             style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, marginTop: i === 0 ? 0 : 6, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: 'rgba(255,255,255,0.06)', ...(Platform.OS === 'web' && stg.lane != null ? { cursor: 'pointer' } as any : {}) }}>
                             {stg.lane != null && (
                               <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: panelAccent + '26' }}>
-                                <Text style={{ fontSize: 11.5, fontWeight: '800', color: panelAccent, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>{stg.teeth}</Text>
+                                <Text style={{ fontSize: 11.5, fontWeight: '800', color: accentOnDark, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>{stg.teeth}</Text>
                               </View>
                             )}
                             <Text numberOfLines={1} style={{ flex: 1, color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
@@ -134,7 +138,7 @@ export function StageWorkflowTimeline(p: any) {
                         : () => handleAdminCompleteStage(stg);
                       const menu: { icon: any; label: string; color: string; run: () => void }[] = [];
                       if (editable && isManager && !stg.is_virtual) {
-                        if (isPending) menu.push({ icon: Play, label: 'Teknisyene gönder', color: 'rgba(255,255,255,0.85)', run: async () => { const r = await forceActivateStage(stg.id); if (!r.ok) { alert(`Aktif edilemedi: ${r.error ?? ''}`); return; } refetch(); refetchStages(); } });
+                        if (isPending) menu.push({ icon: Play, label: 'Teknisyene gönder', color: 'rgba(255,255,255,0.85)', run: async () => { const r = await forceActivateStage(stg.id); if (!r.ok) { toast.error(r.error || 'Aktif edilemedi'); return; } refetch(); refetchStages(); } });
                         else if (!isActive && !isCompleted) menu.push({ icon: Play, label: 'Teknisyene gönder', color: 'rgba(255,255,255,0.85)', run: () => handleAdminActivateStage(stg) });
                         // Devret: tamamlanmamış HER aşamada (aktif + bekleyen + duraklamış).
                         // Pasife alınan teknisyene atanmış bekleyen aşama böylece aktif

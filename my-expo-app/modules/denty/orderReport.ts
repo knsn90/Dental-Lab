@@ -67,7 +67,7 @@ function line(label: string, value: unknown): string {
 }
 
 /** Siparişin bağlamını düz metne çevirir — modele giden tek girdi budur. */
-async function gather(orderId: string): Promise<Gathered> {
+async function gather(orderId: string, audience: ReportAudience): Promise<Gathered> {
   const { data: order, error } = await supabase
     .from('work_orders')
     .select('id, order_number, patient_name, status, work_type, tooth_numbers, shade, machine_type,' +
@@ -95,9 +95,13 @@ async function gather(orderId: string): Promise<Gathered> {
       .select('content, created_at, attachment_name, sender:profiles!order_messages_sender_id_fkey(full_name, user_type)')
       .eq('work_order_id', orderId).order('created_at', { ascending: true }).limit(MAX_MESSAGES),
     supabase.from('work_order_photos').select('storage_path, caption, created_at').eq('work_order_id', orderId).limit(40),
+    // order_stages'te ad kolonu YOK — istasyon adı lab_stations'tan (eskiden olmayan
+    // 'stage_name' istendiği için sorgu hata veriyor, özetler aşamasız yazılıyordu).
+    // Atlanan (skipped) aşamalar plan dışıdır, özete girmez.
     supabase.from('order_stages')
-      .select('sequence_order, stage_name, status, started_at, completed_at')
-      .eq('work_order_id', orderId).order('sequence_order', { ascending: true }).limit(40),
+      .select('sequence_order, lane, status, started_at, completed_at, station:station_id ( name )')
+      .eq('work_order_id', orderId).neq('status', 'skipped')
+      .order('lane', { ascending: true }).order('sequence_order', { ascending: true }).limit(40),
     supabase.from('work_orders').select('id, order_number, status, created_at')
       .or(`revision_of_id.eq.${orderId},continues_order_id.eq.${orderId}`).limit(20),
     o.patient_name
@@ -127,12 +131,13 @@ async function gather(orderId: string): Promise<Gathered> {
   t += line('Oluşturma', o.created_at?.slice(0, 10));
   t += line('Teslim tarihi', o.delivery_date);
   t += line('Hekim notu', o.notes);
-  t += line('Lab notu', o.lab_notes);
+  // Lab iç notu klinik özetine HİÇ gönderilmez (yalnız yönergeye güvenilmez).
+  if (audience === 'lab') t += line('Lab notu', o.lab_notes);
 
   if (stages.length) {
     t += `\nAŞAMALAR (${stages.length}):\n`;
     stages.forEach(s => {
-      t += `- ${s.stage_name ?? 'aşama'}: ${s.status}`
+      t += `- ${s.station?.name ?? 'aşama'}: ${s.status}`
         + (s.completed_at ? ` (bitti ${String(s.completed_at).slice(0, 10)})` : '') + '\n';
     });
   }
@@ -194,7 +199,7 @@ const SYSTEM_CLINIC =
 export async function generateOrderReport(
   orderId: string, audience: ReportAudience,
 ): Promise<{ body: string; sources: Record<string, number>; orderNumber: string }> {
-  const g = await gather(orderId);
+  const g = await gather(orderId, audience);
   // App Store 5.1.2(i): kişisel veri Claude'a gitmeden ÖNCE açık izin.
   if (!(await ensureAiConsent())) throw new Error('Yapay zekâ izni verilmedi');
 

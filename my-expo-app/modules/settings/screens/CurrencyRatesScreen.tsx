@@ -29,6 +29,7 @@ import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { useLabSettingsStore } from '../../../core/store/labSettingsStore';
 
 interface Props {
   accentColor?: string;
@@ -46,6 +47,13 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A', embedded = false 
   const labId = (profile as any)?.lab_id ?? null;
 
   const [baseCurrency, setBaseCurrency] = useState<Currency>('TRY');
+  // Finans Ayarları'na gömülüyken ana para birimi TEK yerden seçilir (üstteki Finans
+  // kartı, labSettingsStore). Eskiden burada ikinci bir seçici store'u atlayıp
+  // doğrudan yazıyordu → iki seçici farklı değer gösterebiliyordu.
+  const storeBase = useLabSettingsStore(s => s.settings?.default_currency) as Currency | undefined;
+  useEffect(() => {
+    if (embedded && storeBase && SUPPORTED_CURRENCIES.includes(storeBase)) setBaseCurrency(storeBase);
+  }, [embedded, storeBase]);
   const [rates, setRates] = useState<ExchangeRate[]>([]);
   const [loading, setLoading] = useState(true);
   const [tcmbLoading, setTcmbLoading] = useState(false);
@@ -192,23 +200,26 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A', embedded = false 
           </View>
           <GlassTooltip
             title={autoT('Raporlama para birimi')}
-            text={autoT('Tüm raporların çevrileceği ana para birimini seç')}
+            text={embedded
+              ? autoT('Ana para birimi yukarıdaki Finans kartından değiştirilir')
+              : autoT('Tüm raporların çevrileceği ana para birimini seç')}
             placement="bottom"
           >
           <Pressable
+            disabled={embedded}
             onPress={() => setBasePickerOpen(true)}
             style={{
               flexDirection: 'row', alignItems: 'center', gap: 6,
               paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
               backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: T.hairline,
-              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              ...(Platform.OS === 'web' && !embedded ? { cursor: 'pointer' } as any : {}),
             }}
           >
             <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }}>
               <Text style={{ fontSize: 11, fontWeight: '700', color: T.ink3 }}>{CURRENCY_META[baseCurrency].symbol}</Text>
             </View>
             <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink, letterSpacing: 0.4 }}>{baseCurrency}</Text>
-            <ChevronDown size={12} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} />
+            {!embedded && <ChevronDown size={12} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} />}
           </Pressable>
           </GlassTooltip>
         </View>

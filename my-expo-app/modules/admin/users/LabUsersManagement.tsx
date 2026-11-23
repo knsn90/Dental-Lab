@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { baseSymbol } from '../../../core/money/baseCurrency';
 import { isRTL, fmtDayMonthYear } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import {
   View,
   Text,
@@ -17,7 +18,6 @@ import {
 } from 'react-native';
 import {
   Search,
-  SlidersHorizontal,
   UserPlus,
   X,
   XCircle,
@@ -58,6 +58,8 @@ import { useInkUI } from '../../../core/theme/inkScale';
 import { useAccentTones } from '../../../core/ui/HeroGlow';
 import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
 import { toast } from '../../../core/ui/Toast';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { ROLE_LABELS as EMP_ROLE_LABELS, type EmployeeRole } from '../../employees/api';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { useRouter, useSegments } from 'expo-router';
 import { upsertCompensation } from '../../employees/compensationApi';
@@ -69,11 +71,6 @@ import { useClinicSummaryModal } from '../../clinicSummary/components/ClinicSumm
 
 // ── Design tokens ───────────────────────────────────────────────────────────
 const ERR = '#FF3B30';
-
-const CARD_SHADOW = Platform.select({
-  web: { boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)' },
-  default: { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
-}) as any;
 
 const THUMB_SHADOW = Platform.select({
   web: { boxShadow: '0 1px 3px rgba(0,0,0,0.15)' },
@@ -132,10 +129,18 @@ function initials(name?: string | null) {
   return parts.map(p => p[0]?.toUpperCase() ?? '').join('') || '?';
 }
 
+/** Accent ZEMİN üstündeki metin/ikon: açık accent'te (lab safranı) koyu, diğerlerinde beyaz. */
+function onAccent(accent: string): string {
+  return (accent ?? '').toUpperCase() === '#F5C24B' ? '#0A0A0A' : '#FFFFFF';
+}
+
+// Lab rolleri — düzenleme penceresindeki rol seçicisi. Pencere eskiden yalnız
+// Mesul Müdür / Teknisyen gösteriyordu; kurye/muhasebe kaydedilince teknisyene dönüyordu.
+const LAB_ROLE_ORDER: LabRole[] = ['manager', 'technician', 'accounting', 'courier', 'service', 'receptionist', 'intern'];
+
 function fmtDate(dateStr?: string | null) {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
-  const months = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
   return fmtDayMonthYear(d);
 }
 
@@ -290,13 +295,11 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
 
   const [profiles,       setProfiles]       = useState<Profile[]>([]);
   const [loading,        setLoading]        = useState(true);
+  const [loadError,      setLoadError]      = useState<string | null>(null);
   const [confirm,        setConfirm]        = useState<ConfirmState | null>(null);
   const [typeFilter,     setTypeFilter]     = useState<FilterType>('all');
   const [statusFilter,   setStatusFilter]   = useState<StatusFilter>('all');
-  const [draftStatus,    setDraftStatus]    = useState<StatusFilter>('all');
-  const [showFilter,     setShowFilter]     = useState(false);
   const [search,         setSearch]         = useState('');
-  const [searchExpanded, setSearchExpanded] = useState(false);
   const [searchFocused,  setSearchFocused]  = useState(false);
   const [updatingId,     setUpdatingId]     = useState<string | null>(null);
   const [showAddModal,   setShowAddModal]   = useState(false);
@@ -308,9 +311,6 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
   // Hızlı art arda seçimde eski yanıt yenisinin üstüne yazmasın.
   const statsReqRef = React.useRef<string | null>(null);
   const [skillsMap, setSkillsMap]   = useState<Map<string, Set<Stage>>>(new Map());
-  const [skillBusy, setSkillBusy]   = useState<Set<string>>(new Set());
-  const [rateEditId, setRateEditId] = useState<string | null>(null);
-  const [rateInput, setRateInput]   = useState<string>('');
 
   useEffect(() => { loadProfiles(); }, []);
 
@@ -332,93 +332,43 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
       });
   }, [profiles]);
 
-  // ── Skill level / trust / allowed_types updaters (Migration 047) ──────
-
-  async function setSkillLevel(userId: string, level: SkillLevel) {
-    setProfiles(prev => prev.map(p => p.id === userId ? ({ ...p, skill_level: level } as any) : p));
-    const { error } = await supabase.from('profiles').update({ skill_level: level }).eq('id', userId);
-    if (error) console.warn('skill_level update', error.message);
-  }
-
-  async function toggleAllowedType(userId: string, type: string) {
-    const current = (profiles.find(p => p.id === userId) as any)?.allowed_types as string[] | null;
-    let next: string[] | null;
-    if (!current) {
-      next = CASE_TYPE_OPTIONS.filter(t => t !== type);
-    } else if (current.includes(type)) {
-      next = current.filter(t => t !== type);
-      if (next.length === 0) next = [];
-    } else {
-      next = [...current, type];
-      if (CASE_TYPE_OPTIONS.every(t => next!.includes(t))) next = null;
-    }
-    setProfiles(prev => prev.map(p => p.id === userId ? ({ ...p, allowed_types: next } as any) : p));
-    const { error } = await supabase.from('profiles').update({ allowed_types: next }).eq('id', userId);
-    if (error) console.warn('allowed_types update', error.message);
-  }
-
-  async function toggleSkill(userId: string, stage: Stage) {
-    const labId = (profile as any)?.lab_id ?? profile?.id;
-    if (!labId) return;
-    const currentSet = skillsMap.get(userId) ?? new Set();
-    const has = currentSet.has(stage);
-    const key = `${userId}:${stage}`;
-    setSkillBusy(p => new Set(p).add(key));
-
-    if (has) {
-      const { error } = await supabase
-        .from('user_stage_skills')
-        .delete()
-        .eq('user_id', userId)
-        .eq('stage', stage);
-      if (error) console.warn('skill delete', error.message);
-    } else {
-      const { error } = await supabase
-        .from('user_stage_skills')
-        .insert({ user_id: userId, stage, lab_id: labId });
-      if (error) console.warn('skill insert', error.message);
-    }
-
-    setSkillsMap(prev => {
-      const nx = new Map(prev);
-      const set = new Set(nx.get(userId) ?? []);
-      if (has) set.delete(stage); else set.add(stage);
-      nx.set(userId, set);
-      return nx;
-    });
-    setSkillBusy(p => {
-      const nx = new Set(p);
-      nx.delete(key);
-      return nx;
-    });
-  }
-
   const loadProfiles = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      // ── 1. Auth kullanıcıları (profiles tablosu) ──────────────────
+      // ── 1. Giriş hesapları (profiles) ──────────────────────────────
+      // Hata SESSİZ geçilmez: eskiden liste boş dönünce yalnız personel kayıtları
+      // görünüyordu ve kullanıcı hesapların neden eksik olduğunu anlamıyordu.
       const { data, error } = await supabase.functions.invoke('admin-list-users');
-      const authUsers: Profile[] = (!error && data?.users)
-        ? (data.users as Profile[]).filter(p => !labOnly || p.user_type === 'lab')
-        : [];
+      const fnErr = (data as any)?.error ?? (error as any)?.message;
+      if (fnErr || !Array.isArray((data as any)?.users)) {
+        setProfiles([]);
+        setLoadError(String(fnErr ?? 'Hesap listesi alınamadı'));
+        return;
+      }
+      const authUsers: Profile[] = ((data as any).users as Profile[]).filter(p => !labOnly || p.user_type === 'lab');
 
       // ── 2. employees tablosundan auth hesabı olmayanlar ──────────
       // employees → profiles eşleştirmesi: email veya full_name üzerinden
-      const { data: empRows } = await supabase
+      const { data: empRows, error: empErr } = await supabase
         .from('employees')
         .select('id, full_name, role, phone, email, is_active, lab_id')
         .order('full_name');
+      if (empErr) toast.error(`${autoT('Personel kayıtları yüklenemedi')}: ${empErr.message}`);
 
       const authEmails  = new Set(authUsers.map(u => u.email?.toLowerCase()).filter(Boolean));
       const authNames   = new Set(authUsers.map(u => u.full_name?.toLowerCase()).filter(Boolean));
 
-      // employees rolünü profiles.role formatına çevir
+      // employees rolünü profiles.role formatına çevir (filtre için). Rozet
+      // etiketi ise personelin KENDİ rolünden gelir (emp_role_label) —
+      // 'diger' eskiden "Hizmet" diye görünüyordu.
       const empRoleMap: Record<string, string> = {
         teknisyen:    'technician',
         sef_teknisyen:'technician',
         yonetici:     'manager',
         muhasebe:     'accounting',
         sekreter:     'receptionist',
+        kurye:        'courier',
         diger:        'service',
       };
 
@@ -435,7 +385,8 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
           email:           e.email ?? null,
           phone:           e.phone ?? null,
           user_type:       'lab' as const,
-          role:            empRoleMap[e.role] ?? 'technician',
+          role:            empRoleMap[e.role] ?? 'service',
+          emp_role_label:  EMP_ROLE_LABELS[e.role as EmployeeRole] ?? null,
           is_active:       e.is_active ?? true,
           approval_status: 'approved' as const,
           lab_id:          e.lab_id ?? null,
@@ -446,7 +397,9 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
         } as any));
 
       setProfiles([...authUsers, ...syntheticProfiles]);
-    } catch (e) {
+    } catch (e: any) {
+      setProfiles([]);
+      setLoadError(String(e?.message ?? 'Hesap listesi alınamadı'));
     } finally {
       setLoading(false);
     }
@@ -493,6 +446,9 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
       const msg = (data as any)?.error ?? (error as any)?.message;
       if (msg) { toast.error(String(msg)); return; }
       setProfiles(prev => prev.map(p => p.id === profile.id ? { ...p, is_active: newVal } : p));
+    } catch {
+      // Ağ hatası fırlatırsa daha önce hiçbir şey gösterilmiyordu → anahtar yerinde kalıyordu.
+      toast.error(autoT(newVal ? 'Kullanıcı aktif edilemedi. Bağlantınızı kontrol edin.' : 'Kullanıcı pasife alınamadı. Bağlantınızı kontrol edin.'));
     } finally { setUpdatingId(null); }
   };
 
@@ -537,6 +493,17 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
     if (statusFilter === 'inactive' &&  p.is_active) return false;
     if (!q) return true;
     return p.full_name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q);
+  }).sort((a, b) => {
+    // Sıra: lab ekibi (admin → müdür → diğer roller) → klinik/hekim → hesabı olmayan;
+    // grup içinde ada göre. Eskiden liste kayıt tarihine göre karışık geliyordu.
+    const rank = (p: Profile) => {
+      if ((p as any).is_unregistered) return 9;
+      if (p.user_type === 'admin') return 0;
+      if (p.user_type === 'lab') return p.role === 'manager' ? 1 : 2;
+      return 5;
+    };
+    const d = rank(a) - rank(b);
+    return d !== 0 ? d : (a.full_name ?? '').localeCompare(b.full_name ?? '', 'tr');
   });
 
   // Liste satırı render helper'ı — flat ve gruplu liste paylaşır
@@ -663,7 +630,7 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
                   <Text style={{ fontSize: 10, fontWeight: '600', color: lvlOpt?.color ?? U.ink[400] }}>{lvlOpt?.label}</Text>
                 </View>
                 {stageCount > 0 && (
-                  <Text style={{ fontSize: 11, color: U.ink[500] }}>{stageCount} stage</Text>
+                  <Text style={{ fontSize: 11, color: U.ink[500] }}>{stageCount} aşama</Text>
                 )}
               </View>
             );
@@ -689,11 +656,16 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
                   }}>
                     {(prof.is_active ?? true) ? 'Aktif' : 'Pasif'}
                   </Text>}
-                  <PatternsToggle
-                    on={prof.is_active ?? true}
-                    onPress={() => handleToggleActive(prof)}
-                    accentColor={P}
-                  />
+                  <GlassTooltip
+                    title={(prof.is_active ?? true) ? autoT('Pasife al') : autoT('Aktif et')}
+                    text={(prof.is_active ?? true) ? autoT('Oturumu kapanır ve giriş yapamaz') : autoT('Kullanıcı yeniden giriş yapabilir')}
+                  >
+                    <PatternsToggle
+                      on={prof.is_active ?? true}
+                      onPress={() => handleToggleActive(prof)}
+                      accentColor={P}
+                    />
+                  </GlassTooltip>
                 </View>
               )}
               {!compact && <View style={{ width: 1, height: 18, backgroundColor: U.fieldBorder, marginHorizontal: 4 }} />}
@@ -703,6 +675,7 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
                 borderRadius: 9, overflow: 'hidden',
                 backgroundColor: U.chipNeutral,
               }}>
+                <GlassTooltip title={autoT('Düzenle')} text={autoT('Bilgileri, rolü ve yetkileri düzenle')}>
                 <Pressable
                   onPress={() => setEditingProfile(prof)}
                   accessibilityLabel="Düzenle"
@@ -719,7 +692,9 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
                 >
                   <Pencil size={13} color={U.plainBtn.fgMuted} strokeWidth={1.7} />
                 </Pressable>
+                </GlassTooltip>
                 <View style={{ width: 1, height: 16, backgroundColor: U.hairline }} />
+                <GlassTooltip title={autoT('Sil')} text={autoT('Hesabı kalıcı olarak sil')}>
                 <Pressable
                   onPress={() => handleDeleteUser(prof)}
                   accessibilityLabel="Sil"
@@ -734,6 +709,7 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
                 >
                   <Trash2 size={13} color="#DC2626" strokeWidth={1.7} />
                 </Pressable>
+                </GlassTooltip>
               </View>
             </>
           )}
@@ -760,13 +736,11 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
       .sort((a, b) => (a.clinicName ?? '').localeCompare(b.clinicName ?? '', 'tr'));
   })();
 
-  const activeFilterCount = statusFilter !== 'all' ? 1 : 0;
-
   const labRoleCount = (role: LabRole) => profiles.filter(p => p.user_type === 'lab' && p.role === role).length;
 
   const ALL_TYPE_TABS: { key: FilterType; label: string; count: number }[] = [
     // Bu ekranın sayısı giriş HESABIDIR (personel değil — tek tanım 2026-10-26).
-    { key: 'all' as FilterType,          label: 'Tüm hesaplar', count: profiles.length },
+    { key: 'all' as FilterType,          label: 'Tüm hesaplar', count: profiles.filter(p => !(p as any).is_unregistered).length },
     { key: 'manager' as FilterType,      label: 'Müdür',       count: labRoleCount('manager') },
     { key: 'technician' as FilterType,   label: 'Teknisyen',   count: labRoleCount('technician') },
     { key: 'accounting' as FilterType,   label: 'Muhasebe',    count: labRoleCount('accounting') },
@@ -827,7 +801,7 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
     if (profile.user_type === 'lab' && profile.role) {
       const r = profile.role as LabRole;
       const colors = LAB_ROLE_BADGE[r] ?? { bg: U.chipTones.neutral.bg, text: U.chipTones.neutral.fg };
-      const label  = LAB_ROLE_LABELS[r] ?? r;
+      const label  = ((profile as any).is_unregistered && (profile as any).emp_role_label) || LAB_ROLE_LABELS[r] || r;
       return { ...colors, label, avatarBg: colors.bg, avatarText: colors.text, roleLabel: label };
     }
     const ubg = D ? 'rgba(245,158,11,0.26)' : '#FEF3C7', utx = D ? '#F0C078' : '#92400E';
@@ -840,6 +814,8 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
   );
   // Listenin altından seçilen kullanıcının paneli görünür alanda kalsın (web, geniş).
   const sticky = useStickyFollow(isWide && !!selectedProfile);
+
+  const closeDetail = () => { statsReqRef.current = null; setSelectedId(null); setStats(null); setStatsError(null); };
 
   const handleSelect = (profile: Profile) => {
     if (selectedId === profile.id) return;
@@ -934,8 +910,8 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               }}
             >
-              <UserPlus size={14} color="#FFFFFF" strokeWidth={2} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF' }}>
+              <UserPlus size={14} color={onAccent(P)} strokeWidth={2} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: onAccent(P) }}>
                 {narrowControls ? 'Yeni' : 'Yeni Kullanıcı'}
               </Text>
             </Pressable>
@@ -951,6 +927,20 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
           <View style={[{ flex: 1, gap: 12 }, isWide && { flex: 2, minWidth: 0 }]}>
             {loading ? (
               <ActivityIndicator size="large" color={P} style={{ marginTop: 60 }} />
+            ) : loadError ? (
+              <View style={{ alignItems: 'center', paddingTop: 64, gap: 10, paddingHorizontal: 16 }}>
+                <AlertCircle size={40} color="#DC2626" strokeWidth={1.4} />
+                <Text style={{ fontSize: 16, fontWeight: '700', color: U.ink[900] }}>Hesap listesi yüklenemedi</Text>
+                <Text style={{ fontSize: 13, color: U.ink[500], textAlign: 'center' }}>{loadError}</Text>
+                <Pressable
+                  onPress={loadProfiles}
+                  style={{ marginTop: 6, paddingHorizontal: 16, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: U.plainBtn.fg }}>Tekrar dene</Text>
+                </Pressable>
+              </View>
             ) : filtered.length === 0 ? (
               <View style={{ alignItems: 'center', paddingTop: 64, gap: 10 }}>
                 <UserX size={40} color={U.ink[400]} strokeWidth={1.4} />
@@ -1010,14 +1000,32 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
             ) : (
               <View style={{ gap: 10 }}>
                 {clinicSummary.element}
-                {filtered.map((prof) => renderUserRow(prof))}
+                {(() => {
+                  // "Tümü" görünümünde liste üç bölüme ayrılır; lab ekibi ile klinik
+                  // kullanıcıları ve hesabı olmayan personel artık karışmaz.
+                  if (typeFilter !== 'all') return filtered.map(prof => renderUserRow(prof));
+                  const sections: { key: string; title: string; rows: Profile[] }[] = [
+                    { key: 'lab',    title: 'Laboratuvar ekibi',      rows: filtered.filter(p => !(p as any).is_unregistered && (p.user_type === 'admin' || p.user_type === 'lab')) },
+                    { key: 'clinic', title: 'Klinikler ve hekimler',  rows: filtered.filter(p => !(p as any).is_unregistered && p.user_type !== 'admin' && p.user_type !== 'lab') },
+                    { key: 'unreg',  title: 'Hesabı olmayan personel', rows: filtered.filter(p => !!(p as any).is_unregistered) },
+                  ].filter(sec => sec.rows.length > 0);
+                  return sections.map((sec, i) => (
+                    <View key={sec.key} style={{ gap: 8, marginTop: i === 0 ? 0 : 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, paddingHorizontal: 4 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[500] }}>{sec.title}</Text>
+                        <Text style={{ fontSize: 11, color: U.ink[400] }}>{sec.rows.length}</Text>
+                      </View>
+                      {sec.rows.map(prof => renderUserRow(prof))}
+                    </View>
+                  ));
+                })()}
               </View>
             )}
           </View>
 
           {/* Detail panel */}
-          {selectedProfile && (
-            <View ref={sticky.panelRef} style={[{ width: '100%' }, isWide && { flex: 1, alignSelf: 'flex-start' }] as any}>
+          {selectedProfile && isWide && (
+            <View ref={sticky.panelRef} style={{ flex: 1, alignSelf: 'flex-start' } as any}>
               <DetailPanel
                 profile={selectedProfile}
                 badge={typeBadge(selectedProfile)}
@@ -1025,7 +1033,7 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
                 loading={statsLoading}
                 error={statsError}
                 primary={P}
-                onClose={() => { statsReqRef.current = null; setSelectedId(null); setStats(null); setStatsError(null); }}
+                onClose={closeDetail}
               />
             </View>
           )}
@@ -1034,72 +1042,25 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Filter modal */}
-      <Modal visible={showFilter} transparent animationType="fade" onRequestClose={() => setShowFilter(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: U.scrim, alignItems: 'flex-end', paddingTop: 70, paddingEnd: 24 }} onPress={() => setShowFilter(false)}>
-          <View
-            onStartShouldSetResponder={() => true}
-            style={{
-              width: 300,
-              backgroundColor: U.surface,
-              borderRadius: 20,
-              overflow: 'hidden',
-              ...CARD_SHADOW,
-            }}
-          >
-            <View className="flex-row items-center justify-between px-4 py-3.5">
-              <View className="flex-row items-center gap-2">
-                <SlidersHorizontal size={16} color={PInk} strokeWidth={1.8} />
-                <Text style={{ fontSize: 15, fontWeight: '700', color: U.ink[900] }}>Filtrele</Text>
-                {activeFilterCount > 0 && (
-                  <View style={{ backgroundColor: P, borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>{activeFilterCount}</Text>
-                  </View>
-                )}
-              </View>
-              <Pressable onPress={() => { setDraftStatus('all'); }}>
-                <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[400] }}>Temizle</Text>
-              </Pressable>
-            </View>
-            <View style={{ height: 1, backgroundColor: U.ink[100] }} />
-            <View className="px-4 py-3.5">
-              <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[400], letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 10 }}>DURUM</Text>
-              <View className="flex-row gap-2 flex-wrap">
-                {([['all','Tümü'],['active','Aktif'],['inactive','Pasif']] as [StatusFilter,string][]).map(([val,lbl]) => (
-                  <Pressable
-                    key={val}
-                    onPress={() => setDraftStatus(val)}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center',
-                      paddingHorizontal: 12, paddingVertical: 7,
-                      borderRadius: 8, borderWidth: 1.5,
-                      borderColor: draftStatus === val ? PInk : U.ink[100],
-                      backgroundColor: draftStatus === val ? (U.isDark ? `${PFill}33` : '#EFF6FF') : U.surfaceSoft,
-                    }}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: draftStatus === val ? '600' : '500', color: draftStatus === val ? PInk : U.ink[400] }}>{lbl}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-            <View style={{ height: 1, backgroundColor: U.ink[100] }} />
-            <View className="flex-row gap-2 px-4 py-3.5">
-              <Pressable
-                onPress={() => setShowFilter(false)}
-                className="flex-1 py-2.5 rounded-[10px] items-center justify-center"
-                style={{ borderWidth: 1.5, borderColor: U.ink[100] }}
-              >
-                <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[500] }}>İptal</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => { setStatusFilter(draftStatus); setShowFilter(false); }}
-                className="flex-[2] py-2.5 rounded-[10px] items-center justify-center"
-                style={{ backgroundColor: P }}
-              >
-                <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Uygula</Text>
-              </Pressable>
-            </View>
-          </View>
+      {/* Dar ekran: detay listenin EN ALTINDA açılıyordu (kullanıcı fark etmiyordu);
+          artık ortada pencere olarak açılır. */}
+      <Modal visible={!!selectedProfile && !isWide} transparent animationType="fade" onRequestClose={closeDetail}>
+        <Pressable style={U.modalOverlay} onPress={closeDetail}>
+          <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 480, maxHeight: '90%' }}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {selectedProfile && (
+                <DetailPanel
+                  profile={selectedProfile}
+                  badge={typeBadge(selectedProfile)}
+                  stats={stats}
+                  loading={statsLoading}
+                  error={statsError}
+                  primary={P}
+                  onClose={closeDetail}
+                />
+              )}
+            </ScrollView>
+          </Pressable>
         </Pressable>
       </Modal>
 
@@ -1114,12 +1075,13 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
       <EditUserModal
         profile={editingProfile}
         onClose={() => setEditingProfile(null)}
-        onSuccess={(updated) => {
+        onSuccess={(updated, skills) => {
           setProfiles((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+          if (skills) setSkillsMap(prev => new Map(prev).set(updated.id, skills));
           setEditingProfile(null);
         }}
         accentColor={P}
-        onToggleType={toggleAllowedType}
+        callerLabId={(profile as any)?.lab_id ?? null}
       />
 
       {/* ── Confirmation Dialog (Patterns §08) ─────────────────── */}
@@ -1271,24 +1233,25 @@ function MetricCell({ label, value, icon, tint, accent }: {
 // ═════════════════════════════════════════════════════════════════════════════
 
 function EditUserModal({
-  profile, onClose, onSuccess, accentColor, onToggleType,
+  profile, onClose, onSuccess, accentColor, callerLabId,
 }: {
   profile: Profile | null;
   onClose: () => void;
-  onSuccess: (updated: Profile) => void;
+  onSuccess: (updated: Profile, skills?: Set<Stage>) => void;
   accentColor: string;
-  onToggleType: (userId: string, type: string) => void;
+  callerLabId: string | null;
 }) {
   const U = useInkUI();
   const router = useRouter();
   const panelSeg = useSegments()[0];
   const P = accentColor;
+  const PFg = onAccent(P);
   const { ink: PInk } = useAccentTones(P);
   const [fullName,    setFullName]    = useState('');
   const [email,       setEmail]       = useState('');
   const [phone,       setPhone]       = useState('');
   const [clinicName,  setClinicName]  = useState('');
-  const [role,        setRole]        = useState<'manager' | 'technician'>('technician');
+  const [role,        setRole]        = useState<LabRole>('technician');
   const [isActive,    setIsActive]    = useState(true);
   const [newPassword, setNewPassword] = useState('');
   const [skillLevel,  setSkillLevel2] = useState<SkillLevel>('mid');
@@ -1297,6 +1260,10 @@ function EditUserModal({
   const [error,       setError]       = useState('');
   const [skills,      setSkills]      = useState<Set<Stage>>(new Set());
   const [originalSkills, setOriginalSkills] = useState<Set<Stage>>(new Set());
+  // İzinli vaka türleri TASLAK olarak tutulur; yalnız "Kaydet"te yazılır.
+  // Eskiden her tıklama anında kaydediliyordu ve "İptal" geri almıyordu.
+  // null = kısıtsız (hepsi).
+  const [allowedTypes, setAllowedTypes] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (profile) {
@@ -1304,18 +1271,23 @@ function EditUserModal({
       setEmail(profile.email ?? '');
       setPhone(profile.phone ?? '');
       setClinicName(profile.clinic_name ?? '');
-      setRole(profile.role === 'manager' ? 'manager' : 'technician');
+      // Rol AYNEN korunur: kurye/muhasebe/… teknisyene düşmez.
+      setRole((LAB_ROLE_ORDER as string[]).includes(profile.role ?? '') ? (profile.role as LabRole) : 'technician');
       setIsActive(profile.is_active ?? true);
       setNewPassword('');
       setError('');
+      setShowPass(false);
       setSkillLevel2(((profile as any).skill_level ?? 'mid') as SkillLevel);
+      const at = (profile as any).allowed_types;
+      setAllowedTypes(Array.isArray(at) ? [...at] : null);
 
       if (profile.user_type === 'lab') {
         supabase
           .from('user_stage_skills')
           .select('stage')
           .eq('user_id', profile.id)
-          .then(({ data }) => {
+          .then(({ data, error: skErr }) => {
+            if (skErr) setError(`${autoT('Aşama yetkileri yüklenemedi')}: ${skErr.message}`);
             const set = new Set<Stage>(((data ?? []) as any[]).map(r => r.stage as Stage));
             setSkills(set);
             setOriginalSkills(new Set(set));
@@ -1327,59 +1299,89 @@ function EditUserModal({
     }
   }, [profile]);
 
+  const toggleType = (type: string) => {
+    setAllowedTypes(current => {
+      let next: string[] | null;
+      if (!current) {
+        next = CASE_TYPE_OPTIONS.filter(t => t !== type);
+      } else if (current.includes(type)) {
+        next = current.filter(t => t !== type);
+      } else {
+        next = [...current, type];
+        if (CASE_TYPE_OPTIONS.every(t => next!.includes(t))) next = null;
+      }
+      return next;
+    });
+  };
+
   const handleSave = async () => {
     if (!profile) return;
     setError('');
-    if (!fullName.trim()) { setError('Ad Soyad zorunludur'); return; }
-    if (!email.trim())    { setError('E-posta zorunludur'); return; }
-    if (newPassword && newPassword.length < 6) { setError('Şifre en az 6 karakter olmalıdır'); return; }
+    if (!fullName.trim()) { setError(autoT('Ad Soyad zorunludur')); return; }
+    if (!email.trim())    { setError(autoT('E-posta zorunludur')); return; }
+    if (newPassword && newPassword.length < 6) { setError(autoT('Şifre en az 6 karakter olmalıdır')); return; }
 
     setSaving(true);
     try {
+      // is_active BURADA YAZILMAZ: pasifleştirme auth banı + kendini-kilitleme
+      // korumasıyla birlikte admin-update-user üzerinden yapılır.
+      // clinic_name yalnız hekimde yazılır; diğer türlerde (klinik yöneticisi vb.)
+      // dokunulmaz — eskiden boşaltılıyordu.
       const profileUpdates: Partial<Profile> & Record<string, any> = {
         full_name:  fullName.trim(),
         phone:      phone.trim() || null,
-        is_active:  isActive,
-        ...(profile.user_type === 'doctor' ? { clinic_name: clinicName.trim() || null } : { clinic_name: null }),
+        ...(profile.user_type === 'doctor' ? { clinic_name: clinicName.trim() || null } : {}),
         ...(profile.user_type === 'lab'    ? {
-          role,
+          role: role as any,   // Profile.role tipi dar (yalnız manager/technician); DB tüm lab rollerini taşır
           skill_level: skillLevel,
+          allowed_types: allowedTypes,
         } : {}),
       };
 
-      const { error: dbError } = await supabase.from('profiles').update(profileUpdates).eq('id', profile.id);
+      const { data: updRows, error: dbError } = await supabase
+        .from('profiles').update(profileUpdates).eq('id', profile.id).select('id');
       if (dbError) throw new Error(dbError.message);
+      // RLS satırı süzerse hata dönmez, 0 satır döner — sessizce "kaydedildi" deme.
+      if (!updRows || updRows.length === 0) throw new Error(autoT('Bu kullanıcıyı güncelleme yetkiniz yok'));
 
       const emailChanged    = email.trim() !== (profile.email ?? '');
       const passwordChanged = newPassword.length >= 6;
-      if (emailChanged || passwordChanged) {
-        const body: Record<string, string> = { userId: profile.id };
-        if (emailChanged)    body.email    = email.trim();
-        if (passwordChanged) body.password = newPassword;
+      const activeChanged   = isActive !== (profile.is_active ?? true);
+      if (emailChanged || passwordChanged || activeChanged) {
+        const body: Record<string, any> = { userId: profile.id };
+        if (emailChanged)    body.email     = email.trim();
+        if (passwordChanged) body.password  = newPassword;
+        if (activeChanged)   body.is_active = isActive;
         const { data: fnData, error: fnError } = await supabase.functions.invoke('admin-update-user', { body });
-        if (fnError || fnData?.error) throw new Error(fnData?.error ?? fnError?.message ?? 'Auth güncellenemedi');
+        if (fnError || fnData?.error) throw new Error(fnData?.error ?? fnError?.message ?? autoT('Hesap güncellenemedi'));
       }
 
+      let savedSkills: Set<Stage> | undefined;
       if (profile.user_type === 'lab') {
         const toAdd    = [...skills].filter(s => !originalSkills.has(s));
         const toRemove = [...originalSkills].filter(s => !skills.has(s));
-        const labId    = (profile as any).lab_id ?? profile.id;
+        const labId    = (profile as any).lab_id ?? callerLabId;
 
         if (toRemove.length > 0) {
-          await supabase.from('user_stage_skills')
+          const { error: delErr } = await supabase.from('user_stage_skills')
             .delete()
             .eq('user_id', profile.id)
             .in('stage', toRemove);
+          if (delErr) throw new Error(`${autoT('Aşama yetkileri kaydedilemedi')}: ${delErr.message}`);
         }
         if (toAdd.length > 0) {
-          await supabase.from('user_stage_skills')
+          if (!labId) throw new Error(autoT('Laboratuvar bilgisi bulunamadı; aşama yetkileri kaydedilemedi'));
+          const { error: insErr } = await supabase.from('user_stage_skills')
             .insert(toAdd.map(s => ({ user_id: profile.id, stage: s, lab_id: labId })));
+          if (insErr) throw new Error(`${autoT('Aşama yetkileri kaydedilemedi')}: ${insErr.message}`);
         }
+        savedSkills = new Set(skills);
       }
 
-      onSuccess({ ...profile, ...profileUpdates, email: email.trim() });
+      toast.success(autoT('Kullanıcı güncellendi.'));
+      onSuccess({ ...profile, ...profileUpdates, is_active: isActive, email: email.trim() } as Profile, savedSkills);
     } catch (e: any) {
-      setError(e.message ?? 'Bir hata oluştu');
+      setError(e.message ?? autoT('Bir hata oluştu'));
     } finally {
       setSaving(false);
     }
@@ -1387,6 +1389,11 @@ function EditUserModal({
 
   const isLabUser    = profile?.user_type === 'lab';
   const isDoctorUser = profile?.user_type === 'doctor';
+  const subtitle = !profile ? '' :
+    profile.user_type === 'doctor' ? 'Hekim' :
+    profile.user_type === 'clinic_admin' ? 'Klinik Yöneticisi' :
+    (profile.user_type as string) === 'clinic_secretary' ? 'Klinik Sekreteri' :
+    profile.user_type === 'admin' ? 'Admin' : 'Lab Personeli';
 
   const INPUT_STYLE = {
     borderWidth: 1,
@@ -1402,32 +1409,34 @@ function EditUserModal({
     outlineStyle: 'none',
   } as any;
 
+  const roleIcon = (r: LabRole, color: string) => {
+    const pr = { size: 16, color, strokeWidth: 1.6 };
+    switch (r) {
+      case 'manager':      return <UserCog {...pr} />;
+      case 'technician':   return <Wrench {...pr} />;
+      case 'accounting':   return <Receipt {...pr} />;
+      case 'courier':      return <Truck {...pr} />;
+      case 'service':      return <Sparkles {...pr} />;
+      case 'receptionist': return <Headphones {...pr} />;
+      case 'intern':       return <GraduationCap {...pr} />;
+    }
+  };
+
   return (
     <Modal visible={!!profile} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: U.scrim, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-        <View
-          className="rounded-[20px] w-full overflow-hidden"
-          style={{
-            maxWidth: 520, maxHeight: '92%',
-            backgroundColor: U.surface,
-            ...(U.isDark ? { borderWidth: 1, borderColor: U.hairline } : {}),
-            ...Platform.select({
-              web: { boxShadow: '0 20px 60px rgba(0,0,0,0.15)' },
-              default: { shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.15, shadowRadius: 48, elevation: 10 },
-            }),
-          } as any}
-        >
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={U.modalOverlay}>
+        <View style={U.modalCard}>
           {/* Header */}
           <View className="flex-row justify-between items-center px-6 pt-5 pb-4" style={{ borderBottomWidth: 1, borderBottomColor: U.ink[100] }}>
-            <View>
+            <View style={{ flexShrink: 1 }}>
               <Text style={{ fontSize: 18, fontWeight: '700', color: U.ink[900] }}>Kullanıcıyı Düzenle</Text>
               {profile && (
-                <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2 }}>
-                  {profile.user_type === 'doctor' ? 'Hekim' : 'Lab Personeli'}
+                <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2 }} numberOfLines={1}>
+                  {profile.full_name}{'  ·  '}{subtitle}
                 </Text>
               )}
             </View>
-            <Pressable onPress={onClose} className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: `${P}14` }}>
+            <Pressable onPress={onClose} accessibilityLabel="Kapat" className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: `${P}14` }}>
               <X size={16} color={PInk} strokeWidth={2} />
             </Pressable>
           </View>
@@ -1455,25 +1464,27 @@ function EditUserModal({
             {isLabUser && (
               <>
                 <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[500], letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Rol</Text>
-                <View className="flex-row gap-2 mb-5">
-                  {(['manager', 'technician'] as const).map((r) => {
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+                  {LAB_ROLE_ORDER.map((r) => {
                     const active = role === r;
-                    const label  = r === 'manager' ? 'Mesul Müdür' : 'Teknisyen';
                     return (
                       <Pressable
                         key={r}
                         onPress={() => setRole(r)}
-                        className="flex-1 rounded-[14px] p-3 items-center gap-1"
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: active }}
                         style={{
+                          flexGrow: 1, flexBasis: '30%', minWidth: 110,
+                          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                          paddingVertical: 10, paddingHorizontal: 10, borderRadius: 12,
                           borderWidth: 1.5,
                           borderColor: active ? P : U.plainBtn.border,
                           backgroundColor: active ? P : U.plainBtn.bg,
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                         }}
                       >
-                        {r === 'manager'
-                          ? <UserCircle size={20} color={active ? '#FFF' : U.ink[700]} strokeWidth={1.6} />
-                          : <Wrench size={20} color={active ? '#FFF' : U.ink[700]} strokeWidth={1.6} />}
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#FFFFFF' : U.ink[700], textAlign: 'center' }}>{label}</Text>
+                        {roleIcon(r, active ? PFg : U.ink[700])}
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: active ? PFg : U.ink[700] }}>{LAB_ROLE_LABELS[r]}</Text>
                       </Pressable>
                     );
                   })}
@@ -1501,8 +1512,8 @@ function EditUserModal({
                   })}
                 </View>
 
-                {/* Stage Yetkileri */}
-                <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[500], letterSpacing: 0.5, marginBottom: 6, marginTop: 4 }}>Stage Yetkileri</Text>
+                {/* Aşama Yetkileri */}
+                <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[500], letterSpacing: 0.5, marginBottom: 6, marginTop: 4 }}>Aşama Yetkileri</Text>
                 <Text style={{ fontSize: 11, color: U.ink[500], marginBottom: 8 }}>Hangi aşamayı yapabilir?</Text>
                 <View className="flex-row flex-wrap gap-1.5 mb-4">
                   {SKILL_STAGES.map(st => {
@@ -1536,19 +1547,15 @@ function EditUserModal({
                   })}
                 </View>
 
-                {/* Vaka Türleri */}
+                {/* Vaka Türleri — taslak; Kaydet'te yazılır */}
                 <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[500], letterSpacing: 0.5, marginBottom: 6, marginTop: 4 }}>Vaka Türleri</Text>
                 <View className="flex-row flex-wrap gap-1.5 mb-4">
                   {CASE_TYPE_OPTIONS.map(t => {
-                    const currentAllowed = (profile as any)?.allowed_types as string[] | null;
-                    const has = !currentAllowed ? true : Array.isArray(currentAllowed) ? currentAllowed.includes(t) : false;
+                    const has = !allowedTypes ? true : allowedTypes.includes(t);
                     return (
                       <Pressable
                         key={t}
-                        onPress={() => {
-                          // Toggle via parent's toggleAllowedType
-                          if (profile) onToggleType(profile.id, t);
-                        }}
+                        onPress={() => toggleType(t)}
                         style={{
                           paddingHorizontal: 10, paddingVertical: 6,
                           borderRadius: 999,
@@ -1573,7 +1580,7 @@ function EditUserModal({
               </>
             )}
 
-            <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[500], letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Hesap & Güvenlik</Text>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[500], letterSpacing: 0.5, marginBottom: 10, marginTop: 16 }}>Hesap & Güvenlik</Text>
             <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>E-posta *</Text>
             <TextInput style={INPUT_STYLE} value={email} onChangeText={setEmail}
               placeholder="kullanici@ornek.com" placeholderTextColor={U.ink[400]}
@@ -1582,8 +1589,9 @@ function EditUserModal({
             <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>Yeni Şifre</Text>
             <View className="flex-row items-center gap-2 mb-1">
               <TextInput style={{ ...INPUT_STYLE, flex: 1, marginBottom: 0 }} value={newPassword} onChangeText={setNewPassword}
-                placeholder="Boş bırakılırsa değişmez" placeholderTextColor={U.ink[400]} secureTextEntry={!showPass} />
-              <Pressable onPress={() => setShowPass(v => !v)} style={{ padding: 11, borderWidth: 1, borderColor: U.fieldBorder, borderRadius: 14, backgroundColor: U.surfaceSoft }}>
+                placeholder="Boş bırakılırsa değişmez" placeholderTextColor={U.ink[400]} secureTextEntry={!showPass}
+                autoComplete="new-password" textContentType="newPassword" />
+              <Pressable onPress={() => setShowPass(v => !v)} accessibilityLabel={showPass ? 'Şifreyi gizle' : 'Şifreyi göster'} style={{ padding: 11, borderWidth: 1, borderColor: U.fieldBorder, borderRadius: 14, backgroundColor: U.surfaceSoft }}>
                 {showPass ? <EyeOff size={18} color={U.ink[400]} strokeWidth={1.6} /> : <Eye size={18} color={U.ink[400]} strokeWidth={1.6} />}
               </Pressable>
             </View>
@@ -1595,7 +1603,7 @@ function EditUserModal({
             >
               <View className="flex-1">
                 <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900], marginBottom: 2 }}>Hesap Aktif</Text>
-                <Text style={{ fontSize: 12, color: U.ink[400] }}>{isActive ? 'Kullanıcı giriş yapabilir' : 'Kullanıcı giriş yapamaz'}</Text>
+                <Text style={{ fontSize: 12, color: U.ink[400] }}>{isActive ? 'Kullanıcı giriş yapabilir' : 'Kullanıcı giriş yapamaz; açık oturumu kapanır'}</Text>
               </View>
               <PatternsToggle on={isActive} onPress={() => setIsActive(v => !v)} accentColor={P} />
             </View>
@@ -1606,12 +1614,13 @@ function EditUserModal({
                 <Text style={{ fontSize: 13, color: ERR, flex: 1 }}>{error}</Text>
               </View>
             ) : null}
+            <View style={{ height: 24 }} />
           </ScrollView>
 
           {/* Footer */}
           <View className="flex-row gap-2.5 p-4" style={{ borderTopWidth: 1, borderTopColor: U.ink[100] }}>
-            <Pressable onPress={onClose} className="flex-1 py-3 rounded-[14px] items-center" style={{ borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg }}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[700] }}>İptal</Text>
+            <Pressable onPress={onClose} disabled={saving} className="flex-1 py-3 rounded-[14px] items-center" style={{ borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: U.plainBtn.fg }}>İptal</Text>
             </Pressable>
             <Pressable
               onPress={handleSave}
@@ -1619,10 +1628,10 @@ function EditUserModal({
               className="flex-[2] py-3 rounded-[14px] items-center flex-row justify-center gap-1.5"
               style={{ backgroundColor: P, opacity: saving ? 0.6 : 1 }}
             >
-              {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : (
+              {saving ? <ActivityIndicator size="small" color={PFg} /> : (
                 <>
-                  <Save size={16} color="#FFFFFF" strokeWidth={1.8} />
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Kaydet</Text>
+                  <Save size={16} color={PFg} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: PFg }}>Kaydet</Text>
                 </>
               )}
             </Pressable>
@@ -1743,7 +1752,7 @@ export function AddUserModal({
           password,
           full_name: fullName.trim(),
           user_type,
-          role,
+          role: role as any,   // Profile.role tipi dar (yalnız manager/technician); DB tüm lab rollerini taşır
           ...(isDoctorType ? {
             clinic_name: clinicName.trim(),
             phone: phone.trim() || null,
@@ -1782,10 +1791,14 @@ export function AddUserModal({
           if (empError) {
             // Auth hesabı oluştu ama employees yazılamadı — kullanıcıya bildir
             console.warn('employees insert error:', empError.message);
+            toast.warning(autoT('Hesap oluşturuldu ancak Ekip listesine eklenemedi. Personel ekranından elle ekleyin.'));
           } else if (salary.trim() && empRow) {
             // Maaş tek kaynak: employee_compensation (yalnız maaş yetkisi yazabilir)
             const r = await upsertCompensation((empRow as any).id, (empRow as any).lab_id, { base_salary: Number(salary.replace(',', '.')) });
-            if (!r.ok) console.warn('compensation upsert error:', r.error);
+            if (!r.ok) {
+              console.warn('compensation upsert error:', r.error);
+              toast.warning(autoT('Hesap oluşturuldu ancak maaş kaydedilemedi. Personel ekranından girin.'));
+            }
           }
         }
         reset();

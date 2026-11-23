@@ -108,6 +108,7 @@ export default function CheckinPage() {
         employee_not_found: "Bu lab'da kayıtlı personel bulunamadı.",
         already_complete: 'Bugünkü giriş/çıkışınız zaten tamamlandı.',
         lab_location_not_set: 'Laboratuvar konumu tanımlı değil. Lab yöneticisi Check-in Ayarları’ndan konumu girmeli.',
+        gps_required: 'Bu laboratuvarda giriş/çıkış için konum izni gerekli. Tarayıcı veya telefon ayarlarından konum iznini açıp tekrar deneyin.',
         no_session: 'Oturum bulunamadı. Lütfen tekrar giriş yapın.',
       };
       setErrorMsg(msgs[res.error ?? ''] ?? 'Bilinmeyen hata.');
@@ -118,12 +119,15 @@ export default function CheckinPage() {
     }
   }
 
-  // ─── Retry without GPS ───────────────────────────────────────────────────
-  function retryWithoutGps() {
+  // ─── Tekrar dene (konumla) ────────────────────────────────────────────────
+  // Eski "GPS olmadan dene" kaldırıldı: lab konumu tanımlıyken sunucu konumsuz
+  // girişi reddeder (gps_required), bu düğme mesafe kontrolünü atlatıyordu.
+  function retry() {
     ran.current = false;
     setResult(null);
     setErrorMsg('');
-    runCheckin(true);
+    setGpsSkipped(false);
+    runCheckin(false);
   }
 
   // ─── Render ──────────────────────────────────────────────────────────────
@@ -168,8 +172,8 @@ export default function CheckinPage() {
         {phase === 'error' && (
           <ErrorCard
             message={errorMsg}
-            isOutOfRange={result?.error === 'out_of_range'}
-            onRetryWithoutGps={retryWithoutGps}
+            canRetry={result?.error === 'out_of_range' || result?.error === 'gps_required'}
+            onRetry={retry}
             onClose={() => safeBack('/')}
           />
         )}
@@ -237,7 +241,7 @@ function SuccessCard({
       {gpsSkipped && (
         <View style={s.warnRow}>
           <AppIcon name="alert-circle" size={13} color="#D97706" />
-          <Text style={s.warnText}>GPS kullanılmadı (QR-only mod)</Text>
+          <Text style={s.warnText}>Konum kullanılmadı — yalnız QR ile kaydedildi</Text>
         </View>
       )}
 
@@ -249,11 +253,11 @@ function SuccessCard({
 }
 
 function ErrorCard({
-  message, isOutOfRange, onRetryWithoutGps, onClose,
+  message, canRetry, onRetry, onClose,
 }: {
   message: string;
-  isOutOfRange: boolean;
-  onRetryWithoutGps: () => void;
+  canRetry: boolean;
+  onRetry: () => void;
   onClose: () => void;
 }) {
   return (
@@ -265,10 +269,10 @@ function ErrorCard({
       <Text style={[s.resultTitle, { color: '#DC2626' }]}>İşlem Başarısız</Text>
       <Text style={s.errorMsg}>{message}</Text>
 
-      {isOutOfRange && (
-        <TouchableOpacity style={[s.btn, { backgroundColor: '#F59E0B' }]} onPress={onRetryWithoutGps}>
-          <AppIcon name="wifi-off" size={16} color="#fff" style={{ marginEnd: 6 }} />
-          <Text style={s.btnText}>GPS Olmadan Dene</Text>
+      {canRetry && (
+        <TouchableOpacity style={[s.btn, { backgroundColor: PRIMARY }]} onPress={onRetry}>
+          <AppIcon name="refresh-cw" size={16} color="#fff" style={{ marginEnd: 6 }} />
+          <Text style={s.btnText}>Tekrar Dene</Text>
         </TouchableOpacity>
       )}
 

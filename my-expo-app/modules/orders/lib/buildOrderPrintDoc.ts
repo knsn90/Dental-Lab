@@ -75,7 +75,8 @@ export function collectWorkRows(order: WorkOrder): { teeth: number[]; work: Work
         const d = implant.details[t];
         const patch = {
           implantSystem: brandWithModel((d?.system ?? '').trim() || implant.brand, d?.model) || null,
-          implantType:   (d?.type ?? '').trim() || null,
+          // Platform/çap ayrı sütun değil; türün yanında yazılır ("Bone Level · RP (Standart)").
+          implantType:   [d?.type, d?.platform].map(s => (s ?? '').trim()).filter(Boolean).join(' · ') || null,
           abutment:      (d?.abutment ?? '').trim() || null,
           screw:         (d?.screw ?? '').trim() || null,
         };

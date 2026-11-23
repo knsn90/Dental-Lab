@@ -206,6 +206,18 @@ export function ViewerToolbar({
       active: presetMenuOpen,
       onPress: () => { setPresetMenuOpen(o => !o); setFovOpen(false); setCutOpen(false); },
     },
+    // Görüş açısı ve kesit — açılır kartları vardı ama onları açan düğme yoktu.
+    {
+      kind: 'btn', icon: SlidersHorizontal, label: `${autoT('Görüş açısı')} (${fov}°)`,
+      active: fovOpen,
+      onPress: () => { setFovOpen(o => !o); setPresetMenuOpen(false); setCutOpen(false); },
+    },
+    ...(onCutAxisChange ? [{
+      kind: 'btn' as const, icon: Scissors,
+      label: cutAxis !== 'none' ? `${autoT('Kesit açık')} (${cutAxis.toUpperCase()})` : autoT('Kesit düzlemi'),
+      active: cutOpen || cutAxis !== 'none',
+      onPress: () => { setCutOpen(o => !o); setPresetMenuOpen(false); setFovOpen(false); },
+    }] : []),
     { kind: 'gap' },
     // ANALYSIS
     ...(onTogglePen ? [{
@@ -343,7 +355,7 @@ export function ViewerToolbar({
 
       {/* ── Pop-out: FOV ── */}
       {fovOpen && (
-        <PopCard D={D} top={86} width={220}>
+        <PopCard D={D} top={100} width={220}>
           <PopHeader D={D}>Görüş Açısı</PopHeader>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, paddingHorizontal: 4 }}>
             <Text style={{ color: D.popFg, opacity: 0.55, fontSize: 10 }}>10° — 90°</Text>
@@ -367,7 +379,7 @@ export function ViewerToolbar({
 
       {/* ── Pop-out: Cut plane ── */}
       {cutOpen && onCutAxisChange && (
-        <PopCard D={D} top={144} width={240}>
+        <PopCard D={D} top={140} width={240}>
           <PopHeader D={D}>Kesit Düzlemi</PopHeader>
           <View style={{ flexDirection: 'row', gap: 5, marginBottom: 8 }}>
             {(['none', 'x', 'y', 'z'] as const).map(ax => {

@@ -128,7 +128,7 @@ const STATUS_FLOW: Record<string, string> = {
 // görünmez). order_stages='aktif' hâlâ en güçlü sinyal; bu onun status-tabanlı tamamlayıcısı.
 const WORKING_WO = ['uretimde', 'asamada', 'kalite_kontrol'];
 const WO_STATUS_LABEL: Record<string, string> = {
-  uretimde: 'Üretimde', asamada: 'Üretimde', kalite_kontrol: 'Kalite Kontrol',
+  uretimde: 'Üretimde', asamada: 'Üretim Aşamasında', kalite_kontrol: 'Kalite Kontrol',
 };
 
 /**

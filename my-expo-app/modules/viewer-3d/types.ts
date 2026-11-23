@@ -32,6 +32,12 @@ export interface ViewerFile {
   color?: string;
   /** OBJ için kardeş texture (PNG/JPG) signed URL'i — verilirse texture'lı render. */
   textureUrl?: string | null;
+  /**
+   * Model zaten doğru çerçevede (+Y yukarı, +Z ön) — otomatik PCA hizalaması uygulanmaz.
+   * Yüz/kafa taramaları için: PCA diş arkına göre tasarlandı (en kısa eksen = yukarı),
+   * kafayı yan yatırıp tepeden gösteriyordu.
+   */
+  keepOrientation?: boolean;
 }
 
 /** 2D referans fotoğraf (gülüş tasarımı, ekartörlü resim) — overlay hizalama için. */

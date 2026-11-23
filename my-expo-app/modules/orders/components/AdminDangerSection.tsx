@@ -18,6 +18,7 @@ import { toast } from '../../../core/ui/Toast';
 import { useSegments } from 'expo-router';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { useInkUI } from '../../../core/theme/inkScale';
 
 // Koyu modda ikon/metin renkleri (koyu lacivert/amber/yeşil/kırmızı okunmaz → açık tonlar).
 const DARK_FG: Record<string, string> = {
@@ -40,6 +41,7 @@ export function AdminDangerSection({ orderId, order, isArchived, onArchived, onD
   const segs = useSegments() as string[];
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const U = useInkUI();
   const editPanel = ((segs?.[0] ?? '').replace(/[()]/g, '') || 'lab') as any; // '(lab)' → 'lab'
   const { width: winW } = useWindowDimensions();
   const [confirmType, setConfirmType] = useState<null | 'archive' | 'restore' | 'delete'>(null);
@@ -60,7 +62,13 @@ export function AdminDangerSection({ orderId, order, isArchived, onArchived, onD
     setBusy(false);
 
     if (!result.ok) {
-      toast.error(result.error ?? 'İşlem başarısız');
+      const raw = (result.error ?? '').toLowerCase();
+      toast.error(
+        raw.includes('forbidden') ? 'Bu sipariş başka bir laboratuvara ait — işlem yapılamaz'
+        : raw.includes('only admin') || raw.includes('auth required') ? 'Bu işlem için yönetici yetkisi gerekiyor'
+        : raw.includes('not found') ? 'Sipariş bulunamadı'
+        : 'İşlem başarısız',
+      );
       return;
     }
     if (confirmType === 'archive')      { toast.success('Sipariş pasife alındı'); onArchived(); }
@@ -159,7 +167,7 @@ export function AdminDangerSection({ orderId, order, isArchived, onArchived, onD
       {/* Kapsamlı düzenleme — yeni-sipariş sihirbazı (aynı 4 adım), bilgi dolu, popup */}
       {editOpen && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setEditOpen(false)}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: winW >= 768 ? 24 : 0 }}>
+          <View style={[U.modalOverlay as any, { padding: winW >= 768 ? 24 : 0 }]}>
             <View style={{ width: '100%', maxWidth: 1120, flex: 1, maxHeight: winW >= 768 ? '94%' : '100%', borderRadius: winW >= 768 ? 20 : 0, overflow: 'hidden', backgroundColor: isDark ? '#0E0E0E' : '#F1F5F9', ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 60px rgba(15,23,42,0.28)' } as any) : {}) }}>
               <React.Suspense fallback={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#0E0E0E' : 'transparent' }}><ActivityIndicator color={isDark ? '#F7F2E9' : '#0A0A0A'} /></View>}>
                 <NewOrderEditWizard
@@ -189,6 +197,7 @@ export function AdminDangerSection({ orderId, order, isArchived, onArchived, onD
         <ConfirmModal
           type={confirmType}
           busy={busy}
+          orderNumber={order?.order_number ?? ''}
           confirmText={confirmText}
           onChangeConfirmText={setConfirmText}
           onCancel={closeConfirm}
@@ -262,10 +271,11 @@ function ActionRow({
 }
 
 function ConfirmModal({
-  type, busy, confirmText, onChangeConfirmText, onCancel, onConfirm,
+  type, busy, orderNumber, confirmText, onChangeConfirmText, onCancel, onConfirm,
 }: {
   type: 'archive' | 'restore' | 'delete';
   busy: boolean;
+  orderNumber: string;
   confirmText: string;
   onChangeConfirmText: (t: string) => void;
   onCancel: () => void;
@@ -273,6 +283,7 @@ function ConfirmModal({
 }) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const U = useInkUI();
   const cfg = {
     archive: {
       title: 'Siparişi pasife al',
@@ -302,17 +313,19 @@ function ConfirmModal({
       iconBg: 'rgba(156,46,46,0.14)',
       cta: 'Evet, sil',
       ctaColor: '#9C2E2E',
-      requireType: false,
+      // Kalıcı silmede sipariş numarası yazılmadan düğme açılmaz (yanlış siparişi silmeye karşı).
+      requireType: true,
     },
   }[type];
 
   const Icon = cfg.icon;
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
-  const canConfirm = !cfg.requireType || confirmText.trim().toUpperCase() === 'SIL';
+  const expected = (orderNumber || 'SIL').trim().toUpperCase();
+  const canConfirm = !cfg.requireType || confirmText.trim().toUpperCase() === expected;
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(20,15,10,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+      <View style={U.modalOverlay as any}>
         <View style={{
           backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 24, width: 460, maxWidth: '100%',
           overflow: 'hidden',
@@ -358,13 +371,18 @@ function ConfirmModal({
 
             {cfg.requireType && (
               <View style={{ marginTop: 16 }}>
-                <Text style={{ fontSize: 11, fontWeight: '600', color: isDark ? T.ink3 : "#9A9A9A", letterSpacing: 1, textTransform: 'uppercase', marginBottom: 7 }}>
-                  Onaylamak için <Text style={{ color: cfg.ctaColor, fontWeight: '700' }}>SIL</Text> yazın
+                <Text style={{ fontSize: 12, fontWeight: '500', color: isDark ? T.ink2 : "#6B6B6B", marginBottom: 7 }}>
+                  Onaylamak için sipariş numarasını yazın
+                </Text>
+                <Text selectable style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#FCA5A5' : cfg.ctaColor, marginBottom: 8, fontFamily: Platform.OS === 'web' ? 'JetBrains Mono, ui-monospace, monospace' : undefined }}>
+                  {expected}
                 </Text>
                 <TextInput
                   value={confirmText}
                   onChangeText={onChangeConfirmText}
-                  placeholder="SIL"
+                  placeholder={expected}
+                  autoCorrect={false}
+                  onSubmitEditing={() => { if (canConfirm && !busy) onConfirm(); }}
                   placeholderTextColor={isDark ? (T.ink3 as string) : "#9A9A9A"}
                   autoCapitalize="characters"
                   style={{

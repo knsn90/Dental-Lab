@@ -20,6 +20,7 @@ import {
   CreditCard, Package, Truck, Camera, Wrench,
   Mail, Smartphone, Bell, BellOff, Volume2, AlertTriangle,
   Shield, Check, X, AlarmClock, ClipboardCheck, PenLine, Calendar, Star,
+  PhoneCall, PackageCheck,
 } from '../../../core/ui/icons';
 import { useFeature } from '../../../core/store/featureFlagsStore';
 import { supabase } from '../../../core/api/supabase';
@@ -28,6 +29,7 @@ import {
   useNotificationPrefs,
   requestBrowserPushPermission,
   showBrowserPush,
+  WHATSAPP_CAPABLE,
   type NotificationCategory,
   type NotificationChannel,
 } from '../../../core/store/notificationPrefsStore';
@@ -62,9 +64,13 @@ const ALL_GROUPS: {
       { key: 'stock_count',  icon: ClipboardCheck, label: 'Stok Sayımı',          sub: 'Sayım zamanı geldiğinde / taslak yarım kaldığında' },
       { key: 'scan_schedule', icon: Calendar,      label: 'Tarama Programı',      sub: 'Sabah bugünün, akşam yarının tarama randevuları' },
       { key: 'stage_critical', icon: CheckCircle,  label: 'Kritik Aşama',         sub: 'Kritik bir aşama tamamlandığında' },
-      { key: 'paper_order',  icon: Camera,        label: 'Kağıt Inbox',          sub: 'OCR sonrası bekleyen sipariş' },
+      // 'paper_order' (Kağıt Inbox) ve 'stock' (Stok Uyarıları) satırları kaldırıldı:
+      // bu kategorilerde bildirim üreten bir yer yok, anahtar hiçbir şey değiştirmiyordu
+      // (2026-11-22). Tip + varsayılan korunuyor; üretici yazılırsa satır geri eklenir.
       { key: 'approval',     icon: CheckCircle,   label: 'Onay Bekleyenler',     sub: 'Tasarım/üretim onayı gerektiğinde' },
+      { key: 'ready_for_delivery', icon: PackageCheck, label: 'Teslime Hazır',    sub: 'İşiniz teslime hazır olduğunda' },
       { key: 'delivery',     icon: Truck,         label: 'Teslimat & Kurye',     sub: 'Kurye atama/teslim olayları' },
+      { key: 'phone_lead',   icon: PhoneCall,     label: 'Telefon Talepleri',    sub: 'Telefon asistanı yeni bir talep aldığında' },
       { key: 'implant_parts', icon: Package,      label: 'İmplant Parçaları',    sub: 'Scan body, dijital analog … talep ve teslim' },
       { key: 'scan_annotation', icon: PenLine,    label: 'Tarama Notları',       sub: '3D tarama üzerine çizim/not eklendiğinde' },
     ],
@@ -73,6 +79,7 @@ const ALL_GROUPS: {
     title: 'İletişim',
     items: [
       { key: 'chat', icon: MessageCircle, label: 'Mesajlar', sub: 'Yeni mesaj geldiğinde' },
+      { key: 'support', icon: MessageCircle, label: 'WhatsApp Mesajları', sub: 'WhatsApp hattına müşteriden mesaj geldiğinde' },
     ],
   },
   {
@@ -88,8 +95,7 @@ const ALL_GROUPS: {
   {
     title: 'Finans & Stok',
     items: [
-      { key: 'payment',          icon: CreditCard, label: 'Ödeme & Fatura',     sub: 'Tahsilat, fatura, vade uyarıları' },
-      { key: 'stock',            icon: Package,    label: 'Stok Uyarıları',     sub: 'Kritik seviye / tükenme' },
+      { key: 'payment',          icon: CreditCard, label: 'Ödeme & Fatura',     sub: 'Tahsilat ve fatura bildirimleri · otomatik vade hatırlatmaları Finans ayarlarından yönetilir' },
       { key: 'material_request', icon: Wrench,     label: 'Malzeme Talepleri',  sub: 'Sarf/alet talebi, onay süreci' },
     ],
   },
@@ -100,8 +106,9 @@ const ALL_GROUPS: {
 //   teknisyen             → kendisini ilgilendirmeyen finans/operasyon gizlenir
 //   manager / admin       → hepsi görünür
 function getGroupsForRole(userType?: string | null, role?: string | null) {
-  const isClient     = userType === 'clinic_admin' || userType === 'doctor';
-  const isTechnician = userType === 'lab' && (role === 'technician' || role === 'courier');
+  const isClient     = userType === 'clinic_admin' || userType === 'doctor' || userType === 'clinic' || userType === 'clinic_secretary';
+  const isCourier    = userType === 'courier' || (userType === 'lab' && role === 'courier');
+  const isTechnician = userType === 'lab' && role === 'technician';
 
   // Klinik tarafına gizlenecek kategoriler
   const hideForClient = new Set<NotificationCategory>([
@@ -115,6 +122,8 @@ function getGroupsForRole(userType?: string | null, role?: string | null) {
     'review_minor',
     'review_low',        // düşük puan uyarısı — yalnız lab yöneticisi
     'review_low_reminder',
+    'phone_lead',        // telefon asistanı talebi — lab içi
+    'support',           // lab'ın WhatsApp hattı — lab içi
   ]);
 
   // Teknisyen için gereksiz kategoriler — finans/yönetim odaklı olanlar
@@ -132,15 +141,25 @@ function getGroupsForRole(userType?: string | null, role?: string | null) {
     'review_low',    // düşük puan uyarısı — yönetici işi
     'review_low_reminder',
     'review_request',// "işinizi değerlendirin" — yalnız hekim/klinik
+    'ready_for_delivery', // teslime hazır — hekim/klinik bildirimi
+    'phone_lead',
+    'support',
   ]);
 
-  // Lab yöneticisi / admin — hekime giden hatırlatma onlara gelmez
+  // Kurye: teknisyenle aynı, ama teslimat onun asıl işi → 'delivery' görünür.
+  const hideForCourier = new Set<NotificationCategory>(
+    [...hideForTechnician].filter(c => c !== 'delivery'),
+  );
+
+  // Lab yöneticisi / admin — hekime/kliniğe giden bildirimler onlara gelmez
   const hideForLab = new Set<NotificationCategory>([
     'review_request',
+    'ready_for_delivery',
   ]);
 
   let hide: Set<NotificationCategory> = hideForLab;
   if (isClient)          hide = hideForClient;
+  else if (isCourier)    hide = hideForCourier;
   else if (isTechnician) hide = hideForTechnician;
 
   return ALL_GROUPS
@@ -169,12 +188,15 @@ const THUMB_SHADOW = Platform.select({
   default: { shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
 });
 
-function Toggle({ on, disabled, onPress, accentColor }: { on: boolean; disabled?: boolean; onPress: () => void; accentColor: string }) {
+function Toggle({ on, disabled, onPress, accentColor, label }: { on: boolean; disabled?: boolean; onPress: () => void; accentColor: string; label?: string }) {
   const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <Pressable
       disabled={disabled}
       onPress={onPress}
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityState={{ checked: on, disabled: !!disabled }}
       style={{
         width: 44, height: 24, borderRadius: 999,
         backgroundColor: on ? accentColor : (isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.12)'),
@@ -209,11 +231,10 @@ export function NotificationsSection({ accentColor }: Props) {
   const surface     = T.card;
   const surfaceSoft = T.cardSoft;
   const hairline    = T.hairline;
-  // Mobile: Uyg/Push/E-posta gösterilir, WhatsApp desktop'a kalır; kolon genişliği düşürülür
-  const VISIBLE_CHANNELS = isNarrow
-    ? (['in_app','browser_push','email'] as const)
-    : (['in_app','browser_push','email','whatsapp'] as const);
-  const COL_W = isNarrow ? 42 : 56;
+  // Dört kanal her genişlikte görünür (eskiden mobilde WhatsApp gizliydi → telefondan
+  // kategori kategori ayarlanamıyordu); dar ekranda kolon daralır.
+  const VISIBLE_CHANNELS = ['in_app','browser_push','email','whatsapp'] as const;
+  const COL_W = isNarrow ? 40 : 56;
   const ICON_GUTTER = isNarrow ? 36 : 48;
   const prefs = useNotificationPrefs(s => s.prefs);
   const setMaster = useNotificationPrefs(s => s.setMaster);
@@ -224,6 +245,9 @@ export function NotificationsSection({ accentColor }: Props) {
   const [browserPerm, setBrowserPerm] = useState<NotificationPermission | 'unsupported'>(getBrowserPermission());
   const [savingMaster, setSavingMaster] = useState(false);
   const [webPushSubscribed, setWebPushSubscribed] = useState(false);
+  const [testing, setTesting] = useState(false);
+  /** Kayıt başarısızsa anahtar eski hâline döner (store) — kullanıcıya da söyle. */
+  const saved = (ok: boolean) => { if (!ok) toast.error('Ayar kaydedilemedi — bağlantını kontrol edip tekrar dene'); };
 
   // WhatsApp numarası — profiles.whatsapp_phone (E.164)
   const profileWa = useAuthStore(s => (s.profile as any)?.whatsapp_phone ?? '');
@@ -240,9 +264,12 @@ export function NotificationsSection({ accentColor }: Props) {
   const userRole = useAuthStore(s => (s.profile as any)?.role ?? null);
   // Tarama programı satırı yalnız 'scan_appointments' özelliği açık lab'da görünür
   const scanOn = useFeature('scan_appointments');
+  // Telefon talepleri satırı yalnız telefon asistanı modülü açık lab'da
+  const phoneOn = useFeature('phone_assistant');
   const GROUPS = React.useMemo(() => getGroupsForRole(userType, userRole)
-    .map(g => ({ ...g, items: g.items.filter(it => scanOn || it.key !== 'scan_schedule') }))
-    .filter(g => g.items.length > 0), [userType, userRole, scanOn]);
+    .map(g => ({ ...g, items: g.items.filter(it =>
+      (scanOn || it.key !== 'scan_schedule') && (phoneOn || it.key !== 'phone_lead')) }))
+    .filter(g => g.items.length > 0), [userType, userRole, scanOn, phoneOn]);
 
   const waDirty = waPhone.trim() !== (profileWa ?? '').trim();
   const saveWaPhone = async () => {
@@ -285,7 +312,7 @@ export function NotificationsSection({ accentColor }: Props) {
       const st = await registerForNativePush(userId);
       if (st.status === 'granted') {
         setBrowserPerm('granted');
-        await setChannel('browser_push', true);
+        saved(await setChannel('browser_push', true));
         toast.success('Push bildirimleri aktif (cihaz tokenı kaydedildi)');
       } else if (st.status === 'denied') {
         setBrowserPerm('denied');
@@ -302,7 +329,7 @@ export function NotificationsSection({ accentColor }: Props) {
     const res = await requestBrowserPushPermission(userId);
     setBrowserPerm(res === 'unsupported' ? 'unsupported' : res);
     if (res === 'granted') {
-      await setChannel('browser_push', true);
+      saved(await setChannel('browser_push', true));
       const st = await getWebPushState();
       setWebPushSubscribed(st.status === 'subscribed');
       toast.success(st.status === 'subscribed'
@@ -323,42 +350,65 @@ export function NotificationsSection({ accentColor }: Props) {
     const ok = await unsubscribeWebPush();
     if (ok) {
       setWebPushSubscribed(false);
-      await setChannel('browser_push', false);
+      saved(await setChannel('browser_push', false));
       toast.success('Push aboneliği iptal edildi');
+    } else {
+      toast.error('Abonelik iptal edilemedi');
     }
   };
 
+  /**
+   * Açık kanalları tek tek dener ve sonucu kanal kanal söyler. WhatsApp denenmez:
+   * yalnız Meta onaylı şablonla gidebiliyor, test şablonu yok.
+   */
   const sendTest = async () => {
-    if (browserPerm === 'granted') {
-      showBrowserPush('Siman', 'Test bildirimi — her şey yolunda!', { tag: 'test-notif' });
-    }
-    // Gerçek e-posta testi — mevcut kullanıcıya. category:'test' kategori-filtresini
-    // atlar (prefs.categories['test'] yok); yalnız email KANALI açıksa gönderir.
-    if (!userId) { toast.success('Test bildirimi gönderildi'); return; }
+    if (testing) return;
+    setTesting(true);
+    const results: string[] = [];
     try {
-      const { data, error } = await supabase.functions.invoke('send-email-notification', {
-        body: {
-          userIds: [userId],
-          category: 'test',
-          payload: {
-            title: 'Siman test bildirimi',
-            body:  'Bu bir test e-postasıdır — e-posta bildirimleriniz çalışıyor.',
-            actionUrl: '/settings?tab=notifications',
+      // 1) Bu cihaz — tarayıcı izni varsa yerel bildirim
+      if (Platform.OS === 'web') {
+        if (browserPerm === 'granted') { showBrowserPush('Siman', autoT('Test bildirimi — her şey yolunda!'), { tag: 'test-notif' }); results.push(`${autoT('Tarayıcı')}: ${autoT('gösterildi')}`); }
+        else results.push(`${autoT('Tarayıcı')}: ${autoT('izin yok')}`);
+      }
+      if (!userId) { toast.info(results.join(' · ') || autoT('Test bildirimi gönderildi')); return; }
+      // 2) Push servisi (kapalı sekme / telefon) — kategori 'test' tercih süzgecine takılmaz
+      if (prefs.channels?.browser_push) {
+        const fn = Platform.OS === 'web' ? 'send-web-push' : 'send-expo-push';
+        const { data, error } = await supabase.functions.invoke(fn, {
+          body: { userIds: [userId], category: 'test', payload: { title: 'Siman', body: autoT('Test bildirimi — her şey yolunda!'), tag: 'test-push', data: { url: '/settings?tab=notifications' } } },
+        });
+        const sent = (data as any)?.sent ?? 0;
+        results.push(`${autoT('Push')}: ${error ? autoT('hata') : sent > 0 ? autoT('gönderildi') : autoT('abonelik yok')}`);
+      }
+      // 3) E-posta
+      if (prefs.channels?.email) {
+        const { data, error } = await supabase.functions.invoke('send-email-notification', {
+          body: {
+            userIds: [userId],
+            category: 'test',
+            payload: {
+              title: 'Siman test bildirimi',
+              body:  'Bu bir test e-postasıdır — e-posta bildirimleriniz çalışıyor.',
+              actionUrl: '/settings?tab=notifications',
+            },
           },
-        },
-      });
-      if (error) { toast.error('Test e-postası gönderilemedi: ' + error.message); return; }
-      const sent = (data as any)?.sent ?? 0;
-      if (sent > 0) toast.success('Test bildirimi + e-posta gönderildi ✓');
-      else toast.error('E-posta gönderilmedi — e-posta kanalın kapalı veya adresin yok');
+        });
+        const sent = (data as any)?.sent ?? 0;
+        results.push(`${autoT('E-posta')}: ${error ? autoT('hata') : sent > 0 ? autoT('gönderildi') : autoT('adres yok')}`);
+      }
+      const anyFail = results.some(r => /hata|izin yok|abonelik yok|adres yok|error|denied/i.test(r));
+      (anyFail ? toast.error : toast.success)(results.join(' · ') || autoT('Açık kanal yok'));
     } catch (e: any) {
-      toast.error('Test e-postası hatası: ' + (e?.message ?? String(e)));
+      toast.error(autoT('Test gönderilemedi') + ': ' + (e?.message ?? String(e)));
+    } finally {
+      setTesting(false);
     }
   };
 
   const toggleMaster = async () => {
     setSavingMaster(true);
-    await setMaster(!prefs.master_enabled);
+    saved(await setMaster(!prefs.master_enabled));
     setSavingMaster(false);
   };
 
@@ -370,15 +420,20 @@ export function NotificationsSection({ accentColor }: Props) {
   // çünkü o kural fiilen bildirim üretmiyor.
   const activeChannelCount = CHANNEL_META.filter(c => !!prefs.channels?.[c.key]).length;
   const activeRuleCount = GROUPS.reduce((n, g) => n + g.items.reduce((m, it) =>
-    m + CHANNEL_META.filter(ch => !!prefs.channels?.[ch.key] && categoryEnabled(it.key, ch.key)).length, 0), 0);
+    m + CHANNEL_META.filter(ch => !!prefs.channels?.[ch.key] && categoryEnabled(it.key, ch.key)
+      && (ch.key !== 'whatsapp' || WHATSAPP_CAPABLE.includes(it.key))).length, 0), 0);
 
   /** "Tümünü Aç / Kapat" — tek persist ile (bkz. store.setCategoriesBulk). */
   const toggleGroup = (items: { key: NotificationCategory }[], on: boolean) => {
-    setCategoriesBulk(
-      items.map(i => i.key),
-      CHANNEL_META.filter(ch => (VISIBLE_CHANNELS as readonly string[]).includes(ch.key)).map(ch => ch.key),
-      on,
-    );
+    // WhatsApp yalnız şablonu olan kategorilerde açılır (diğerlerinde zaten gönderilmez).
+    const chs = CHANNEL_META.filter(ch => (VISIBLE_CHANNELS as readonly string[]).includes(ch.key)).map(ch => ch.key);
+    const waCats = items.map(i => i.key).filter(k => WHATSAPP_CAPABLE.includes(k));
+    const otherChs = chs.filter(c => c !== 'whatsapp');
+    void (async () => {
+      const ok1 = await setCategoriesBulk(items.map(i => i.key), otherChs, on);
+      const ok2 = waCats.length ? await setCategoriesBulk(waCats, ['whatsapp'], on) : true;
+      saved(ok1 && ok2);
+    })();
   };
 
   return (
@@ -474,11 +529,31 @@ export function NotificationsSection({ accentColor }: Props) {
                   <Toggle
                     on={on}
                     disabled={disabled}
-                    onPress={() => setChannel(ch.key, !on)}
+                    onPress={async () => saved(await setChannel(ch.key, !on))}
                     accentColor={accentColor}
+                    label={autoT(ch.label)}
                   />
                 )}
               </View>
+
+              {/* Push aboneliğini bu cihazda iptal et — eskiden kodu vardı ama düğmesi yoktu. */}
+              {isPush && browserPerm === 'granted' && (Platform.OS !== 'web' || webPushSubscribed) && (
+                <View style={{ marginStart: 48, marginTop: -6, marginBottom: 10, flexDirection: 'row' }}>
+                  <GlassTooltip title={autoT('Aboneliği iptal et')} text={autoT('Bu cihaz artık push bildirimi almaz; diğer cihazların etkilenmez')}>
+                    <Pressable
+                      onPress={handleUnsubscribe}
+                      accessibilityRole="button"
+                      style={({ hovered }: any) => ({
+                        paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+                        backgroundColor: hovered ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') : 'transparent',
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                      })}
+                    >
+                      <Text style={{ fontSize: 11.5, fontWeight: '600', color: isDark ? '#FCA5A5' : '#9C2E2E' }}>Bu cihazda aboneliği iptal et</Text>
+                    </Pressable>
+                  </GlassTooltip>
+                </View>
+              )}
 
               {/* WhatsApp numarası kanalın İÇİNDE — ayrı bir kart olarak
                   durduğunda "hangi ayara ait?" bağı kopuyordu. Yakınlık =
@@ -602,6 +677,16 @@ export function NotificationsSection({ accentColor }: Props) {
                       <Text style={{ fontSize: 11.5, color: T.ink3, marginTop: 1 }} numberOfLines={isNarrow ? 2 : undefined}>{item.sub}</Text>
                     </View>
                     {CHANNEL_META.filter(ch => (VISIBLE_CHANNELS as readonly string[]).includes(ch.key)).map(ch => {
+                      // WhatsApp şablonu olmayan kategoride anahtar hiçbir şey göndermez → çizgi.
+                      if (ch.key === 'whatsapp' && !WHATSAPP_CAPABLE.includes(item.key)) {
+                        return (
+                          <View key={ch.key} style={{ width: COL_W, alignItems: 'center' }}>
+                            <GlassTooltip title={autoT('WhatsApp yok')} text={autoT('Bu bildirim türü WhatsApp ile gönderilmiyor')}>
+                              <Text accessibilityLabel={autoT('Bu bildirim türü WhatsApp ile gönderilmiyor')} style={{ fontSize: 14, color: T.ink3 }}>—</Text>
+                            </GlassTooltip>
+                          </View>
+                        );
+                      }
                       const on = categoryEnabled(item.key, ch.key);
                       const globalChannelOn = !!prefs.channels?.[ch.key];
                       const disabled = !prefs.master_enabled
@@ -612,8 +697,9 @@ export function NotificationsSection({ accentColor }: Props) {
                           <Toggle
                             on={on && globalChannelOn && prefs.master_enabled && !(ch.key === 'browser_push' && browserPerm !== 'granted')}
                             disabled={disabled}
-                            onPress={() => setCategoryChannel(item.key, ch.key, !on)}
+                            onPress={async () => saved(await setCategoryChannel(item.key, ch.key, !on))}
                             accentColor={accentColor}
+                            label={`${autoT(item.label)} · ${autoT(ch.label)}`}
                           />
                         </View>
                       );
@@ -634,7 +720,7 @@ export function NotificationsSection({ accentColor }: Props) {
         <GlassTooltip title={autoT('Test bildirimi')} text={autoT('Açık kanallara örnek bir bildirim gönder')} enabled={prefs.master_enabled}>
           <Pressable
             onPress={sendTest}
-            disabled={!prefs.master_enabled}
+            disabled={!prefs.master_enabled || testing}
             style={({ hovered }: any) => ({
               flexDirection: 'row', alignItems: 'center', gap: 8,
               paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999,
@@ -644,7 +730,7 @@ export function NotificationsSection({ accentColor }: Props) {
             })}
           >
             <Volume2 size={13} color="#FFFFFF" strokeWidth={1.8} />
-            <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF' }}>Test bildirimi gönder</Text>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF' }}>{testing ? 'Gönderiliyor…' : 'Test bildirimi gönder'}</Text>
           </Pressable>
         </GlassTooltip>
       </View>
@@ -653,13 +739,13 @@ export function NotificationsSection({ accentColor }: Props) {
       <View
         style={{
           flexDirection: 'row', gap: 10, padding: 14, borderRadius: 14, marginTop: 16,
-          backgroundColor: '#FFFBEB',
-          borderWidth: 1, borderColor: 'rgba(245,158,11,0.2)',
+          backgroundColor: isDark ? 'rgba(245,158,11,0.10)' : '#FFFBEB',
+          borderWidth: 1, borderColor: isDark ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.2)',
           alignItems: 'flex-start',
         }}
       >
-        <Shield size={14} color="#D97706" strokeWidth={1.8} style={{ marginTop: 1 }} />
-        <Text style={{ flex: 1, fontSize: 12, color: '#92400E', lineHeight: 17 }}>
+        <Shield size={14} color={isDark ? '#E8B45E' : '#D97706'} strokeWidth={1.8} style={{ marginTop: 1 }} />
+        <Text style={{ flex: 1, fontSize: 12, color: isDark ? '#F3D9A4' : '#92400E', lineHeight: 17 }}>
           E-posta bildirimleri hesabının e-posta adresine gönderilir; kanalı açıp istediğin kategorileri seçebilirsin. Tarayıcı push için bildirim izni gerekir;
           izin verirsen sekme arka planda olsa bile masaüstü bildirimi alırsın. WhatsApp bildirimleri için
           kanalı açıp WhatsApp numaranı kaydetmelisin. Tüm tercihler kullanıcı profiline kaydedilir.

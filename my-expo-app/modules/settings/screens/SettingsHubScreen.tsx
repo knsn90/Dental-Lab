@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { View, Text, ScrollView, Pressable, useWindowDimensions, Modal, Platform } from 'react-native';
 import { useSegments, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, ChevronRight, Menu, X, Check } from '../../../core/ui/icons';
+import { Menu, X, Check } from '../../../core/ui/icons';
 
 import { HubContext } from '../../../core/ui/HubContext';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
@@ -27,15 +27,12 @@ import { useAuthStore } from '../../../core/store/authStore';
 
 import { LabUsersManagement } from '../../admin/users/LabUsersManagement';
 import { LabCheckinSettings } from '../../hr/screens/LabCheckinSettings';
-import { StationsSection } from '../sections/StationsSection';
 import { ProfileSection } from '../sections/ProfileSection';
 import { NotificationsSection } from '../sections/NotificationsSection';
 import { GeneralSection } from '../sections/GeneralSection';
 import { FinanceSection } from '../sections/FinanceSection';
 import { IntegrationsScreen } from '../../integrations/screens/IntegrationsScreen';
 import { LogsSection } from '../sections/LogsSection';
-import { CurrencyRatesScreen } from './CurrencyRatesScreen';
-import { SuppliersScreen } from '../../suppliers/screens/SuppliersScreen';
 import { PermissionsScreen } from '../../admin/permissions/PermissionsScreen';
 import { WorkflowStudioScreen } from '../../triage/screens/WorkflowStudioScreen';
 import { EquipmentSection } from '../sections/EquipmentSection';
@@ -44,12 +41,10 @@ import { ScanSettingsSection } from '../sections/ScanSettingsSection';
 import { FeaturesSection } from '../sections/FeaturesSection';
 import { ImplantBrandsSection } from '../sections/ImplantBrandsSection';
 import { useFeatureFlagsStore } from '../../../core/store/featureFlagsStore';
-import { MyAccessCodeSection } from '../../kiosk/screens/MyAccessCodeSection';
-import { LabDevicesSection } from '../../kiosk/screens/LabDevicesSection';
+import { TabletAccessSection } from '../../kiosk/screens/TabletAccessSection';
 import { useKioskMode } from '../../../core/kiosk/kioskModeStore';
 import { MOBILE_PANEL_THEMES, useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
-import { isRTL } from '../../../core/i18n';
 
 // ── Display font token ──────────────────────────────────────────────────
 const DISPLAY = {
@@ -61,8 +56,8 @@ const DISPLAY = {
 type SectionKey =
   | 'profile' | 'notifications' | 'general'
   | 'users'   | 'checkin'    | 'stations'      | 'integrations' | 'logs'
-  | 'permissions' | 'equipment' | 'finance' | 'currency' | 'suppliers' | 'workhours'
-  | 'workflows' | 'mycode' | 'devices' | 'scans' | 'modules' | 'implants';
+  | 'permissions' | 'equipment' | 'finance' | 'workhours'
+  | 'workflows' | 'mycode' | 'devices' | 'scans' | 'modules' | 'implants' | 'laboratory';
 
 type PanelKind = 'lab' | 'admin' | 'doctor' | 'clinic' | 'station';
 
@@ -122,20 +117,23 @@ function detectPanel(segments: string[]): PanelKind {
 const ACCOUNT_ITEMS: NavItem[] = [
   { key: 'profile',       label: 'Profil',      sub: 'Kişisel bilgiler ve güvenlik', group: 'Hesap' },
   { key: 'notifications', label: 'Bildirimler', sub: 'Uyarı ve bildirim tercihleri' },
-  { key: 'general',       label: 'Genel',       sub: 'Dil, saat dilimi, format'     },
-  { key: 'mycode',        label: 'Giriş Kodum', sub: 'Tablet giriş kodu (PIN)'      },
+  { key: 'general',       label: 'Genel',       sub: 'Tema, dil ve takvim' },
+  // Tablet Girişi: kişinin kendi kodu (herkes) + personel kodları ve tabletler (yalnız yönetici).
+  // Eski 'devices' sekmesi buraya birleşti; ?tab=devices → mycode.
+  { key: 'mycode',        label: 'Tablet Girişi', sub: 'Giriş kodu ve tablet yönetimi' },
 ];
 
 const LAB_ITEMS: NavItem[] = [
   // ── Organizasyon: kim, hangi yetkiyle, hangi düzende çalışıyor ──
-  { key: 'users',        label: 'Kullanıcılar',  sub: 'Personel ve stage yetkileri',  requiresPermission: 'manage_users',    group: 'Organizasyon' },
-  { key: 'permissions',  label: 'Yetkiler',      sub: 'Rol bazlı erişim yönetimi',    requiresPermission: 'manage_settings' },
+  // Lab genelindeki ayarlar (eskiden Genel'in içindeydi) — tüm ekibi etkiler.
+  { key: 'laboratory',   label: 'Laboratuvar',   sub: 'Kimlik, marka, bölge, sipariş ve gizlilik', requiresPermission: 'manage_settings', group: 'Organizasyon' },
+  { key: 'users',        label: 'Kullanıcılar',  sub: 'Personel ve aşama yetkileri',  requiresPermission: 'manage_users' },
+  { key: 'permissions',  label: 'Yetkiler',      sub: 'Rol bazlı erişim yönetimi',    requiresPermission: 'manage_settings', adminOnly: true },
   { key: 'workhours',    label: 'Çalışma Saatleri', sub: 'Vardiya, öğle, eşzamanlı iş', requiresPermission: 'manage_settings' },
   { key: 'checkin',      label: 'QR Check-in',   sub: 'Mesai takip ayarları',         requiresPermission: 'manage_settings' },
-  { key: 'devices',      label: 'Tabletler',     sub: 'Kiosk cihaz yönetimi',         requiresPermission: 'manage_settings' },
   // ── Operasyon: üretim ve para akışını yapılandıran ayarlar ──
-  { key: 'stations',     label: 'İstasyonlar',   sub: 'Üretim aşamaları',             requiresPermission: 'manage_settings', group: 'Operasyon' },
-  { key: 'finance',      label: 'Finans Ayarları', sub: 'Para birimi, KDV, kur, ödeme hatırlatmaları', requiresPermission: 'manage_settings' },
+  { key: 'equipment',    label: 'Ekipman',       sub: 'Cihaz, demirbaş ve tarama cihazları', requiresPermission: 'manage_settings', group: 'Operasyon' },
+  { key: 'finance',      label: 'Finans Ayarları', sub: 'Para birimi, KDV, fatura bilgileri, hatırlatmalar', requiresPermission: 'manage_settings' },
   { key: 'scans',        label: 'Tarama Randevuları', sub: 'Tarama saatleri, yol payı, bildirim saatleri', requiresPermission: 'manage_settings', requiresFeature: 'scan_appointments' },
   // İmplant markaları: yeni sipariş formundaki lab kataloğu — düzeltme/gizleme/birleştirme yalnız yöneticide.
   { key: 'implants',     label: 'İmplant Markaları', sub: 'Marka ve model listesi', requiresPermission: 'manage_settings', managerOnly: true },
@@ -153,7 +151,7 @@ const LAB_ITEMS: NavItem[] = [
 /** Yalnız admin panelinde: İş Akışları kenar çubuğundan buraya taşındı.
     Lab panelinde hâlâ kenar çubuğunda durduğu için orada tekrar gösterilmez. */
 const ADMIN_ONLY_ITEMS: NavItem[] = [
-  { key: 'workflows', label: 'İş Akışları', sub: 'Üretim akışı tasarımcısı', requiresPermission: 'manage_settings', group: 'Gelişmiş' },
+  { key: 'workflows', label: 'İş Akışları', sub: 'İstasyonlar, akış tasarımı ve kurallar', requiresPermission: 'manage_settings', group: 'Gelişmiş' },
 ];
 
 function getNavItems(panel: PanelKind): NavItem[] {
@@ -190,20 +188,21 @@ export function SettingsHubScreen({
   const params = useLocalSearchParams<{ tab?: string }>();
   const VALID_KEYS: SectionKey[] = [
     'profile','notifications','general','mycode','devices','users','checkin','stations',
-    'integrations','logs','permissions','equipment','finance','currency','suppliers','workflows','workhours','scans','modules','implants',
+    'integrations','logs','permissions','equipment','finance','workflows','laboratory','workhours','scans','modules','implants',
   ];
-  const initialFromUrl = typeof params.tab === 'string' && (VALID_KEYS as string[]).includes(params.tab)
-    ? params.tab as SectionKey
-    : null;
+  // Birleşen sekmeler: eski bağlantılar yeni sekmeye açılır.
+  // stations → İş Akışları › İstasyonlar (iki istasyon editörü birleşti).
+  const TAB_ALIAS: Partial<Record<string, SectionKey>> = { devices: 'mycode', stations: 'workflows' };
+  const resolveTab = (t: unknown): SectionKey | null =>
+    typeof t === 'string' && (VALID_KEYS as string[]).includes(t) ? (TAB_ALIAS[t] ?? t as SectionKey) : null;
+  const initialFromUrl = resolveTab(params.tab);
   const [active, setActiveRaw] = useState<SectionKey>(initialFromUrl ?? 'profile');
   const [menuOpen, setMenuOpen] = useState(false);
 
   // URL değişirse state'i senkronla (browser back/forward)
   useEffect(() => {
-    const t = typeof params.tab === 'string' ? params.tab : null;
-    if (t && (VALID_KEYS as string[]).includes(t) && t !== active) {
-      setActiveRaw(t as SectionKey);
-    }
+    const t = resolveTab(params.tab);
+    if (t && t !== active) setActiveRaw(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.tab]);
 
@@ -249,6 +248,7 @@ export function SettingsHubScreen({
   const isSuperAdmin = useAuthStore(s => s.profile?.user_type) === 'admin';
   const isLabManager = useAuthStore(s => s.profile?.user_type === 'lab' && (s.profile as any)?.role === 'manager');
   const featureFlags = useFeatureFlagsStore(s => s.flags);
+  const flagsLoaded = useFeatureFlagsStore(s => s.loaded);
 
   // Filter nav items by RBAC permissions
   const allNavItems = getNavItems(isSuperAdmin && (panel === 'lab' || panel === 'admin') ? 'admin' : panel);
@@ -267,6 +267,16 @@ export function SettingsHubScreen({
     return permStore.permissions.has(item.requiresPermission);
   });
 
+  // Eski ?tab=stations: İstasyonlar artık İş Akışları'nın içinde. Lab panelinde
+  // İş Akışları ayarlarda değil kenar çubuğunda → o ekrana, İstasyonlar alanına git.
+  const hasWorkflowsTab = navItems.some(i => i.key === 'workflows');
+  useEffect(() => {
+    if (params.tab !== 'stations' || panel !== 'lab' || hasWorkflowsTab) return;
+    if (!permStore.loaded && !isSuperAdmin) return;
+    router.replace('/(lab)/workflows?area=stations' as any);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.tab, panel, hasWorkflowsTab, permStore.loaded, isSuperAdmin]);
+
   // Kiosk'ta gizli bir sekmeye deep-link (?tab=users) gelirse boş içerik kalmasın → profile'a düş
   useEffect(() => {
     if (isKiosk && !KIOSK_ALLOWED.has(active)) setActiveRaw('profile');
@@ -274,6 +284,15 @@ export function SettingsHubScreen({
   }, [isKiosk, active]);
 
   const activeItem = navItems.find(i => i.key === active);
+  // Erişim kapısı yalnız menüde değil, içerikte de: ?tab=finance gibi bir adresle
+  // yetkisiz/kapalı bir sekme açılırsa içerik çizilmez, ilk izinli sekmeye düşülür.
+  // İzinler yüklenirken (permStore.loaded=false) menü hepsini gösterdiği için bekler.
+  const canRender = !!activeItem;
+  useEffect(() => {
+    if ((!permStore.loaded && !isSuperAdmin) || !flagsLoaded) return;
+    if (!activeItem && navItems.length > 0) setActive(navItems[0].key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeItem, navItems.length, permStore.loaded, isSuperAdmin, flagsLoaded]);
 
   return (
     <View style={{ flex: 1, flexDirection: isNarrow ? 'column' : 'row', backgroundColor: isNarrow ? panelBg : 'transparent' }}>
@@ -556,6 +575,7 @@ export function SettingsHubScreen({
           {/* Section body */}
           <HubContext.Provider value={true}>
             <View style={{ flex: 1, minHeight: 0 }}>
+              {canRender && <>
               {active === 'profile' && (
                 <ProfileSection accentColor={accent} />
               )}
@@ -563,28 +583,27 @@ export function SettingsHubScreen({
                 <NotificationsSection panelType={panel} accentColor={accent} />
               )}
               {active === 'general' && (
-                <GeneralSection panelType={panel} accentColor={accent} />
+                <GeneralSection panelType={panel} accentColor={accent} view="personal" />
+              )}
+              {active === 'laboratory' && (
+                <GeneralSection panelType={panel} accentColor={accent} view="lab" />
               )}
               {active === 'users' && <LabUsersManagement accentColor={accent} />}
-              {active === 'mycode' && <MyAccessCodeSection accentColor={accent} />}
-              {active === 'devices' && <LabDevicesSection accentColor={accent} />}
+              {active === 'mycode' && <TabletAccessSection accentColor={accent} />}
               {active === 'checkin' && (
                 <LabCheckinSettings accentColor={accent} />
               )}
-              {active === 'stations' && <StationsSection accentColor={accent} />}
               {active === 'finance' && <FinanceSection panelType={panel} accentColor={accent} />}
               {active === 'workhours' && <WorkHoursSection accentColor={accent} />}
               {active === 'scans' && <ScanSettingsSection accentColor={accent} />}
               {active === 'modules' && <FeaturesSection accentColor={accent} />}
               {active === 'implants' && <ImplantBrandsSection accentColor={accent} />}
               {active === 'equipment' && <EquipmentSection accentColor={accent} />}
-              {active === 'suppliers' && <SuppliersScreen accentColor={accent} />}
-              {active === 'currency' && <FinanceSection panelType={panel} accentColor={accent} />}
-              {active === 'suppliers' && <SuppliersScreen accentColor={accent} />}
               {active === 'integrations' && <IntegrationsScreen accentColor={accent} />}
               {active === 'logs' && <LogsSection accentColor={accent} />}
               {active === 'permissions' && <PermissionsScreen embedded accentColor={accent} />}
-              {active === 'workflows' && <WorkflowStudioScreen embedded />}
+              {active === 'workflows' && <WorkflowStudioScreen embedded initialArea={params.tab === 'stations' ? 'stations' : undefined} />}
+              </>}
             </View>
           </HubContext.Provider>
         </View>

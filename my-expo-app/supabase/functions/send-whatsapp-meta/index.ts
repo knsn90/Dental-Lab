@@ -310,9 +310,16 @@ Deno.serve(async (req) => {
     // Admin nüshası "kesinlikle" gitsin (kullanıcı kararı) → kişisel WhatsApp kapatma
     // tercihi bu kopyayı durdurmaz; müşteri mesajlarında opt-out aynen geçerli.
     // Ön ekstre bağlantısı işlemseldir (e-postayla aynı kural): yalnız TÜM bildirimler kapalıysa gitmez.
+    // Tüm bildirimler kapalı ya da WhatsApp KANALI kapalıysa da gitmez — eskiden yalnız
+    // kategori anahtarına bakılıyordu; kanalı kapatan kullanıcıya mesaj gidiyordu (2026-11-22).
+    const np = pr?.notification_prefs;
     const optedOut = category === 'pre_statement'
-      ? pr?.notification_prefs?.master_enabled === false
-      : (!adminCopy && pr?.notification_prefs?.categories?.[category]?.whatsapp === false);
+      ? np?.master_enabled === false
+      : (!adminCopy && (
+          np?.master_enabled === false
+          || np?.channels?.whatsapp === false
+          || np?.categories?.[category]?.whatsapp === false
+        ));
     if (optedOut) { results.push({ id: pr.id, skip: 'opted-out' }); continue; }
 
     // HATTI SAHİPLEN: önce 'pending' audit satırı; aynı anahtar başka bir paralel

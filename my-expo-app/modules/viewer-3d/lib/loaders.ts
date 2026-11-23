@@ -43,9 +43,7 @@ export async function loadGeometry(
   signal?: AbortSignal,
   textureUrl?: string | null,
 ): Promise<LoadedGeometry> {
-  const res = await fetch(url, { signal });
-  if (!res.ok) throw new Error(`HTTP ${res.status} — ${url}`);
-  const buf = await res.arrayBuffer();
+  const buf = await fetchBufferWithRetry(url, signal);
 
   if (format === 'stl') {
     const geom = new STLLoader().parse(buf);
@@ -106,6 +104,31 @@ export async function loadGeometry(
   }
 
   throw new Error(`Bilinmeyen format: ${format}`);
+}
+
+/**
+ * Ağ kopmasında ("Failed to fetch" — TypeError) 2 kez daha dener (0,8 sn, 1,6 sn).
+ * Birkaç 10+ MB tarama aynı anda indirilirken bağlantının biri düşebiliyor;
+ * eskiden tek hata tüm katmanı kaybettiriyordu. HTTP hatası (403/404 vb.)
+ * tekrar denenmez — sonuç değişmez. Hata mesajında imzalı URL gösterilmez.
+ */
+async function fetchBufferWithRetry(url: string, signal?: AbortSignal, attempts = 3): Promise<ArrayBuffer> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    try {
+      const res = await fetch(url, { signal });
+      if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { noRetry: true });
+      return await res.arrayBuffer();
+    } catch (e: any) {
+      if (e?.name === 'AbortError' || e?.noRetry) throw e;
+      lastErr = e;
+      if (i < attempts - 1) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 800 * 2 ** i));
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('Yüklenemedi');
 }
 
 /**

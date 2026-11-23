@@ -29,7 +29,7 @@ const STATUS_LABEL: Record<string, string> = {
   alindi:                   'Alındı',
   kutu_atandi:              'Kutu Atandı',
   uretimde:                 'Üretimde',
-  asamada:                  'Üretimde',
+  asamada:                  'Üretim Aşamasında',
   kalite_kontrol:           'Final QC',
   tasarim_onayi_bekleniyor: 'Tasarım Onayı Bekliyor',
   teslimata_hazir:          'Teslime Hazır',

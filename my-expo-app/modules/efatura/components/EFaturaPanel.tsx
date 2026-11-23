@@ -113,7 +113,7 @@ export function EFaturaPanel({ invoiceId, status, uuid, type, provider, error, n
   const billingBlocked = !!activeKey && activeKey !== 'demo' && !billing.loading && !billing.complete;
   const openBillingSettings = () => {
     const group = String(segments[0] ?? '').startsWith('(') ? String(segments[0]) : '(lab)';
-    router.push(`/${group}/settings?tab=general` as any);
+    router.push(`/${group}/settings?tab=finance` as any);
   };
 
   const refreshLogs = async () => {

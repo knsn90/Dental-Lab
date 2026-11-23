@@ -588,7 +588,7 @@ function LabStep({ data, onChange, ownerName, onOwnerNameChange, errors, theme }
       {/* Fatura bilgileri — zorunlu: e-fatura, ekstre ve iş kâğıdı künyesi buradan okunur.
           Görünen adres bu alanlardan oluşur ("…, İlçe / İl"). Kurallar: settings/labBilling.ts */}
       <Text style={{ fontSize: 13, fontWeight: '700', color: theme.INK, marginBottom: 2 }}>Fatura Bilgileri</Text>
-      <Text style={{ fontSize: 12, color: theme.INK3, marginBottom: 10 }}>e-Fatura ve resmi belgelerde kullanılır. Sonradan Ayarlar → Genel'den değiştirebilirsiniz.</Text>
+      <Text style={{ fontSize: 12, color: theme.INK3, marginBottom: 10 }}>e-Fatura ve resmi belgelerde kullanılır. Sonradan Ayarlar → Finans Ayarları'ndan değiştirebilirsiniz.</Text>
       <FormField label={LAB_BILLING_LABELS.legal_name} placeholder="ör. Esen Diş Laboratuvarı San. Tic. Ltd. Şti." value={data.legal_name}
         onChangeText={(v: string) => onChange({ ...data, legal_name: v })} required icon={Building2} error={errors.lab_legal_name} theme={theme} />
       <FormField label={LAB_BILLING_LABELS.tax_number} placeholder="10 ya da 11 hane" value={data.tax_number}

@@ -650,6 +650,7 @@ export function PriceListScreen() {
   const [savedRate, setSavedRate] = useState(0);
   const [surDirty, setSurDirty] = useState(false);
   const [surSaving, setSurSaving] = useState(false);
+  const [surErr, setSurErr] = useState('');
   useEffect(() => {
     if (!labId) return;
     let cancel = false;
@@ -664,9 +665,12 @@ export function PriceListScreen() {
   const saveSurcharge = async () => {
     if (!labId) return;
     const num = Math.max(0, Math.min(100, parseFloat(rate.replace(',', '.')) || 0));
-    setSurSaving(true);
-    await supabase.from('lab_settings').upsert({ lab_id: labId, urgent_surcharge_rate: num }, { onConflict: 'lab_id' });
-    setSavedRate(num); setRate(num ? String(num) : ''); setSurDirty(false); setSurSaving(false);
+    setSurSaving(true); setSurErr('');
+    const { error } = await supabase.from('lab_settings').upsert({ lab_id: labId, urgent_surcharge_rate: num }, { onConflict: 'lab_id' });
+    setSurSaving(false);
+    // Eskiden hata yutuluyordu: kayıt tutmasa da "kaydedildi" gibi kapanıyordu.
+    if (error) { setSurErr(autoT('Acil ek ücret kaydedilemedi. Tekrar deneyin.')); return; }
+    setSavedRate(num); setRate(num ? String(num) : ''); setSurDirty(false);
   };
 
   const saveActive = surDirty && !surSaving;
@@ -837,6 +841,9 @@ export function PriceListScreen() {
                   </Text>
                 </Pressable>
               </View>
+              {!!surErr && (
+                <Text style={{ fontSize: 12, color: isDark ? '#F87171' : '#DC2626', textAlign: 'right', marginTop: 8 }}>{surErr}</Text>
+              )}
             </View>
           </Pressable>
         </Pressable>
@@ -2153,7 +2160,7 @@ function ServiceRow({
         <Text style={[s.serviceName, { color: T.ink }]} numberOfLines={1}>{sv.name}</Text>
         {sv.production_days != null && (
           <Text style={{ fontSize: 11, color: isDark ? T.ink3 : DS.ink[400], fontWeight: '500', marginTop: 2 }}>
-            {sv.production_days} gün
+            {sv.production_days} {autoT('iş günü')}
           </Text>
         )}
       </View>
@@ -5087,7 +5094,7 @@ function ServiceModal({
                 </>
               )}
               <View style={{ height: 10 }} />
-              <Text style={m.fieldLabel}>Üretim Süresi (gün)</Text>
+              <Text style={m.fieldLabel}>Teslim Süresi (iş günü)</Text>
               <TextInput
                 style={m.fieldInput as any}
                 value={form.production_days}
@@ -5097,7 +5104,7 @@ function ServiceModal({
                 keyboardType="number-pad"
               />
               <Text style={{ fontSize: 10.5, color: DS.ink[400], marginTop: 4 }}>
-                Tahmini üretim süresi — boş bırakırsan belirsiz gösterilir.
+                Yeni siparişte bu iş için en erken teslim tarihi buna göre hesaplanır. Boş bırakılırsa Ayarlar › Laboratuvar'daki varsayılan süre kullanılır.
               </Text>
               {/* Tarama randevuları: hizmetin tarama türü + siparişe dönerse ücretsiz (lab kararı) */}
               {scanOn ? (

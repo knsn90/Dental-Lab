@@ -197,7 +197,7 @@ export function DeliveryUndoModal({ visible, onClose, onDone, orderId, orderNumb
                     {autoT('NE DEĞİŞECEK')}
                   </Text>
                   <Text style={{ fontSize: 13, lineHeight: 19, color: U.ink[800] }}>
-                    {autoT('Sipariş "Aşamada" durumuna döner ve teslim saati silinir. Geçmiş\'e "Teslim geri alındı" kaydı düşer.')}
+                    {autoT('Sipariş "Üretim Aşamasında" durumuna döner ve teslim saati silinir. Geçmiş\'e "Teslim geri alındı" kaydı düşer.')}
                   </Text>
                   {prev.review === 'sent' && (
                     <Text style={{ fontSize: 12, lineHeight: 17, color: U.ink[500] }}>

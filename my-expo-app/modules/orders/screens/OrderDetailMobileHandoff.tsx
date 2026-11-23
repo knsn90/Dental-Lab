@@ -128,6 +128,8 @@ export interface OrderDetailMobileHandoffProps {
   /** Hero'da bekleme etiketi — "Beklemede · 5 gündür" / "Provada". */
   holdLabel?: string | null;
   onStageDone?: () => void;
+  /** onStageDone düğmesinin etiketi (varsayılan "Aşama tamam"; planlı siparişte "Üretimi başlat"). */
+  stageDoneLabel?: string;
   onAddAttachment?: () => void;
   /** Revizyon oluştur — teslim edilmiş siparişte (lab yöneticisi). Verilmezse buton çıkmaz. */
   onCreateRevision?: () => void;
@@ -743,7 +745,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                           flexDirection: 'row', alignItems: 'center', gap: 5,
                         }}
                       >
-                        <Text style={{ fontSize: 11, color: '#FFFFFF', fontWeight: '600' }}>Aşama tamam</Text>
+                        <Text style={{ fontSize: 11, color: '#FFFFFF', fontWeight: '600' }}>{props.stageDoneLabel ?? 'Aşama tamam'}</Text>
                       </Pressable>
                     ) : null}
                   </View>

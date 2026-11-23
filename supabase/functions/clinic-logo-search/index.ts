@@ -37,13 +37,42 @@ function domainOf(input: string): string | null {
   s = s.split('/')[0].split('?')[0]
   return s && s.includes('.') ? s : null
 }
-async function scrapeSite(domain: string): Promise<string[]> {
+// Instagram kullanıcı adı: "@ad", "ad" ya da instagram.com/ad/ bağlantısı → "ad".
+const IG_RESERVED = new Set(['p', 'reel', 'reels', 'explore', 'accounts', 'stories', 'tv', 'about', 'developer', 'legal', 'direct', 'share'])
+function igHandleOf(raw: string): string | null {
+  let s = String(raw || '').trim()
+  const m = s.match(/instagram\.com\/([A-Za-z0-9._]+)/i)
+  if (m) s = m[1]
+  s = s.replace(/^@/, '').split(/[/?#\s]/)[0].toLowerCase()
+  return /^[a-z0-9._]{1,30}$/.test(s) && !IG_RESERVED.has(s) ? s : null
+}
+// Meta Business Discovery: lab'ın Instagram iş hesabı üzerinden başka bir iş/içerik
+// üreticisi hesabının profil fotoğrafını okur. Secret'lar yoksa sessizce atlanır.
+async function igProfilePicture(handle: string): Promise<{ status: 'ok' | 'no_token' | 'not_found'; url?: string; name?: string }> {
+  const igUser = Deno.env.get('META_IG_USER_ID')
+  const token = Deno.env.get('META_IG_TOKEN')
+  if (!igUser || !token) return { status: 'no_token' }
+  try {
+    const fields = `business_discovery.username(${handle}){username,name,profile_picture_url}`
+    const r = await fetch(`https://graph.facebook.com/v21.0/${igUser}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(token)}`)
+    const j = await r.json().catch(() => ({}))
+    const bd = (j as any)?.business_discovery
+    if (!r.ok || !bd?.profile_picture_url) {
+      if ((j as any)?.error) console.warn('[ig] business_discovery', (j as any).error?.code, (j as any).error?.error_subcode)
+      return { status: 'not_found' }
+    }
+    return { status: 'ok', url: bd.profile_picture_url, name: bd.name || bd.username }
+  } catch (_) { return { status: 'not_found' } }
+}
+async function scrapeSite(domain: string): Promise<{ logos: string[]; instagram: string | null }> {
   const out: string[] = []
+  let instagram: string | null = null
   const base = `https://${domain}`
   try {
     const r = await fetch(base, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SimanBot/1.0)' }, redirect: 'follow' })
-    if (!r.ok) return out
+    if (!r.ok) return { logos: out, instagram }
     const html = await r.text()
+    for (const m of html.matchAll(/instagram\.com\/([A-Za-z0-9._]+)/gi)) { const h = igHandleOf(m[0]); if (h) { instagram = h; break } }
     const baseUrl = r.url || base
     const pick = (re: RegExp) => { const m = html.match(re); return m?.[1] ? absUrl(baseUrl, m[1]) : null }
     const og = pick(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) || pick(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)
@@ -54,7 +83,7 @@ async function scrapeSite(domain: string): Promise<string[]> {
     const imgTag = html.match(/<img[^>]*\b(?:class|alt|id)=["'][^"']*logo[^"']*["'][^>]*>/i)?.[0] || html.match(/<img[^>]*\bsrc=["'][^"']*logo[^"']*["'][^>]*>/i)?.[0]
     if (imgTag) { const src = imgTag.match(/\bsrc=["']([^"']+)["']/i)?.[1]; const a = src && absUrl(baseUrl, src); if (a) out.push(a) }
   } catch (_) { /* ulaşılamadı */ }
-  return out
+  return { logos: out, instagram }
 }
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -109,13 +138,23 @@ Deno.serve(async (req: Request) => {
     // ── SEARCH ──
     const query = (payload?.q ?? '').toString().trim()
     const website = (payload?.website ?? '').toString().trim()
+    let instagram = igHandleOf((payload?.instagram ?? '').toString())
     const candidates: { name: string; domain: string; url: string }[] = []
     const seen = new Set<string>()
     const add = (name: string, domain: string, url: string | null) => { if (url && !seen.has(url)) { seen.add(url); candidates.push({ name, domain, url }) } }
 
     const wdom = website ? domainOf(website) : null
-    if (wdom) {
-      for (const url of await scrapeSite(wdom)) add('Site logosu', wdom, url)
+    let igStatus: 'ok' | 'no_token' | 'not_found' | null = null
+    const site = wdom ? await scrapeSite(wdom) : null
+    // Instagram adı verilmediyse sitedeki Instagram bağlantısından alınır.
+    if (!instagram && site?.instagram) instagram = site.instagram
+    if (instagram) {
+      const ig = await igProfilePicture(instagram)
+      igStatus = ig.status
+      if (ig.url) add('Instagram', `@${instagram}`, ig.url)
+    }
+    if (wdom && site) {
+      for (const url of site.logos) add('Site logosu', wdom, url)
       add('Clearbit', wdom, `https://logo.clearbit.com/${wdom}`)
       add('Favicon', wdom, `https://www.google.com/s2/favicons?sz=256&domain=${wdom}`)
     }
@@ -131,7 +170,7 @@ Deno.serve(async (req: Request) => {
         }
       } catch (_) { /* arama başarısız */ }
     }
-    return json({ candidates })
+    return json({ candidates, instagram, instagramStatus: igStatus })
   } catch (err) {
     return json({ error: String((err as any)?.message ?? err) })
   }

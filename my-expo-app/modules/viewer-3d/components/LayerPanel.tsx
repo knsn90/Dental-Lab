@@ -22,6 +22,7 @@ import { classifyFile, type LayerType } from '../lib/layerMap';
 import { useViewerTheme } from '../lib/viewerTheme';
 import { type MeshDiagnostics, flagLabel, flagDescription } from '../lib/meshDiagnostics';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 
 interface Props {
   files: ViewerFile[];
@@ -46,6 +47,13 @@ const GROUPS: Group[] = [
   { key: 'design',  label: 'Restorasyon',         types: ['design', 'wax', 'scanbody'] },
   { key: 'other',   label: 'Diğer',               types: ['other'] },
 ];
+
+/** "Kapanış Taraması · erenbekin BiteScan2.stl" → "erenbekin BiteScan2.stl". */
+function layerFileName(name: string): string {
+  const i = name.indexOf('·');
+  const rest = i >= 0 ? name.slice(i + 1).trim() : name;
+  return rest || name;
+}
 
 function hexAlpha(hex: string, alpha: number): string {
   const h = hex.replace('#', '');
@@ -339,35 +347,37 @@ export function LayerPanel({ files, layerStyles, onChange, onSetAllVisible, onCl
                           }}>
                             {layer.label}
                           </Text>
-                          {flags.slice(0, 3).map((f) => (
-                            <View
-                              key={f}
-                              // @ts-ignore web tooltip
-                              title={flagDescription(f) + ' — ' + flagLabel(f)}
-                              style={{
-                                paddingHorizontal: 5, paddingVertical: 1, borderRadius: 999,
-                                backgroundColor: f === 'huge' ? '#FEF3C7'
-                                  : f === 'low-density' ? '#E4E4E7'
-                                  : '#FECACA',
-                              }}
-                            >
-                              <Text style={{
-                                color: f === 'huge' ? '#92400E'
-                                  : f === 'low-density' ? '#52525B'
-                                  : '#991B1B',
-                                fontSize: 8, fontWeight: '800', letterSpacing: 0.2,
-                              }}>
-                                {f === 'holes' ? '⊘'
-                                  : f === 'non-manifold' ? '≠'
-                                  : f === 'inverted' ? '⇅'
-                                  : f === 'low-density' ? 'LD'
-                                  : 'HUGE'}
-                              </Text>
-                            </View>
-                          ))}
+                          {flags.slice(0, 3).map((f) => {
+                            // 'holes' ağız içi taramada olağandır (tarama açık bir yüzeydir) →
+                            // nötr bilgi tonu; gerçek kusurlar (topoloji/normal) kırmızı kalır.
+                            const tone = f === 'huge' ? 'warn'
+                              : (f === 'low-density' || f === 'holes') ? 'info'
+                              : 'bad';
+                            const bg = tone === 'warn' ? (isDark ? 'rgba(245,158,11,0.22)' : '#FEF3C7')
+                              : tone === 'info' ? (isDark ? 'rgba(255,255,255,0.10)' : '#E4E4E7')
+                              : (isDark ? 'rgba(220,38,38,0.25)' : '#FECACA');
+                            const fg = tone === 'warn' ? (isDark ? '#FCD34D' : '#92400E')
+                              : tone === 'info' ? (isDark ? '#D4D4D8' : '#52525B')
+                              : (isDark ? '#FCA5A5' : '#991B1B');
+                            return (
+                              <GlassTooltip key={f} title={flagLabel(f)} text={flagDescription(f)} width={220}>
+                                <View style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 999, backgroundColor: bg }}>
+                                  <Text style={{ color: fg, fontSize: 8, fontWeight: '800', letterSpacing: 0.2 }}>
+                                    {f === 'holes' ? 'AÇIK'
+                                      : f === 'non-manifold' ? 'TOPO'
+                                      : f === 'inverted' ? 'NORMAL'
+                                      : f === 'low-density' ? 'LD'
+                                      : 'HUGE'}
+                                  </Text>
+                                </View>
+                              </GlassTooltip>
+                            );
+                          })}
                         </View>
+                        {/* Kutu adı ("Kapanış Taraması · …") zaten üst satırda katman adı
+                            olarak var; alt satır dosyayı ayırt etsin diye yalnız dosya adı. */}
                         <Text numberOfLines={1} style={{ color: C.fgFaint, fontSize: 10 }}>
-                          {file.name}
+                          {layerFileName(file.name)}
                         </Text>
                       </View>
 
@@ -507,7 +517,9 @@ function SegPill({ label, active, disabled, onPress, C }: {
         flex: 1, paddingVertical: 7, borderRadius: 999,
         alignItems: 'center', justifyContent: 'center',
         backgroundColor: active ? C.accent : hovered && !disabled ? '#FFFFFF' : 'transparent',
-        opacity: disabled ? 0.5 : 1,
+        // Seçili düğme zaten "disabled" (tekrar basmanın anlamı yok) — ama soluk
+        // çizilirse beyaz yazı okunmuyordu. Soluklaştırma yalnız seçili OLMAYANA.
+        opacity: disabled && !active ? 0.5 : 1,
         ...(Platform.OS === 'web' ? {
           cursor: disabled ? 'default' : 'pointer',
           transition: 'background-color 140ms ease',

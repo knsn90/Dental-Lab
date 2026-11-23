@@ -14,16 +14,16 @@ import { RotateCcw } from '../../../core/ui/icons';
 import { ColorOrb } from './ColorOrb';
 
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { fmtDayMonthYear } from '../../../core/i18n';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useDentyStore } from '../store/dentyStore';
 import { useAuthStore } from '../../../core/store/authStore';
 import { fetchLatestReport, reportIntoPanel, type OrderReport } from '../orderReport';
 
+// Hesap diline (ve fa'da şemsi takvime) göre — eskiden her dilde 'tr-TR' basılıyordu.
 function fmt(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
-  } catch { return ''; }
+  try { return fmtDayMonthYear(new Date(iso)); } catch { return ''; }
 }
 
 export function OrderAiSummaryCard({ orderId, accent }: { orderId: string; accent: string }) {

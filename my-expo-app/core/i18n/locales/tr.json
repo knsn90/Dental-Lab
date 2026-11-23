@@ -390,11 +390,11 @@
       },
       "general": {
         "label": "Genel",
-        "sub": "Dil, saat dilimi, format"
+        "sub": "Tema, dil ve takvim"
       },
       "users": {
         "label": "Kullanıcılar",
-        "sub": "Personel ve stage yetkileri"
+        "sub": "Personel ve aşama yetkileri"
       },
       "permissions": {
         "label": "Yetkiler",
@@ -414,7 +414,7 @@
       },
       "finance": {
         "label": "Finans Ayarları",
-        "sub": "Para birimi, KDV, ödeme hatırlatmaları"
+        "sub": "Para birimi, KDV, fatura bilgileri, hatırlatmalar"
       },
       "currency": {
         "label": "Döviz Kurları",
@@ -430,11 +430,11 @@
       },
       "workflows": {
         "label": "İş Akışları",
-        "sub": "Üretim akışı tasarımcısı"
+        "sub": "İstasyonlar, akış tasarımı ve kurallar"
       },
       "mycode": {
-        "label": "Giriş Kodum",
-        "sub": "Tablet giriş kodu (PIN)"
+        "label": "Tablet Girişi",
+        "sub": "Giriş kodu ve tablet yönetimi"
       },
       "devices": {
         "label": "Tabletler",
@@ -451,6 +451,14 @@
       "implants": {
         "label": "İmplant Markaları",
         "sub": "Marka ve model listesi"
+      },
+      "equipment": {
+        "label": "Ekipman",
+        "sub": "Cihaz, demirbaş ve tarama cihazları"
+      },
+      "laboratory": {
+        "label": "Laboratuvar",
+        "sub": "Kimlik, marka, bölge, sipariş ve gizlilik"
       }
     },
     "modules": {

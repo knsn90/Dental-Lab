@@ -13,7 +13,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, useWindowDimensions } from 'react-native';
 import {
   Globe, Percent, Clock, Bell, Mail, MessageCircle, Send, AlertTriangle, CalendarDays, Check,
-  ChevronDown, Coins, FileCheck, Layers, FileText,
+  ChevronDown, Coins, FileCheck, Layers, FileText, Receipt,
 } from '../../../core/ui/icons';
 
 import { SUPPORTED_CURRENCIES, CURRENCY_META } from '../../../core/money/currency';
@@ -24,7 +24,9 @@ import { usePermissions } from '../../../core/hooks/usePermissions';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { autoT } from '../../../core/i18n/autoTranslate';
-import { SegmentPicker, DropdownSelect, SettingRow } from './GeneralSection';
+import { SegmentPicker, DropdownSelect, SettingRow, LabBillingCard } from './GeneralSection';
+import { useAuthStore } from '../../../core/store/authStore';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { CurrencyRatesScreen } from '../screens/CurrencyRatesScreen';
 
 type Props = { panelType: string; accentColor: string };
@@ -80,13 +82,15 @@ function CollapseCard({ title, sub, icon: Icon, accentColor, defaultOpen, childr
   );
 }
 
-export function FinanceSection({ accentColor }: Props) {
+export function FinanceSection({ accentColor, panelType }: Props) {
   const { settings, loading, load, update } = useLabSettingsStore();
   const [local, setLocal] = useState(LOCAL_DEFAULTS);
   const T = useMobileTokens();
   const U = useInkUI();
   const { width: _vw } = useWindowDimensions();
-  const sidePad = _vw < 768 ? 16 : 28;
+  const sidePad = PAGE_PADDING;
+  const labId = useAuthStore(st => (st.profile as any)?.lab_id ?? null) as string | null;
+  const isLabPanel = panelType === 'lab' || panelType === 'admin';
   const { can } = usePermissions();
   const canManageSettings = can('manage_settings');
   // Ön ekstre ayarı kesinleştirme akışını değiştirir → yalnız mali işlem yöneticisi görür/değiştirir.
@@ -114,10 +118,32 @@ export function FinanceSection({ accentColor }: Props) {
     }
   }, [settings]);
 
-  const handleUpdate = useCallback((patch: Record<string, any>) => {
+  // İyimser güncelleme; kaydedilemezse değer sunucudaki haline döner ve hata
+  // o ayarın kontrolünün hemen altında görünür.
+  const [updErrKey, setUpdErrKey] = useState<string | null>(null);
+  const handleUpdate = useCallback(async (patch: Record<string, any>) => {
+    const key = Object.keys(patch)[0] ?? null;
+    setUpdErrKey(null);
     setLocal(prev => ({ ...prev, ...patch }));
-    update(patch);
+    const ok = await update(patch);
+    if (!ok) {
+      const cur = useLabSettingsStore.getState().settings as any;
+      if (cur) setLocal(prev => {
+        const back: Record<string, any> = { ...prev };
+        for (const k of Object.keys(patch)) back[k] = cur[k];
+        return back as any;
+      });
+      setUpdErrKey(key);
+    }
   }, [update]);
+  const withErr = (key: string, node: React.ReactNode) => (
+    <View style={{ gap: 4 }}>
+      {node}
+      {updErrKey === key ? (
+        <Text style={{ fontSize: 12, color: U.chipTones.danger.fg, textAlign: 'right' }}>{autoT('Ayar kaydedilemedi')}</Text>
+      ) : null}
+    </View>
+  );
 
   // Kaydedilemezse hata anahtarın yanında; değer sunucudaki haliyle kalır (store güncellenmez).
   const setInvoiceApproval = async (on: boolean) => {
@@ -166,6 +192,7 @@ export function FinanceSection({ accentColor }: Props) {
           sub="Varsayılan para birimi (çoklu desteklenir)"
           accentColor={accentColor}
         >
+          {withErr('default_currency', <>
           <DropdownSelect
             options={CURRENCIES.map(c => ({ key: c.code, label: `${c.symbol}  ${c.code}`, sub: c.label }))}
             value={s.default_currency}
@@ -173,6 +200,7 @@ export function FinanceSection({ accentColor }: Props) {
             accentColor={accentColor}
             renderLabel={(opt) => opt.label}
           />
+          </>)}
         </SettingRow>
         <SettingRow
           icon={Percent}
@@ -180,6 +208,7 @@ export function FinanceSection({ accentColor }: Props) {
           sub="Faturalarda kullanılacak oran"
           accentColor={accentColor}
         >
+          {withErr('default_tax_rate', <>
           <DropdownSelect
             options={[
               { key: 0,  label: '%0',  sub: 'KDV yok' },
@@ -191,6 +220,7 @@ export function FinanceSection({ accentColor }: Props) {
             onChange={(v) => handleUpdate({ default_tax_rate: v })}
             accentColor={accentColor}
           />
+          </>)}
         </SettingRow>
         {canManageFinance ? (
           <SettingRow
@@ -265,6 +295,13 @@ export function FinanceSection({ accentColor }: Props) {
         </SettingRow>
       </CollapseCard>
 
+      {/* ── Fatura Bilgileri (eskiden Genel'deydi) ─────────────── */}
+      {isLabPanel && labId ? (
+        <CollapseCard title="Fatura Bilgileri" sub="Ticari unvan, vergi no ve fatura adresi" icon={Receipt} accentColor={accentColor} defaultOpen={false}>
+          <LabBillingCard labId={labId} accentColor={accentColor} />
+        </CollapseCard>
+      ) : null}
+
       {/* ── Ödeme Hatırlatmaları ─────────────────────────────── */}
       <CollapseCard
         title="Ödeme Hatırlatmaları"
@@ -279,12 +316,14 @@ export function FinanceSection({ accentColor }: Props) {
           sub="Vadesi geçen kliniklere ayarlanan sıklıkta otomatik hatırlatma gönderilir."
           accentColor={accentColor}
         >
+          {withErr('payment_reminder_auto', <>
           <SegmentPicker
             options={[{ key: 'off', label: 'Kapalı' }, { key: 'on', label: 'Açık' }]}
             value={s.payment_reminder_auto ? 'on' : 'off'}
             onChange={(v) => handleUpdate({ payment_reminder_auto: v === 'on' })}
             accentColor={accentColor}
           />
+          </>)}
         </SettingRow>
 
         {s.payment_reminder_auto && (
@@ -295,6 +334,7 @@ export function FinanceSection({ accentColor }: Props) {
             accentColor={accentColor}
             controlWidth={220}
           >
+          {withErr('payment_reminder_frequency_days', <>
             <SegmentPicker
               options={[
                 { key: '1', label: 'Günlük' },
@@ -306,6 +346,7 @@ export function FinanceSection({ accentColor }: Props) {
               onChange={(v) => handleUpdate({ payment_reminder_frequency_days: Number(v) })}
               accentColor={accentColor}
             />
+          </>)}
           </SettingRow>
         )}
 
@@ -316,6 +357,7 @@ export function FinanceSection({ accentColor }: Props) {
           accentColor={accentColor}
           controlWidth={260}
         >
+          {withErr('payment_reminder_channels', <>
           <View className="flex-row flex-wrap gap-1.5 justify-end">
             {([
               { key: 'in_app',   label: 'Uygulama içi', icon: Bell,          locked: true  },
@@ -361,6 +403,7 @@ export function FinanceSection({ accentColor }: Props) {
               );
             })}
           </View>
+          </>)}
         </SettingRow>
 
         <SettingRow
@@ -370,6 +413,7 @@ export function FinanceSection({ accentColor }: Props) {
           accentColor={accentColor}
           controlWidth={220}
         >
+          {withErr('payment_reminder_tone', <>
           <SegmentPicker
             options={[
               { key: 'gentle', label: 'Nazik' },
@@ -380,6 +424,7 @@ export function FinanceSection({ accentColor }: Props) {
             onChange={(v) => handleUpdate({ payment_reminder_tone: v })}
             accentColor={accentColor}
           />
+          </>)}
         </SettingRow>
 
         <SettingRow
@@ -390,6 +435,7 @@ export function FinanceSection({ accentColor }: Props) {
           controlWidth={220}
           isLast
         >
+          {withErr('payment_reminder_min_days_overdue', <>
           <SegmentPicker
             options={[
               { key: '0', label: 'Hemen' },
@@ -401,6 +447,7 @@ export function FinanceSection({ accentColor }: Props) {
             onChange={(v) => handleUpdate({ payment_reminder_min_days_overdue: Number(v) })}
             accentColor={accentColor}
           />
+          </>)}
         </SettingRow>
       </CollapseCard>
 

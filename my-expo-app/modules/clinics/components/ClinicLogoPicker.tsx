@@ -15,14 +15,14 @@ import {
   View, Text, Pressable, Modal, TextInput, ScrollView, Image, Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Search, Building2, X, Camera } from '../../../core/ui/icons';
+import { Search, Building2, X, Camera, Instagram } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { ColorOrb } from '../../denty/components/ColorOrb';
-import { findClinicWebsite } from '../lib/findClinicWebsite';
+import { findClinicWebsite, igNoteOf } from '../lib/findClinicWebsite';
 
 interface Candidate { url: string; domain?: string; name?: string }
 
@@ -41,6 +41,8 @@ export function ClinicLogoPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [website, setWebsite] = useState('');
+  const [instagram, setInstagram] = useState('');
+  const [igNote, setIgNote] = useState<string | null>(null);
   const [results, setResults] = useState<Candidate[]>([]);
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -48,22 +50,26 @@ export function ClinicLogoPicker({
   const [applyingUrl, setApplyingUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  const runSearch = async (qArg?: string, wArg?: string) => {
+  const runSearch = async (qArg?: string, wArg?: string, igArg?: string) => {
     const q = (qArg ?? query).trim();
     const w = (wArg ?? website).trim();
-    if ((!q && !w) || searching) return;
-    setSearching(true); setSearched(false); setResults([]);
+    const ig = (igArg ?? instagram).trim();
+    if ((!q && !w && !ig) || searching) return;
+    setSearching(true); setSearched(false); setResults([]); setIgNote(null);
     try {
-      const { data } = await supabase.functions.invoke('clinic-logo-search', { body: { q, website: w } });
+      const { data } = await supabase.functions.invoke('clinic-logo-search', { body: { q, website: w, instagram: ig } });
       // Clearbit logo servisi kapandı (alan adı çözülmüyor) → boş kare olarak görünüyordu.
       setResults(((data?.candidates ?? []) as Candidate[]).filter((c) => !/logo\.clearbit\.com/i.test(c.url)));
+      // Sitedeki Instagram bağlantısından bulunan kullanıcı adı alana yazılır.
+      if (!ig && data?.instagram) setInstagram(`@${data.instagram}`);
+      setIgNote(igNoteOf(data?.instagramStatus, data?.instagram));
     } catch { setResults([]); }
     finally { setSearching(false); setSearched(true); }
   };
 
   const openFinder = async () => {
     setQuery(clinicName ?? '');
-    setWebsite(''); setResults([]); setSearched(false); setShowManual(false);
+    setWebsite(''); setInstagram(''); setIgNote(null); setResults([]); setSearched(false); setShowManual(false);
     setOpen(true);
     if (!clinicName) return;
     // Önce siteyi kendisi bulur (kurumsal e-posta → Google Places); bulduğu alana yazılır.
@@ -186,6 +192,16 @@ export function ClinicLogoPicker({
                     style={{ flex: 1, fontSize: 14, color: T.ink, ...(Platform.OS === 'web' ? { outline: 'none' } as any : {}) }}
                   />
                 </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 44, paddingHorizontal: 14, backgroundColor: T.cardSoft, borderRadius: 12, borderWidth: 1, borderColor: T.hairline }}>
+                  <Instagram size={15} color={accentColor} strokeWidth={1.8} />
+                  <TextInput
+                    value={instagram} onChangeText={setInstagram} onSubmitEditing={() => runSearch()}
+                    autoCapitalize="none" autoCorrect={false}
+                    placeholder={autoT('Instagram kullanıcı adı (örn. @lunadente)')} placeholderTextColor={T.ink3}
+                    style={{ flex: 1, fontSize: 14, color: T.ink, ...(Platform.OS === 'web' ? { outline: 'none' } as any : {}) }}
+                  />
+                </View>
+                {igNote ? <Text style={{ fontSize: 11.5, color: T.ink3, paddingHorizontal: 4 }}>{igNote}</Text> : null}
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, height: 44, paddingHorizontal: 14, backgroundColor: T.cardSoft, borderRadius: 12, borderWidth: 1, borderColor: T.hairline }}>
                     <Search size={15} color={T.ink3} strokeWidth={1.8} />
@@ -197,8 +213,8 @@ export function ClinicLogoPicker({
                   </View>
                   <Pressable
                     onPress={() => runSearch()}
-                    disabled={searching || (!query.trim() && !website.trim())}
-                    style={{ paddingHorizontal: 18, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: (query.trim() || website.trim()) ? accentColor : T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                    disabled={searching || (!query.trim() && !website.trim() && !instagram.trim())}
+                    style={{ paddingHorizontal: 18, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: (query.trim() || website.trim() || instagram.trim()) ? accentColor : T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
                   >
                     {searching ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Ara</Text>}
                   </Pressable>
@@ -244,7 +260,7 @@ export function ClinicLogoPicker({
                 </View>
               ) : searched ? (
                 <Text style={{ fontSize: 13, color: T.ink3, textAlign: 'center', paddingVertical: 24 }}>
-                  Otomatik bulunamadı. Yukarıya kurumun web sitesini yazıp tekrar deneyin ya da cihazdan yükleyin.
+                  Otomatik bulunamadı. Yukarıya kurumun web sitesini ya da Instagram kullanıcı adını yazıp tekrar deneyin veya cihazdan yükleyin.
                 </Text>
               ) : (
                 <Text style={{ fontSize: 12, color: T.ink3, textAlign: 'center', paddingVertical: 24 }}>

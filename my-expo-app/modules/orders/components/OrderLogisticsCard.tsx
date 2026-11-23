@@ -233,12 +233,16 @@ export function OrderLogisticsCard({
       {/* Başlık diğer kartlarla aynı ölçü (14/600, büyük harfsiz). Sağda yalnız "Kurye
           çağır"; teslimat belgesi düğmesi etiketli olarak kartın altına indi (başlıkta
           ve satırda iki ayrı yazıcı ikonu vardı, hangisinin neyi bastığı belli değildi). */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <Text style={{ fontSize: 14, fontWeight: '600', letterSpacing: -0.1, color: toneEff.title }}>
+      {/* Başlık komşu kartlarla aynı dil (2026-11-22): küçük, BÜYÜK HARF, ikonlu etiket
+          ("SİMANTY ÖZETİ", "MESAJ KUTUSU" gibi). Mobilde (frameless) bölüm etiketleri
+          9.5px olduğu için orada o ölçü. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: frameless ? 10 : 14 }}>
+        <Truck size={12} color={toneEff.label} strokeWidth={1.8} />
+        <Text style={{ fontSize: frameless ? 9.5 : 11, fontWeight: '600', letterSpacing: frameless ? 1 : 1.1, textTransform: 'uppercase', color: toneEff.label }}>
           Lojistik
         </Text>
         {shownLegs.length > 0 && (
-          <Text style={{ fontSize: 12, color: toneEff.muted }}>
+          <Text style={{ fontSize: 11, fontWeight: '500', color: toneEff.label }}>
             {shownLegs.length} hareket
           </Text>
         )}

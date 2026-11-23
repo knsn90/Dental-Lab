@@ -309,6 +309,11 @@ function orientGroup() {
   try {
     const list = Array.from(meshes.values());
     if (!list.length) return;
+    // Yüz/kafa taraması zaten kafa çerçevesinde (+Y yukarı, +Z yüzün önü): PCA diş arkı içindir,
+    // kafada en kısa ekseni "yukarı" sayıp modeli yatırıyordu → olduğu gibi bırak.
+    if ((INPUT.files || []).some((f) => f && f.keepOrientation)) {
+      group.quaternion.identity(); group.updateMatrixWorld(true); return;
+    }
     // İki çene varsa: mandible→maxilla yönü = oklüzal (+Y). Tek çene/belirsizse PCA.
     const maxillas = list.filter((m) => m.userData.jaw === 'maxilla');
     const mandibles = list.filter((m) => m.userData.jaw === 'mandible');

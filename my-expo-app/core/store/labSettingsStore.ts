@@ -51,6 +51,11 @@ export interface LabSettings {
   // Gizlilik: hekim/kliniklere teknisyen adı nasıl görünsün
   technician_name_visibility: TechNameVisibility;
 
+  // Varsayılan teslim süresi (İŞ GÜNÜ) — yeni sipariş sihirbazının en erken
+  // teslim tarihi. Hizmette production_days doluysa o kullanılır.
+  default_lead_days?: number;
+  urgent_lead_days?: number;
+
   // Ön ekstre: açıkken taslaklar klinik onayına kadar kesinleşmez (taslak→kesildi sunucuda kapalı)
   invoice_approval_enabled?: boolean;
   // Ön ekstre PDF'inin varsayılan biçimi (R4; DB varsayılanı 'ozet')

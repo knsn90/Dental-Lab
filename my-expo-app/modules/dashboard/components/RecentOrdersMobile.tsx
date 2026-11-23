@@ -30,7 +30,7 @@ export function resolveOrderStatus(status?: string | null, holdStatus?: string |
     tasarim_onayi_bekleniyor: { label: autoT('Tasarım Onayı'),  ...BLUE },
     onay_bekliyor:            { label: autoT('Onay Bekliyor'),  ...AMBER },
     alindi:                   { label: autoT('Alındı'),         ...GRAY },
-    asamada:                  { label: autoT('Üretimde'),       ...AMBER },
+    asamada:                  { label: autoT('Üretim Aşamasında'),       ...AMBER },
     uretimde:                 { label: autoT('Üretimde'),       ...AMBER },
     kalite_kontrol:           { label: autoT('Kalite Kontrol'), ...BLUE },
     teslimata_hazir:          { label: autoT('Teslime Hazır'),      ...GREEN },

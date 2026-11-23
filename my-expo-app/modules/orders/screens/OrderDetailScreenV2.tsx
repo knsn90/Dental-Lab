@@ -4,6 +4,7 @@ import { useClinicSummaryModal } from '../../clinicSummary/components/ClinicSumm
 import { OrderScanRow } from '../../scans/components/OrderScanRow';
 import { localeTag, isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { formatAddress } from '../../../core/util/formatAddress';
 /**
  * OrderDetailScreenV2 — Patterns dili (NativeWind), gerçek WorkOrder verisi
  *
@@ -169,6 +170,13 @@ const fmtTL = (n: unknown) =>
 
 /** Sipariş detayındaki "Mali Bilgi" kartı — geçici olarak kapalı (istek üzerine). */
 const SHOW_FINANCIAL_CARD = false;
+
+// FDI kadranı: 1/2 üst daimi, 5/6 üst süt · 3/4 alt daimi, 7/8 alt süt.
+// Sağ = hastanın sağı (1,4,5,8), sol = (2,3,6,7). Eskiden yalnız daimi diş
+// aralıklarına bakılıyordu → 51–65 süt dişleri "Alt çene" sayılıyordu.
+const fdiQuadrant = (t: number) => Math.floor(t / 10);
+const isUpperFdi = (t: number) => [1, 2, 5, 6].includes(fdiQuadrant(t));
+const isRightFdi = (t: number) => [1, 4, 5, 8].includes(fdiQuadrant(t));
 
 // İmplant vurgu rengi — yeni-sipariş diş şemasındaki implant rengiyle AYNI
 // (NewOrderScreen IMPLANT_TOOTH_COLOR). Hekim orada turuncu işaretliyor.
@@ -365,6 +373,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const [related, setRelated] = useState<Array<{ id: string; order_number: string; work_type: string | null; status: string; delivery_date: string | null; }>>([]);
   const [materials, setMaterials] = useState<Array<{ name: string; quantity: number; unit: string | null; line_cost: number }>>([]);
   const [advancing, setAdvancing] = useState(false);
+  const [startingProduction, setStartingProduction] = useState(false);   // "Üretimi başlat"
   // Değerlendirme (Faz 1) — hekim/klinik teslim edilen işe puan verir
   const [myReview, setMyReview] = useState<OrderReview | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -513,17 +522,12 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
       { confirmText: 'Teslim Edildi' },
     );
     if (!ok) return;
-    const { error: e } = await supabase
-      .from('work_orders')
-      .update({
-        status: 'teslim_edildi',
-        delivered_at: activeDelivery.delivered_at ?? new Date().toISOString(),
-        hold_status: null, hold_reason: null, hold_category: null,
-        hold_responsible: null, hold_started_at: null, hold_by: null,
-      } as any)
-      .eq('id', (order as any).id);
-    if (e) { alert(`Hata: ${e.message}`); return; }
-    refetch();
+    // Durum doğrudan tabloya yazılamaz (lifecycle guard 42501) → yaşam döngüsü RPC'si.
+    // Açık bekletmeyi trg_wo_close_hold_on_delivery kapatır.
+    const { error: e } = await advanceOrderStatus((order as any).id, 'teslim_edildi' as WorkOrderStatus, profile?.id ?? '');
+    if (e) { toast.error((e as any).message ?? 'Teslim işaretlenemedi'); return; }
+    toast.success(autoT('Sipariş teslim edildi olarak işaretlendi'));
+    refetch(); refetchStages();
   };
 
   // Adres çubuğu kozmetiği (yalnız web): /order/<uuid> → /order/<order_number>.
@@ -534,7 +538,9 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     // Revizyon (revision_of_id) VEYA devam siparişi (continues_order_id) → ASIL işin
     // dosyaları (taramalar/fotoğraflar) devralınır; kopyalanmaz, salt okunur gösterilir.
     const pid = ((order as any)?.revision_of_id ?? (order as any)?.continues_order_id) as string | undefined;
-    if (!pid) { setInheritedFiles({ photos: [], urls: {} }); return; }
+    // Önce temizle: önceki siparişin devralınan dosyaları yeni siparişte kalmasın.
+    setInheritedFiles({ photos: [], urls: {} });
+    if (!pid) return;
     let cancelled = false;
     (async () => {
       const { data } = await supabase
@@ -1014,8 +1020,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     () => readImplantInfo(order as any, ((order as any)?.order_items ?? []) as any[]),
     [order],
   );
-  const upperTeeth = useMemo(() => allTeeth.filter(t => t < 30), [allTeeth]);
-  const lowerTeeth = useMemo(() => allTeeth.filter(t => t >= 30), [allTeeth]);
+  const upperTeeth = useMemo(() => allTeeth.filter(isUpperFdi), [allTeeth]);
+  const lowerTeeth = useMemo(() => allTeeth.filter(t => !isUpperFdi(t)), [allTeeth]);
   const visibleTeethCount =
     jawView === 'upper' ? upperTeeth.length :
     jawView === 'lower' ? lowerTeeth.length :
@@ -1136,7 +1142,18 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
 
   const doctorName  = order.doctor?.full_name ?? '—';
   const clinicName  = order.doctor?.clinic_name ?? order.doctor?.clinic?.name ?? '—';
-  const doctorPhone = order.doctor?.phone ?? '';
+  const doctorPhone = order.doctor?.phone || (order.doctor?.clinic as any)?.phone || '';
+  // Kart için okunur adres: siparişle gelen klinik adresi, yoksa lojistik için yüklenen adres.
+  const clinicAddressText = formatAddress(((order.doctor?.clinic as any)?.address ?? clinicAddress) || null);
+  const openTel = (num: string) => {
+    const clean = num.replace(/[^\d+]/g, '');
+    if (clean) Linking.openURL(`tel:${clean}`).catch(() => toast.error(autoT('Arama başlatılamadı')));
+  };
+  const openMap = (addr: string) => {
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`;
+    if (Platform.OS === 'web') { if (typeof window !== 'undefined') window.open(url, '_blank'); }
+    else Linking.openURL(url).catch(() => null);
+  };
   // Şu an gösterilecek aşama başlığı — aktif stage varsa onun adı, yoksa
   // getOrderStageLabel (current_stage_name / status label) fallback
   const currentStation = activeStage?.station?.name ?? getOrderStageLabel(order as any);
@@ -1321,10 +1338,34 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   };
   // Üretim aşamasındayken üretim stage'leri bitmediyse manuel "Final QC'a geç" gizlenir
   // — workflow her aşama tek tek "Tamamla & ilerlet" ile ilerletilir
-  const hasPendingProductionStages = ((order?.status as string) === 'asamada') && (
-    (orderStages?.length ?? 0) > 0 &&
-    orderStages.some(s => s.status === 'aktif' || s.status === 'bekliyor')
-  );
+  // Bitmemiş üretim aşaması varsa genel "Sonraki adım" GİZLİ — durum ne olursa
+  // olsun (eskiden yalnız 'asamada'da gizleniyordu; 'alindi'/'uretimde'de buton
+  // aşamaları atlatıp "Teslime Hazır"da hepsini 0 dk "tamamlandı" yapıyordu).
+  const STAGE_DONE = ['tamamlandi', 'onaylandi', 'skipped'];
+  const STAGE_IN_PROGRESS = ['aktif', 'durakladi', 'makine_bekliyor', 'onay_bekliyor', 'bloklu', 'yeniden'];
+  const hasPendingProductionStages = (orderStages ?? []).some(s => !STAGE_DONE.includes(s.status as string));
+  // "Üretimi başlat": planlı sipariş, hiçbir aşama işlemde değil → her şeridin
+  // ilk bitmemiş (bekleyen) aşaması teknisyene gönderilir (force_activate_stage).
+  const anyStageInProgress = (orderStages ?? []).some(s => STAGE_IN_PROGRESS.includes(s.status as string));
+  const startTargets = anyStageInProgress ? [] : (lanes ?? [])
+    .map(l => l.stages.find(s => !STAGE_DONE.includes(s.status as string)))
+    .filter((s): s is NonNullable<typeof s> => !!s && (s.status as string) === 'bekliyor');
+  const canStartProduction = isManager && !isClosedOrder && startTargets.length > 0;
+  const handleStartProduction = async () => {
+    if (startingProduction || startTargets.length === 0) return;
+    if (designApprovalPending) { toast.error('Hekim onayı bekleniyor — önce onay/red gelmeli'); return; }
+    setStartingProduction(true);
+    try {
+      for (const st of startTargets) {
+        const r = await forceActivateStage(st.id);
+        if (!r.ok) { toast.error(r.error || 'Üretim başlatılamadı'); return; }
+      }
+      toast.success(autoT('Üretim başladı — ilk aşama teknisyene gönderildi'));
+    } finally {
+      setStartingProduction(false);
+      refetch(); refetchStages();
+    }
+  };
   const nextStatus = getNextStatus(order.status as WorkOrderStatus);
   const nextStatusLabel = nextStatus ? (STATUS_CONFIG[nextStatus]?.label ?? nextStatus) : null;
 
@@ -1634,12 +1675,11 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
           onPress: async () => {
             const ok = await confirmAsync('Elden Teslim', 'Sipariş elden teslim edildi olarak işaretlensin mi?', { confirmText: 'Teslim Edildi' });
             if (!ok) return;
-            const { error: e } = await supabase
-              .from('work_orders')
-              .update({ status: 'teslim_edildi', delivered_at: new Date().toISOString() })
-              .eq('id', order.id);
-            if (e) { alert(`Hata: ${e.message}`); return; }
-            refetch();
+            // Lifecycle guard: durum yalnız RPC ile değişir.
+            const { error: e } = await advanceOrderStatus(order.id, 'teslim_edildi' as WorkOrderStatus, profile?.id ?? '');
+            if (e) { toast.error((e as any).message ?? 'Teslim işaretlenemedi'); return; }
+            toast.success(autoT('Sipariş teslim edildi olarak işaretlendi'));
+            refetch(); refetchStages();
           },
         };
       } else {
@@ -1775,7 +1815,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             legs={deliveryLegs}
             orderNumber={String((order as any).order_number ?? '')}
             onProofChanged={() => { refetch(); refetchStages(); }}
-            accent={panelAccent}
+            // Koyu temada açılan ton (Simanty/Mesaj kartlarıyla aynı); açıkta = panelAccent.
+            accent={accentInk}
             rowBg={softPanelBg}
             isManager={isManager}
             canCall={order.status !== 'iptal'}
@@ -1849,9 +1890,14 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         // teslimata_hazir + aktif teslimat: doğru aksiyon deliveryButton'da
         // (Kuryeye Gönder / Teslim Edildi) — genel ilerlet burada gizlenir,
         // yoksa aynı geçiş için iki buton çıkıyor (desktop ile aynı kural).
-        onStageDone={canAdvance && !!nextStatus && !designApprovalPending
-          && !activeDelivery && (order.status as string) !== 'teslimata_hazir'
-          ? () => handleAdvanceStage() : undefined}
+        // Planlı + hiçbir aşama işlemde değil → "Üretimi başlat". Bitmemiş aşama varken
+        // genel durum ilerletme yok (aşamalar listeden tek tek tamamlanır — desktop ile aynı).
+        onStageDone={canStartProduction && !needsTriage && !designApprovalPending
+          ? () => handleStartProduction()
+          : canAdvance && !!nextStatus && !designApprovalPending && !needsTriage && !hasPendingProductionStages
+            && !activeDelivery && (order.status as string) !== 'teslimata_hazir'
+            ? () => handleAdvanceStage() : undefined}
+        stageDoneLabel={canStartProduction && !needsTriage && !designApprovalPending ? 'Üretimi başlat' : undefined}
         onAddAttachment={undefined}
       />
       {/* Order-scoped chat modal — mobile branch için (Mesaj tab / sticky chat butonu) */}
@@ -2637,6 +2683,15 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                       "Elden Teslim Edildi" (aşağıdaki blok). Aksi halde ikisi birden çıkıp
                       aynı geçiş için iki buton oluyordu — üstelik bu buton kurye akışını
                       atlayarak teslimat kaydı oluşturmadan siparişi teslim edilmiş yapıyordu. */}
+                  {/* Üretimi başlat — planlı sipariş, hiçbir aşama işlemde değil: ilk aşama(lar)
+                      teknisyene gider. Genel "Sonraki adım" bu durumda gizli (aşamaları atlatmasın). */}
+                  {canStartProduction && !needsTriage && !designApprovalPending && (
+                    <GlassTooltip title={autoT('Üretimi başlat')} text={autoT('İlk aşamayı atanan teknisyene gönderir; sipariş Üretim Aşamasında olur')}>
+                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={Play} onPress={handleStartProduction} disabled={startingProduction}>
+                        {startingProduction ? 'Başlatılıyor…' : 'Üretimi başlat'}
+                      </PillBtn>
+                    </GlassTooltip>
+                  )}
                   {canAdvance && nextStatus && !needsTriage && !hasPendingProductionStages && !activeDelivery && !designApprovalPending
                     && (order.status as string) !== 'teslimata_hazir' && (
                     <GlassTooltip title={`${autoT('Sonraki adım')}: ${autoT(nextStatusLabel ?? '')}`} text={autoT('Siparişi bir sonraki duruma taşır')}>
@@ -2672,12 +2727,12 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                         onPress={async () => {
                           const ok = await confirmAsync('Elden Teslim', 'Sipariş elden teslim edildi olarak işaretlensin mi?', { confirmText: 'Teslim Edildi' });
                           if (!ok) return;
-                          const { error: e } = await supabase
-                            .from('work_orders')
-                            .update({ status: 'teslim_edildi', delivered_at: new Date().toISOString() })
-                            .eq('id', order.id);
-                          if (e) { alert(`Hata: ${e.message}`); return; }
-                          refetch();
+                          // Durum doğrudan tabloya yazılamaz (lifecycle guard) → yaşam döngüsü RPC'si.
+                          // update_work_order_status teslim saatini de yazar.
+                          const { error: e } = await advanceOrderStatus(order.id, 'teslim_edildi' as WorkOrderStatus, profile?.id ?? '');
+                          if (e) { toast.error((e as any).message ?? 'Teslim işaretlenemedi'); return; }
+                          toast.success(autoT('Sipariş teslim edildi olarak işaretlendi'));
+                          refetch(); refetchStages();
                         }}
                       >
                         <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={Check}>
@@ -3197,12 +3252,12 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             </View>
 
             <View className="flex-row px-4 py-2.5" style={{ backgroundColor: softPanelBg }}>
-              {['DİŞ', 'ÇALIŞMA', 'ADET', 'İLERLEME', ''].map((h, i) => (
+              {['DİŞ', 'ÇALIŞMA', 'ADET', 'İLERLEME'].map((h, i) => (
                 <Text
                   key={i}
                   className="text-[10px] font-semibold uppercase text-ink-500 dark:text-white/55"
                   style={{
-                    flex: i === 1 ? 2 : i === 3 ? 1.4 : i === 4 ? 0.4 : 1,
+                    flex: i === 1 ? 2 : i === 3 ? 1.4 : 1,
                     letterSpacing: 0.8,
                   }}
                 >
@@ -3215,7 +3270,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
               // Her order_item ayrı satır (farklı işlemler farklı satırlarda).
               // tooth_numbers'lı item yoksa → tek satır fallback (work_type).
               const oi = ((order.order_items ?? []) as Array<any>).filter(it => it?.name);
-              const rows: Array<{ key: string; name: string; qty: number; teeth: number[]; lane: number }> =
+              const rows: Array<{ key: string; name: string; qty: number; teeth: number[]; lane: number; unit?: string | null }> =
                 oi.length > 0
                   ? oi.map((it, idx) => ({
                       key: String(it.id ?? idx),
@@ -3223,6 +3278,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                       qty: it.quantity ?? (Array.isArray(it.tooth_numbers) ? it.tooth_numbers.length : 1),
                       teeth: Array.isArray(it.tooth_numbers) ? it.tooth_numbers : [],
                       lane: (it.lane ?? 1) as number,
+                      unit: it.unit ?? null,
                     }))
                   : [{ key: 'all', name: order.work_type || '—', qty: allTeeth.length, teeth: allTeeth, lane: 1 }];
               // Faz 4: çok-şeritte her item KENDİ şeridinin gerçek %'sini + aktif aşamasını gösterir.
@@ -3232,7 +3288,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                 const rowPct = li ? li.progressPct : progressPct;
                 const laneStation = li?.currentStage?.station?.name ?? (li && li.completedCount >= li.totalStages ? 'Tamamlandı' : null);
                 return (
-                <View key={row.key} className="flex-row px-4 py-3.5 items-center border-t border-black/[0.04]">
+                <View key={row.key} className="flex-row px-4 py-3.5 items-center border-t border-black/[0.04] dark:border-white/[0.06]">
                   <View className="flex-1 flex-row gap-1 flex-wrap">
                     {row.teeth.length === 0 ? (
                       <Text className="text-[11px] text-ink-400 dark:text-white/45">—</Text>
@@ -3268,15 +3324,12 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                       </Text>
                     )}
                   </View>
-                  <Text className="text-[13px] text-ink-500 dark:text-white/55" style={{ flex: 1 }}>{row.qty} {row.teeth.length > 0 ? 'diş' : 'adet'}</Text>
+                  <Text className="text-[13px] text-ink-500 dark:text-white/55" style={{ flex: 1 }}>{row.qty} {row.unit ? autoT(String(row.unit).toLocaleLowerCase('tr-TR')) : autoT(row.teeth.length > 0 ? 'üye' : 'adet')}</Text>
                   <View className="flex-row items-center gap-2.5" style={{ flex: 1.4 }}>
                     <View className="flex-1">
                       <LinearProgressX value={rowPct} theme={progressTheme} compact hideLabel animate />
                     </View>
                     <Text className="text-[11px] text-ink-500 dark:text-white/55" style={{ textAlign: 'end' as any, width: 32 }}>{rowPct}%</Text>
-                  </View>
-                  <View className="items-end" style={{ flex: 0.4 }}>
-                    <ArrowUpRight size={16} color={isDark ? (T.ink3 as string) : "#9A9A9A"} strokeWidth={1.6} />
                   </View>
                 </View>
                 );
@@ -3401,13 +3454,30 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
               <GlassTooltip
                 title={order.is_urgent ? autoT('Acil işaretini kaldır') : autoT('Acil işaretle')}
                 text={autoT('Acil siparişler listelerde en üstte ve kırmızı rozetle görünür')}>
-                <Pressable onPress={handleToggleUrgent} disabled={togglingUrgent}>
-                  {order.is_urgent ? (
-                    <Chip tone="danger" dot>Acil · Kaldır</Chip>
-                  ) : (
-                    <Chip tone="outline">+ Acil işaretle</Chip>
-                  )}
-                </Pressable>
+                {order.is_urgent ? (
+                  <View className="flex-row items-center gap-1.5">
+                    <Chip tone="danger" dot>Acil</Chip>
+                    <Pressable
+                      onPress={handleToggleUrgent}
+                      disabled={togglingUrgent}
+                      accessibilityRole="button"
+                      accessibilityLabel={autoT('Acil işaretini kaldır')}
+                      style={{ opacity: togglingUrgent ? 0.55 : 1, ...(Platform.OS === 'web' ? { cursor: togglingUrgent ? 'wait' : 'pointer' } as any : {}) }}
+                    >
+                      <Chip tone="outline">{togglingUrgent ? 'İşleniyor…' : 'Kaldır'}</Chip>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Pressable
+                    onPress={handleToggleUrgent}
+                    disabled={togglingUrgent}
+                    accessibilityRole="button"
+                    accessibilityLabel={autoT('Acil işaretle')}
+                    style={{ opacity: togglingUrgent ? 0.55 : 1, ...(Platform.OS === 'web' ? { cursor: togglingUrgent ? 'wait' : 'pointer' } as any : {}) }}
+                  >
+                    <Chip tone="outline" icon={togglingUrgent ? undefined : Plus}>{togglingUrgent ? 'İşleniyor…' : 'Acil işaretle'}</Chip>
+                  </Pressable>
+                )}
               </GlassTooltip>
             </View>
           </View>
@@ -3521,7 +3591,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             legs={deliveryLegs}
             orderNumber={String((order as any).order_number ?? '')}
             onProofChanged={() => { refetch(); refetchStages(); }}
-            accent={panelAccent}
+            // Koyu temada açılan ton (Simanty/Mesaj kartlarıyla aynı); açıkta = panelAccent.
+            accent={accentInk}
             rowBg={softPanelBg}
             isManager={isManager}
             canCall={order.status !== 'iptal'}
@@ -3576,11 +3647,16 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                 { id: 'lower', label: 'Alt',  count: lowerTeeth.length },
               ] as const).map(opt => {
                 const active = jawView === opt.id;
+                // Dişi olmayan çene seçilemez (boş çene çiziliyordu).
+                const empty = opt.id !== 'both' && opt.count === 0;
                 return (
                   <Pressable
                     key={opt.id}
                     onPress={() => setJawView(opt.id)}
+                    disabled={empty && !active}
+                    accessibilityState={{ disabled: empty && !active, selected: active }}
                     className={`py-1 px-2.5 rounded-full items-center ${active ? 'bg-ink-900 dark:bg-white/15' : ''}`}
+                    style={empty && !active ? { opacity: 0.4 } : undefined}
                   >
                     <Text className={`text-[9px] font-semibold ${active ? 'text-white' : 'text-ink-500 dark:text-white/55'}`}>
                       {opt.label}{' '}
@@ -3607,11 +3683,9 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                     <View>
                       <Text className="text-[14px] font-semibold text-ink-900 dark:text-[#F7F2E9]">Diş #{activeTooth}</Text>
                       <Text className="text-[11px] text-ink-400 dark:text-white/45">
-                        {activeTooth >= 11 && activeTooth <= 28 ? 'Üst çene' : 'Alt çene'}
+                        {isUpperFdi(activeTooth) ? 'Üst çene' : 'Alt çene'}
                         {' · '}
-                        {activeTooth >= 11 && activeTooth <= 18 ? 'Sağ' :
-                         activeTooth >= 21 && activeTooth <= 28 ? 'Sol' :
-                         activeTooth >= 31 && activeTooth <= 38 ? 'Sol' : 'Sağ'}
+                        {isRightFdi(activeTooth) ? 'Sağ' : 'Sol'}
                       </Text>
                     </View>
                   </View>
@@ -3693,7 +3767,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
           <View className="bg-white dark:bg-[#1B1916] rounded-3xl border border-black/[0.06] dark:border-white/10 p-5">
             <View className="flex-row gap-1 p-1 rounded-xl mb-3.5" style={{ backgroundColor: softPanelBg }}>
               {([
-                { id: 'files',       label: 'Dosyalar',     count: (order.photos ?? []).length + notePhotoFiles.photos.length + chatFiles.photos.length + scanFiles.photos.length },
+                { id: 'files',       label: 'Dosyalar',     count: (order.photos ?? []).length + notePhotoFiles.photos.length + inheritedFiles.photos.length + chatFiles.photos.length + scanFiles.photos.length },
                 { id: 'doctor_note', label: 'Hekim Notu', count: (order.notes && String(order.notes).trim().length > 0) ? 1 : 0 },
                 // Lab notu İÇ nottur: klinik/hekim yalnız lab "müşteriye görünür"
                 // işaretlediyse (lab_notes_visible) görebilir. Sekme aksi hâlde
@@ -3864,37 +3938,45 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                   <Pressable
                     onPress={() => setDoctorChangeOpen(true)}
                     accessibilityHint={autoT('Siparişin bağlı olduğu hekimi ve kliniği değiştirir; fatura da yeni kliniğe kesilir')}
-                    className="w-8 h-8 rounded-lg border border-black/[0.08] items-center justify-center"
-                    style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}
+                    className="w-8 h-8 rounded-lg border items-center justify-center"
+                    style={{ backgroundColor: U.plainBtn.bg, borderColor: U.plainBtn.border, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
                   >
                     <Pencil size={14} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={1.8} />
                   </Pressable>
                 </GlassTooltip>
               )}
-              <GlassTooltip title={autoT('Hatırlatıcı')} text={autoT('Bu vaka için hatırlatma kurar')}>
-                <Pressable
-                  accessibilityHint={autoT('Bu vaka için hatırlatma kurar')}
-                  className="w-8 h-8 rounded-lg border border-black/[0.08] items-center justify-center">
-                  <Bell size={15} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={1.6} />
-                </Pressable>
-              </GlassTooltip>
             </View>
-            {(doctorPhone || clinicName) && (
+            {(doctorPhone || clinicAddressText) ? (
               <View className="px-3 py-2.5 rounded-[10px] gap-2" style={{ backgroundColor: softPanelBg }}>
                 {doctorPhone ? (
-                  <View className="flex-row items-center gap-1.5">
-                    <Phone size={11} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} />
-                    <Text className="text-[11px] text-ink-500 dark:text-white/55">{doctorPhone}</Text>
-                  </View>
+                  <GlassTooltip title={autoT('Ara')} text={doctorPhone}>
+                    <Pressable
+                      onPress={() => openTel(doctorPhone)}
+                      accessibilityRole="link"
+                      accessibilityLabel={`${autoT('Ara')} ${doctorPhone}`}
+                      className="flex-row items-center gap-1.5 self-start"
+                      style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}
+                    >
+                      <Phone size={11} color={isDark ? '#93C5FD' : '#1F5689'} strokeWidth={1.8} />
+                      <Text className="text-[11px] font-medium text-[#1F5689] dark:text-[#93C5FD]">{doctorPhone}</Text>
+                    </Pressable>
+                  </GlassTooltip>
                 ) : null}
-                {clinicName ? (
-                  <View className="flex-row items-start gap-1.5">
-                    <View className="mt-0.5"><MapPin size={11} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} /></View>
-                    <Text className="flex-1 text-[11px] text-ink-500 dark:text-white/55 leading-4">{clinicName}</Text>
-                  </View>
+                {clinicAddressText ? (
+                  <GlassTooltip title={autoT('Haritada aç')} text={clinicAddressText}>
+                    <Pressable
+                      onPress={() => openMap(clinicAddressText)}
+                      accessibilityRole="link"
+                      className="flex-row items-start gap-1.5"
+                      style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}
+                    >
+                      <View className="mt-0.5"><MapPin size={11} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} /></View>
+                      <Text className="flex-1 text-[11px] text-ink-500 dark:text-white/55 leading-4">{clinicAddressText}</Text>
+                    </Pressable>
+                  </GlassTooltip>
                 ) : null}
               </View>
-            )}
+            ) : null}
           </View>
 
           {/* İLGİLİ SİPARİŞLER */}
@@ -4657,19 +4739,22 @@ function Chip({ children, tone, dot = false, icon: Icon }: {
   dot?: boolean;
   icon?: any;
 }) {
+  // Hook koşulsuz en başta: eskiden danger dalı erken dönüyordu, Acil aç/kapa'da
+  // hook sayısı değişip "Rendered more hooks" hatası riski vardı.
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   if (tone === 'danger') {
+    const dfg = isDark ? '#FCA5A5' : '#9C2E2E';
     return (
       <View
         className="flex-row items-center gap-1.5 px-3 py-1 rounded-full"
-        style={{ backgroundColor: 'rgba(217,75,75,0.12)' }}
+        style={{ backgroundColor: isDark ? 'rgba(217,75,75,0.22)' : 'rgba(217,75,75,0.12)' }}
       >
-        {Icon && <Icon size={12} color="#9C2E2E" strokeWidth={1.8} />}
-        {dot && <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#9C2E2E' }} />}
-        <Text className="text-[12px] font-medium" style={{ color: '#9C2E2E' }}>{children}</Text>
+        {Icon && <Icon size={12} color={dfg} strokeWidth={1.8} />}
+        {dot && <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dfg }} />}
+        <Text className="text-[12px] font-medium" style={{ color: dfg }}>{children}</Text>
       </View>
     );
   }
-  const isDark = useThemeModeStore(s => s.resolvedDark);
   const cls = tone === 'neutral' ? 'bg-black/5 dark:bg-white/10' : 'bg-transparent border border-ink-300 dark:border-white/20';
   return (
     <View className={`flex-row items-center gap-1.5 px-3 py-1 rounded-full ${cls}`}>

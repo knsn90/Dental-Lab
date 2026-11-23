@@ -189,14 +189,18 @@ export default function LabLayout() {
       requiresPermission: 'view_approvals' },
     // Tarama randevuları (klinikte ağız içi tarama / fotogrametri) — yönetici + modül açık
     ...(isManager ? [{ group: t('nav.groups.work'), label: t('nav.items.scans'), href: '/(lab)/scans', iconName: 'calendar', matchPrefix: false,
-      requiresFeature: 'scan_appointments' }] : []),
-    { group: t('nav.groups.work'), label: t('nav.items.production'),                  href: '/(lab)/production',       iconName: 'activity',       matchPrefix: true, sectionLabel: t('nav.sections.production') },
-    { group: t('nav.groups.work'), label: t('nav.items.workflows'),                    href: '/(lab)/workflows',        iconName: 'list-todo',      matchPrefix: true },
-    { group: t('nav.groups.customers'), label: t('nav.items.clinics'), emoji: '🏥', href: '/(lab)/clinics',          iconName: 'building-2',     matchPrefix: true, sectionLabel: t('nav.sections.customers') },
-    { group: t('nav.groups.customers'), label: t('nav.items.courier'),                    href: '/(lab)/courier-tracking', iconName: 'scooter',        matchPrefix: true, sectionLabel: t('nav.sections.delivery') },
+      requiresFeature: 'scan_appointments', requiresPermission: 'view_scan_appointments' }] : []),
+    { group: t('nav.groups.work'), label: t('nav.items.production'),                  href: '/(lab)/production',       iconName: 'activity',       matchPrefix: true, sectionLabel: t('nav.sections.production'),
+      requiresPermission: 'view_production' },
+    { group: t('nav.groups.work'), label: t('nav.items.workflows'),                    href: '/(lab)/workflows',        iconName: 'list-todo',      matchPrefix: true,
+      requiresPermission: 'view_production' },
+    { group: t('nav.groups.customers'), label: t('nav.items.clinics'), emoji: '🏥', href: '/(lab)/clinics',          iconName: 'building-2',     matchPrefix: true, sectionLabel: t('nav.sections.customers'),
+      requiresPermission: 'view_customers' },
+    { group: t('nav.groups.customers'), label: t('nav.items.courier'),                    href: '/(lab)/courier-tracking', iconName: 'scooter',        matchPrefix: true, sectionLabel: t('nav.sections.delivery'),
+      requiresPermission: 'view_deliveries' },
     // Telefon asistanı talepleri — yalnız müdür/admin + modül açık
     ...(isManager ? [{ group: t('nav.groups.customers'), label: t('nav.items.phoneLeads'), href: '/(lab)/phone-leads', iconName: 'phone', matchPrefix: false,
-      requiresFeature: 'phone_assistant' }] : []),
+      requiresFeature: 'phone_assistant', requiresPermission: 'view_customers' }] : []),
     { group: t('nav.groups.management'), label: t('nav.items.finance'),           emoji: '💰', href: '/(lab)/finance',           iconName: 'landmark',       matchPrefix: false, sectionLabel: t('nav.sections.finance'),
       requiresPermission: 'view_financials' },
     { group: t('nav.groups.management'), label: t('nav.items.priceList'),                 href: '/(lab)/finance?tab=pricelist', iconName: 'tag',        matchPrefix: false,
@@ -209,7 +213,8 @@ export default function LabLayout() {
       requiresPermission: 'view_team' },
     // Mesajlar kenar çubuğunda yok — profil kartında (kullanıcı, 2026-10-28)
     // WhatsApp destek hattı ayarı Destek ekranının içinde (hero düğmesi) — ayrı menü maddesi yok
-    { group: t('nav.groups.system'), label: t('nav.items.support'),           emoji: '💬', href: '/(lab)/support',           iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help') },
+    { group: t('nav.groups.system'), label: t('nav.items.support'),           emoji: '💬', href: '/(lab)/support',           iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help'),
+      requiresPermission: 'view_support' },
     { group: t('nav.groups.system'), label: t('nav.items.settings'),          emoji: '⚙️', href: '/(lab)/settings',          iconName: 'settings',       matchPrefix: true,
       requiresPermission: 'view_settings' },
   ];
@@ -283,17 +288,17 @@ export default function LabLayout() {
   };
 
   // "Daha" bottom-sheet'inde gösterilecek ekstra menüler — Onaylar pill'de
-  // RBAC: yetkisi kapalı olan menü öğesi HİÇ gösterilmez (clinics/courier perm'siz → hep görünür).
+  // RBAC: yetkisi kapalı olan menü öğesi HİÇ gösterilmez.
   const MORE_ITEMS: import('../../core/ui/mobile/MoreMenuSheet').MoreItem[] = ([
     ...(faceScanOk ? [{ key: 'approvals', group: autoT('Operasyon'), requires: 'view_approvals', label: t('nav.items.approvals'), icon: CheckCircle22, badge: pendingCount > 0 ? pendingCount : undefined, onPress: () => router.push('/(lab)/approvals' as any) }] : []),
     { key: 'paper', group: autoT('Operasyon'),    requires: 'view_orders',     label: t('nav.items.paperInbox'),     sub: 'OCR · WhatsApp',                 icon: Camera2,   badge: pendingPaperCount > 0 ? pendingPaperCount : undefined, onPress: () => router.push('/(lab)/pending-paper' as any) },
-    { key: 'clinics', group: autoT('Yönetim'),                               label: t('nav.items.clinics'),sub: 'Klinik & hekimler',              icon: Building22,onPress: () => router.push('/(lab)/clinics' as any) },
-    { key: 'courier', group: autoT('Operasyon'),                               label: t('nav.items.courier'),     sub: 'Teslimat akışı',                 icon: Truck2,    onPress: () => router.push('/(lab)/courier-tracking' as any) },
+    { key: 'clinics', group: autoT('Yönetim'),  requires: 'view_customers',  label: t('nav.items.clinics'),sub: 'Klinik & hekimler',              icon: Building22,onPress: () => router.push('/(lab)/clinics' as any) },
+    { key: 'courier', group: autoT('Operasyon'), requires: 'view_deliveries', label: t('nav.items.courier'),     sub: 'Teslimat akışı',                 icon: Truck2,    onPress: () => router.push('/(lab)/courier-tracking' as any) },
     { key: 'finance', group: autoT('Yönetim'),  requires: 'view_financials', label: t('nav.items.finance'),          sub: 'Kasa · Hizmet bedeli · Gider · Çek',    icon: Landmark2, onPress: () => router.push('/(lab)/finance' as any) },
     { key: 'team', group: autoT('Yönetim'),     requires: 'view_team',       label: t('nav.items.team'),            sub: 'Personel · maaş · izin',         icon: Users2,    onPress: () => router.push('/(lab)/ik-depo' as any) },
     { key: 'stock', group: autoT('Yönetim'),    requires: 'view_stock',      label: t('nav.items.stock'),     sub: 'Envanter · alarm',               icon: Package2,  onPress: () => router.push('/(lab)/stock' as any) },
-    ...(isManager && scansOn ? [{ key: 'scans', group: autoT('Operasyon'), label: t('nav.items.scans'), sub: t('nav.items.scansSub'), icon: CalendarClock2, onPress: () => router.push('/(lab)/scans' as any) }] : []),
-    ...(isManager && phoneAssistantOn ? [{ key: 'phone-leads', group: autoT('Operasyon'), label: t('nav.items.phoneLeads'), sub: t('nav.items.phoneLeadsSub'), icon: PhoneCall2, onPress: () => router.push('/(lab)/phone-leads' as any) }] : []),
+    ...(isManager && scansOn ? [{ key: 'scans', group: autoT('Operasyon'), requires: 'view_scan_appointments', label: t('nav.items.scans'), sub: t('nav.items.scansSub'), icon: CalendarClock2, onPress: () => router.push('/(lab)/scans' as any) }] : []),
+    ...(isManager && phoneAssistantOn ? [{ key: 'phone-leads', group: autoT('Operasyon'), requires: 'view_customers', label: t('nav.items.phoneLeads'), sub: t('nav.items.phoneLeadsSub'), icon: PhoneCall2, onPress: () => router.push('/(lab)/phone-leads' as any) }] : []),
     { key: 'settings', group: autoT('Yönetim'), requires: 'view_settings',   label: t('nav.items.settings'),         sub: 'Genel · Bildirim · Entegrasyon', icon: Settings2, onPress: () => router.push('/(lab)/settings' as any) },
   ] as any[]).filter((it: any) => !permLoaded || !it.requires || canPerm(it.requires));
 

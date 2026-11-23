@@ -279,7 +279,7 @@ serve(async (req) => {
     if (!cred) return json({ ok: false, error: 'Aktif Luca e-Fatura ayarı yok (Ayarlar → Entegrasyonlar)' }, 400);
     const c = ((cred as any).credentials ?? {}) as Record<string, string>;
     const env: LucaEnvName = (cred as any).environment === 'production' ? 'prod' : 'test';
-    // Satıcı künyesi LAB'a ait (Ayarlar → Genel → Fatura Bilgileri) — entegratör ayarında değil.
+    // Satıcı künyesi LAB'a ait (Ayarlar → Finans Ayarları → Fatura Bilgileri) — entegratör ayarında değil.
     const { data: labRow } = await service
       .from('labs')
       .select('name, legal_name, tax_number, tax_office, street, district, city, postal_code, email, phone')
@@ -308,7 +308,7 @@ serve(async (req) => {
     // ── Bağlantı testi: köprü + Luca ayakta mı, bu VKN için yetki var mı (kontör sorgusu) ──
     if (action === 'test') {
       if (env === 'prod' && !/^(\d{10}|\d{11})$/.test(companyTaxCode)) {
-        return json({ ok: false, message: 'Lab VKN/TCKN geçersiz — Ayarlar → Genel → Fatura Bilgileri' });
+        return json({ ok: false, message: 'Lab VKN/TCKN geçersiz — Ayarlar → Finans Ayarları → Fatura Bilgileri' });
       }
       const ns = 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/" xmlns:ein="http://schemas.datacontract.org/2004/07/EInvoice.Service.Model"';
       const balanceEnv: LucaEnvelope = {

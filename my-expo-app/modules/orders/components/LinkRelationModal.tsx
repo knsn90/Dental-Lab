@@ -28,7 +28,7 @@ function fmtD(s?: string | null): string {
   try { const d = new Date(s.includes('T') ? s : s + 'T00:00:00'); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`; } catch { return ''; }
 }
 const STL: Record<string, { l: string; c: string }> = {
-  alindi: { l: 'Alındı', c: '#4A8FC9' }, uretimde: { l: 'Üretimde', c: '#B45309' }, asamada: { l: 'Üretimde', c: '#B45309' },
+  alindi: { l: 'Alındı', c: '#4A8FC9' }, uretimde: { l: 'Üretimde', c: '#B45309' }, asamada: { l: 'Üretim Aşamasında', c: '#B45309' },
   kalite_kontrol: { l: 'Final QC', c: '#7C3AED' }, teslimata_hazir: { l: 'Teslime Hazır', c: '#0F6E50' },
   kuryede: { l: 'Kuryede', c: '#1E5A8A' }, teslim_edildi: { l: 'Teslim edildi', c: '#6B6B6B' }, iptal: { l: 'İptal', c: '#9C2E2E' },
 };

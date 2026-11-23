@@ -32,6 +32,8 @@ import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { usePermissionStore } from '../../../core/store/permissionStore';
+import { StationsSection } from '../../settings/sections/StationsSection';
 
 // Yetkinlik ikon paleti (lucide).
 // KATEGORİLİ: on ikon tek sırada dizilince hepsi birbirine benziyordu ve hangisinin
@@ -127,10 +129,12 @@ function isQualified(st: TriageStation, t: TriageTech) {
   return st.required_skills.every(r => t.skills.includes(r));
 }
 
-type AreaKey = 'builder' | 'skills' | 'people' | 'rules';
+type AreaKey = 'builder' | 'stations' | 'skills' | 'people' | 'rules';
 // Yetkinlikler + Personel alanları Ekip (İK & Depo hub) bölümüne taşındı.
 const AREAS: { key: AreaKey; label: string; icon: any; hint: string }[] = [
   { key: 'builder', label: 'Akış Tasarımı',    icon: Workflow,          hint: 'Üretim akışını görsel tasarla' },
+  // Eski Ayarlar › İstasyonlar sekmesi buraya taşındı (tek istasyon editörü).
+  { key: 'stations', label: 'İstasyonlar',     icon: Layers,            hint: 'Ekle · sırala · renk · ikon' },
   { key: 'rules',   label: 'Kurallar',         icon: SlidersHorizontal, hint: 'Süre · teslim · atama' },
 ];
 
@@ -138,10 +142,12 @@ const AREAS: { key: AreaKey; label: string; icon: any; hint: string }[] = [
 interface Draft { id: string | null; name: string; caseTypesText: string; stationIds: string[]; isDefault: boolean; isActive: boolean; }
 const EMPTY_DRAFT: Draft = { id: null, name: '', caseTypesText: '', stationIds: [], isDefault: false, isActive: true };
 
-export function WorkflowStudioScreen({ embedded = false }: {
+export function WorkflowStudioScreen({ embedded = false, initialArea: initialAreaProp }: {
   /** Ayarlar hub'ının içinde render edilirken: üstteki TopActionBar payı ve
       sayfa zemini kabın kendisinden gelir, burada tekrarlanmaz. */
   embedded?: boolean;
+  /** Hub'dan açılış alanı (eski ?tab=stations bağlantısı → 'stations'). */
+  initialArea?: AreaKey;
 } = {}) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -155,8 +161,14 @@ export function WorkflowStudioScreen({ embedded = false }: {
 
   // Deep-link: ?area=people → doğrudan Personel sekmesi (Ekip'ten "yetki ver" yönlendirmesi)
   const routeParams = useLocalSearchParams<{ area?: string }>();
-  const initialArea: AreaKey = (['builder', 'rules'] as const).includes(routeParams.area as 'builder' | 'rules')
-    ? (routeParams.area as AreaKey) : 'builder';
+  const initialArea: AreaKey = initialAreaProp
+    ?? ((['builder', 'stations', 'rules'] as const).includes(routeParams.area as 'builder' | 'stations' | 'rules')
+      ? (routeParams.area as AreaKey) : 'builder');
+  // İstasyon ekle/sil/sırala yalnız ayar yetkisiyle (eski Ayarlar sekmesiyle aynı kapı);
+  // /(lab)/workflows rotası view_production ile açıldığı için ayrıca süzülür.
+  const perms = usePermissionStore();
+  const canEditStations = (profile as any)?.user_type === 'admin' || !perms.loaded || perms.permissions.has('manage_settings');
+  const areas = AREAS.filter(a => a.key !== 'stations' || canEditStations);
   const [area, setArea] = useState<AreaKey>(initialArea);
   const [stations, setStations] = useState<TriageStation[]>([]);
   const [techs, setTechs] = useState<TriageTech[]>([]);
@@ -166,9 +178,9 @@ export function WorkflowStudioScreen({ embedded = false }: {
   const [stationSkills, setStationSkills] = useState<Map<string, Set<string>>>(new Map()); // user_id → Set<station_id>
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!labId) { setLoading(false); return; }
-    setLoading(true);
+    if (!silent) setLoading(true);
     const [skillsData, studio, skillsRes, stSkills] = await Promise.all([
       fetchSkillsData(labId), fetchStudioData(labId), fetchLabSkills(labId), fetchStationSkillsMap(),
     ]);
@@ -239,7 +251,7 @@ export function WorkflowStudioScreen({ embedded = false }: {
 
       {/* ── 4 alan navigasyonu ── */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
-        {AREAS.map(a => {
+        {areas.map(a => {
           const active = area === a.key;
           const Icon = a.icon;
           return (
@@ -265,6 +277,9 @@ export function WorkflowStudioScreen({ embedded = false }: {
           stations={stations} techs={techs} templates={templates} stationById={stationById}
           skillNames={skillCatalog} labId={labId} onReload={load}
         />
+      )}
+      {area === 'stations' && canEditStations && (
+        <StationsSection embedded accentColor={A_DEEP} onChanged={() => load(true)} />
       )}
       {area === 'rules' && (
         <RulesArea theme={{ A, A_DEEP, onA, PAGE }} labId={labId} stations={stations} techs={techs} skillCatalog={skillCatalog} onStationMaterials={onStationMaterials}

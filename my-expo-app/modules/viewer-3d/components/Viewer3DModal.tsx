@@ -10,7 +10,7 @@
  * Web only — Native'de Platform.OS guard ile çağıran component'te kapatılır.
  */
 import React, { useState, useMemo, useRef } from 'react';
-import { View, Text, Pressable, Modal, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, Pressable, Modal, Platform, useWindowDimensions, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X, Download } from '../../../core/ui/icons';
 import type { Viewer3DProps, LayerStyle, Measurement, CutAxis } from '../types';
@@ -231,11 +231,17 @@ function Viewer3DModal(props: Viewer3DProps) {
     });
   };
 
+  // Yüklenemeyen dosyalar — başlık "4 tarama" derken biri yoksa yanıltmasın.
+  const [failedIds, setFailedIds] = useState<string[]>([]);
   const summaryTitle = useMemo(() => {
+    const failed = failedIds.filter(id => files.some(f => f.id === id)).length;
+    if (files.length > 1 && failed > 0) {
+      return `${files.length - failed} / ${files.length} ${autoT('tarama yüklendi')} · ${failed} ${autoT('yüklenemedi')}`;
+    }
     if (title) return title;
     if (files.length === 1) return files[0].name;
-    return `${files.length} dosya`;
-  }, [title, files]);
+    return `${files.length} ${autoT('dosya')}`;
+  }, [title, files, failedIds]);
 
   // Yüklü dosyaları indir (kontrol/hata ayıklama için). fetch→blob→objectURL:
   // hem yerel blob URL hem uzak (imzalı) URL için çalışır; orijinal ad korunur.
@@ -367,6 +373,7 @@ function Viewer3DModal(props: Viewer3DProps) {
                   xrayMode={xrayMode}
                   autoAlign={autoAlign}
                   onDiagnostics={(id, d) => setDiagnostics(prev => ({ ...prev, [id]: d }))}
+                  onLoadErrorsChange={setFailedIds}
                   penMode={penMode && annots.enabled}
                   penKind={penKind}
                   penColor={penColor}
@@ -603,33 +610,53 @@ function Viewer3DModal(props: Viewer3DProps) {
                   </View>
                 )}
 
-                {/* Mesafe ölçümleri overlay (sağ alt) */}
+                {/* Mesafe ölçümleri — sağ ÜSTTE, araç çubuğunun solunda. Sağ altta
+                    Simanty balonunun altında kalıyordu. Hepsi listelenir (kaydırılır),
+                    eskiden yalnız son 5 görünüyordu ve eskiler silinemiyordu. */}
                 {measurements.length > 0 && (
                   <View style={{
-                    position: 'absolute', bottom: 12, end: 12,
+                    position: 'absolute', top: 14, end: 66,
                     backgroundColor: T.toolbarBg,
-                    borderRadius: 10, padding: 8,
+                    borderRadius: 12, padding: 8,
                     borderWidth: 1, borderColor: T.toolbarBorder,
-                    maxWidth: 200, gap: 4,
+                    width: 180, gap: 4,
                   } as any}>
-                    <Text style={{ color: T.panelLabelMuted, fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 }}>
-                      Mesafeler
-                    </Text>
-                    {measurements.slice(-5).map((m, i) => (
-                      <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFEB3B' }} />
-                        <Text style={{ flex: 1, color: T.iconFg, fontSize: 11, fontWeight: '700' }}>
-                          {m.distance.toFixed(2)} mm
-                        </Text>
-                        <Pressable
-                          onPress={() => setMeasurements(prev => prev.filter(x => x.id !== m.id))}
-                          hitSlop={4}
-                          style={{ width: 16, height: 16, alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
-                        >
-                          <Text style={{ color: T.panelLabelMuted, fontSize: 12, fontWeight: '700' }}>×</Text>
-                        </Pressable>
-                      </View>
-                    ))}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                      <Text style={{ flex: 1, color: T.panelLabelMuted, fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                        Mesafeler · {measurements.length}
+                      </Text>
+                      <Pressable
+                        onPress={() => setMeasurements([])}
+                        hitSlop={4}
+                        accessibilityLabel="Tümünü temizle"
+                        style={({ hovered }: any) => ({
+                          paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999,
+                          backgroundColor: hovered ? T.iconBgHover : 'transparent',
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                        })}
+                      >
+                        <Text style={{ color: T.accentText, fontSize: 10, fontWeight: '700' }}>Tümünü temizle</Text>
+                      </Pressable>
+                    </View>
+                    <ScrollView style={{ maxHeight: 168 }} showsVerticalScrollIndicator={false}>
+                      {measurements.map((m, i) => (
+                        <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 3 }}>
+                          <Text style={{ width: 16, color: T.panelLabelMuted, fontSize: 10, fontWeight: '600' }}>{i + 1}</Text>
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFEB3B' }} />
+                          <Text style={{ flex: 1, color: T.iconFg, fontSize: 11, fontWeight: '700' }}>
+                            {m.distance.toFixed(2)} mm
+                          </Text>
+                          <Pressable
+                            onPress={() => setMeasurements(prev => prev.filter(x => x.id !== m.id))}
+                            hitSlop={4}
+                            accessibilityLabel="Ölçümü sil"
+                            style={{ width: 18, height: 18, alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                          >
+                            <X size={11} color={T.panelLabelMuted} strokeWidth={2.2} />
+                          </Pressable>
+                        </View>
+                      ))}
+                    </ScrollView>
                   </View>
                 )}
 

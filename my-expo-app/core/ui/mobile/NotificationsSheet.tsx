@@ -496,6 +496,9 @@ const CATEGORY_CFG: Record<NotificationCategory, { icon: any; color: string; lab
   review_minor:     { icon: Wrench,        color: '#E89B2A', label: 'Küçük Düzeltme' },
   review_low:          { icon: AlertTriangle, color: '#DC2626', label: 'Düşük Puan' },
   review_low_reminder: { icon: AlarmClock,    color: '#E89B2A', label: 'Aranmadı Hatırlatması' },
+  phone_lead:         { icon: MessageCircle, color: '#0891B2', label: 'Telefon Talebi' },
+  ready_for_delivery: { icon: Truck,         color: '#0D9488', label: 'Teslime Hazır' },
+  support:            { icon: MessageCircle, color: '#16A34A', label: 'WhatsApp' },
 };
 
 // ── DB feed satırı — okunmamış vurgusu + relative time ─────────────────────

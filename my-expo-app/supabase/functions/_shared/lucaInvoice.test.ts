@@ -94,7 +94,7 @@ test('reddedilen durumlar anlaşılır mesaj verir', () => {
   assert.match(reason({ invoice: { ...inv, tax_rate: 0, tax_amount: 0, total: 3150 } }), /%0/);
   assert.match(reason({ invoice: { ...inv, total: 0, subtotal: 0, tax_amount: 0 } }), /tutar/i);
   assert.match(reason({ invoice: { ...inv, items: [] } }), /kalem/i);
-  // Satıcı bilgisi lab'dan (Ayarlar → Genel → Fatura Bilgileri) — mesaj oraya yönlendirir.
+  // Satıcı bilgisi lab'dan (Ayarlar → Finans Ayarları → Fatura Bilgileri) — mesaj oraya yönlendirir.
   assert.match(reason({ seller: { ...seller, tax_office: '' } }), /Fatura Bilgileri/);
   assert.match(reason({ seller: { ...seller, street: '' } }), /Fatura Bilgileri/);
   assert.match(reason({ seller: { ...seller, vkn: '123' } }), /VKN/);

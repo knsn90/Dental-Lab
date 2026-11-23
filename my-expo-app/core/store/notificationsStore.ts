@@ -13,6 +13,7 @@
  *  (app açılışında authStore profile'ı yükledikten sonra).
  */
 import { create } from 'zustand';
+import { useMemo } from 'react';
 import { supabase } from '../api/supabase';
 import type { NotificationCategory } from './notificationPrefsStore';
 import { useNotificationPrefs, showBrowserPush } from './notificationPrefsStore';
@@ -55,6 +56,19 @@ interface State {
 let _channel: ReturnType<typeof supabase.channel> | null = null;
 let _currentUserId: string | null = null;
 const MAX_KEEP = 100;
+
+/**
+ * Uygulama içi (zil) akışında gösterilsin mi? Kayıt sunucuda yine yazılır; burada
+ * kullanıcının "Uygulama" tercihine göre süzülür. Ayarlar sayfasında satırı olmayan
+ * kategoriler (bilinmeyen) her zaman gösterilir — yalnız AÇIKÇA kapatılan gizlenir.
+ */
+export function inAppVisible(prefs: any, category: string): boolean {
+  if (!prefs) return true;
+  if (prefs.master_enabled === false) return false;
+  if (prefs.channels?.in_app === false) return false;
+  return prefs.categories?.[category]?.in_app !== false;
+}
+
 
 export const useNotificationsStore = create<State>((set, get) => ({
   items: [],
@@ -111,12 +125,15 @@ export const useNotificationsStore = create<State>((set, get) => ({
             unreadCount: s.unreadCount + (row.read_at ? 0 : 1),
           }));
 
-          // Browser push tetikleyici (pref kontrolü içeride)
+          // Browser push tetikleyici (pref kontrolü içeride).
+          // Etiket, sunucunun web push'uyla (dispatch.ts: `${category}-${resourceId}`)
+          // AYNI: abonelik varken sw.js de gösteriyor; farklı etiketle aynı bildirim
+          // iki kez çıkıyordu. Aynı etikette tarayıcı birini diğerinin yerine koyar.
           try {
             const allowPush = useNotificationPrefs.getState().shouldNotify(row.category, 'browser_push');
             if (allowPush) {
               showBrowserPush(row.title, row.body ?? '', {
-                tag: `notif-${row.id}`,
+                tag: row.resource_id ? `${row.category}-${row.resource_id}` : `notif-${row.id}`,
                 data: { id: row.id, url: row.action_url },
                 onClick: () => {
                   if (row.action_url && typeof window !== 'undefined') {
@@ -216,10 +233,13 @@ export const useNotificationsStore = create<State>((set, get) => ({
 
 // ── Convenience selectors ────────────────────────────────────────────
 export const useNotifications = () => {
-  const items = useNotificationsStore(s => s.items);
-  const unreadCount = useNotificationsStore(s => s.unreadCount);
+  const allItems = useNotificationsStore(s => s.items);
   const loaded = useNotificationsStore(s => s.loaded);
   const loading = useNotificationsStore(s => s.loading);
+  // "Uygulama" sütununda kapatılan kategoriler zil akışında ve sayaçta görünmez.
+  const prefs = useNotificationPrefs(s => s.prefs);
+  const items = useMemo(() => allItems.filter(n => inAppVisible(prefs, n.category)), [allItems, prefs]);
+  const unreadCount = useMemo(() => items.filter(n => !n.read_at).length, [items]);
   return { items, unreadCount, loaded, loading };
 };
 

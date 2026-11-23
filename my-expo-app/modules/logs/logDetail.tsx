@@ -63,7 +63,7 @@ const EXTRA_STATUS: Record<string, string> = {
   durakladi:    'Duraklatıldı',
   tamamlandi:   'Tamamlandı',
   iptal:        'İptal',
-  asamada:      'Aşamada',
+  asamada:      'Üretim Aşamasında',
   planlandi:    'Planlandı',
   makine_bekliyor: 'Makine bekliyor',
 };

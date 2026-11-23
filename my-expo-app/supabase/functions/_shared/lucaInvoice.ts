@@ -75,7 +75,7 @@ export interface DbDoctor {
 }
 
 /**
- * Satıcı (lab) künyesi — labs tablosundan (Ayarlar → Genel → Fatura Bilgileri);
+ * Satıcı (lab) künyesi — labs tablosundan (Ayarlar → Finans Ayarları → Fatura Bilgileri);
  * entegratörden bağımsız. vkn = labs.tax_number (VKN 10 / şahıs şirketi TCKN 11).
  */
 export interface SellerConfig {
@@ -230,9 +230,9 @@ export function buildLucaInput(args: {
   const vatOf = (it: DbItem) => num(it.vat_rate ?? invoice.tax_rate);
   if (invoice.items.some((it) => vatOf(it) <= 0)) return fail('KDV oranı %0 olan fatura henüz gönderilemiyor (istisna kodu tanımlı değil)');
 
-  if (!/^(\d{10}|\d{11})$/.test(seller.vkn?.trim() ?? '')) return fail('Lab VKN/TCKN geçersiz — Ayarlar → Genel → Fatura Bilgileri');
+  if (!/^(\d{10}|\d{11})$/.test(seller.vkn?.trim() ?? '')) return fail('Lab VKN/TCKN geçersiz — Ayarlar → Finans Ayarları → Fatura Bilgileri');
   if (blank(seller.tax_office) || blank(seller.street) || blank(seller.city) || blank(seller.town)) {
-    return fail('Lab fatura bilgileri eksik — Ayarlar → Genel → Fatura Bilgileri');
+    return fail('Lab fatura bilgileri eksik — Ayarlar → Finans Ayarları → Fatura Bilgileri');
   }
 
   // Yurt dışı klinik (adres JSON'unda ulke ≠ TR): yurt içi e-fatura/e-Arşiv değil ihracat faturası

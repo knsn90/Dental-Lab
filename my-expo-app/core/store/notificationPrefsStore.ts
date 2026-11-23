@@ -20,20 +20,33 @@ import { supabase } from '../api/supabase';
 import { DEFAULT_PREFS } from './notificationPrefsDefaults';
 import type { NotificationCategory, NotificationChannel, NotificationPrefs } from './notificationPrefsDefaults';
 export type { NotificationCategory, NotificationChannel, CategoryToggles, NotificationPrefs } from './notificationPrefsDefaults';
+export { WHATSAPP_CAPABLE } from './notificationPrefsDefaults';
 
 const LS_KEY = 'notif_prefs_v1';
 
-function readCache(): NotificationPrefs | null {
+// Önbellek kullanıcıya bağlı: { uid, prefs }. Eskiden yalnız prefs tutuluyordu;
+// aynı tarayıcıda hesap değişince yükleme bitene kadar ÖNCEKİ kullanıcının
+// ayarları görünüyordu. Eski biçim (uid'siz) okunur ama kimseye ait sayılmaz.
+function readCacheEntry(): { uid: string | null; prefs: NotificationPrefs } | null {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(LS_KEY);
-    return raw ? JSON.parse(raw) as NotificationPrefs : null;
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    if (v && v.prefs && 'uid' in v) return { uid: v.uid ?? null, prefs: v.prefs as NotificationPrefs };
+    return { uid: null, prefs: v as NotificationPrefs };
   } catch { return null; }
+}
+function readCache(uid?: string | null): NotificationPrefs | null {
+  const e = readCacheEntry();
+  if (!e) return null;
+  if (uid !== undefined && e.uid !== uid) return null;
+  return e.prefs;
 }
 
 function writeCache(p: NotificationPrefs) {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-  try { window.localStorage.setItem(LS_KEY, JSON.stringify(p)); } catch { /* */ }
+  try { window.localStorage.setItem(LS_KEY, JSON.stringify({ uid: _currentUserId, prefs: p })); } catch { /* */ }
 }
 
 interface State {
@@ -41,30 +54,34 @@ interface State {
   loaded: boolean;
   /** profiles.notification_prefs'i çek */
   loadFromProfile: (userId: string | null | undefined) => Promise<void>;
-  /** Master switch */
-  setMaster: (on: boolean) => Promise<void>;
+  /** Master switch — kaydedilemezse eski hâle döner ve false döner */
+  setMaster: (on: boolean) => Promise<boolean>;
   /** Genel kanal toggle (tüm kategorilerde varsayılan) */
-  setChannel: (ch: NotificationChannel, on: boolean) => Promise<void>;
+  setChannel: (ch: NotificationChannel, on: boolean) => Promise<boolean>;
   /** Kategori × kanal toggle */
-  setCategoryChannel: (cat: NotificationCategory, ch: NotificationChannel, on: boolean) => Promise<void>;
+  setCategoryChannel: (cat: NotificationCategory, ch: NotificationChannel, on: boolean) => Promise<boolean>;
   /**
    * Toplu kategori × kanal toggle ("Tümünü Aç/Kapat").
    * Tek persist yapar — tek tek çağırmak N ayrı profiles UPDATE'i üretiyordu.
    */
-  setCategoriesBulk: (cats: NotificationCategory[], chs: NotificationChannel[], on: boolean) => Promise<void>;
+  setCategoriesBulk: (cats: NotificationCategory[], chs: NotificationChannel[], on: boolean) => Promise<boolean>;
   /** Modüllerin kullanacağı karar fonksiyonu */
   shouldNotify: (cat: NotificationCategory, ch: NotificationChannel) => boolean;
 }
 
-async function persist(userId: string | null, prefs: NotificationPrefs) {
-  writeCache(prefs);
-  if (!userId) return;
-  await supabase.from('profiles')
-    .update({ notification_prefs: prefs })
-    .eq('id', userId);
-}
-
 let _currentUserId: string | null = null;
+
+/** DB'ye yaz. Hata (ya da RLS yüzünden 0 satır) → false; çağıran eski hâle döner. */
+async function persist(userId: string | null, prefs: NotificationPrefs): Promise<boolean> {
+  if (!userId) { writeCache(prefs); return true; }
+  const { data, error } = await supabase.from('profiles')
+    .update({ notification_prefs: prefs })
+    .eq('id', userId)
+    .select('id');
+  if (error || !data || data.length === 0) return false;
+  writeCache(prefs);
+  return true;
+}
 
 export const useNotificationPrefs = create<State>((set, get) => ({
   prefs: readCache() ?? DEFAULT_PREFS,
@@ -73,13 +90,15 @@ export const useNotificationPrefs = create<State>((set, get) => ({
   loadFromProfile: async (userId) => {
     _currentUserId = userId ?? null;
     if (!userId) { set({ prefs: DEFAULT_PREFS, loaded: true }); return; }
+    // Önbellek başka kullanıcıya aitse onun ayarlarını gösterme.
+    if (!readCache(userId)) set({ prefs: DEFAULT_PREFS, loaded: false });
     const { data, error } = await supabase
       .from('profiles')
       .select('notification_prefs')
       .eq('id', userId)
       .maybeSingle();
     if (error || !data) {
-      set({ prefs: readCache() ?? DEFAULT_PREFS, loaded: true });
+      set({ prefs: readCache(userId) ?? DEFAULT_PREFS, loaded: true });
       return;
     }
     const prefs = ((data as any).notification_prefs as NotificationPrefs | null) ?? DEFAULT_PREFS;
@@ -94,9 +113,12 @@ export const useNotificationPrefs = create<State>((set, get) => ({
   },
 
   setMaster: async (on) => {
-    const next = { ...get().prefs, master_enabled: on };
+    const prev = get().prefs;
+    const next = { ...prev, master_enabled: on };
     set({ prefs: next });
-    await persist(_currentUserId, next);
+    const ok = await persist(_currentUserId, next);
+    if (!ok) set({ prefs: prev });
+    return ok;
   },
 
   setChannel: async (ch, on) => {
@@ -106,7 +128,9 @@ export const useNotificationPrefs = create<State>((set, get) => ({
       channels: { ...cur.channels, [ch]: on },
     };
     set({ prefs: next });
-    await persist(_currentUserId, next);
+    const ok = await persist(_currentUserId, next);
+    if (!ok) set({ prefs: cur });
+    return ok;
   },
 
   setCategoryChannel: async (cat, ch, on) => {
@@ -120,7 +144,9 @@ export const useNotificationPrefs = create<State>((set, get) => ({
       },
     };
     set({ prefs: next });
-    await persist(_currentUserId, next);
+    const ok = await persist(_currentUserId, next);
+    if (!ok) set({ prefs: cur });
+    return ok;
   },
 
   setCategoriesBulk: async (cats, chs, on) => {
@@ -134,7 +160,9 @@ export const useNotificationPrefs = create<State>((set, get) => ({
     }
     const next: NotificationPrefs = { ...cur, categories };
     set({ prefs: next });
-    await persist(_currentUserId, next);
+    const ok = await persist(_currentUserId, next);
+    if (!ok) set({ prefs: cur });
+    return ok;
   },
 
   shouldNotify: (cat, ch) => {

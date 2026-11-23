@@ -15,7 +15,7 @@ export function formatAddressWith(raw: string | null | undefined, countryLabel: 
     const sokak = str(o.sokak);
     const binaNo = str(o.bina_no);
     const daireNo = str(o.daire_no);
-    const line1 = [sokak, binaNo && !sokak.includes(binaNo) ? 'No: ' + binaNo : null, daireNo ? 'D: ' + daireNo : null]
+    const line1 = [sokak, binaNo && !sokak.includes(binaNo) ? (/^no\b/i.test(binaNo) ? binaNo : 'No: ' + binaNo) : null, daireNo ? 'D: ' + daireNo : null]
       .filter(Boolean).join(' ');
     const ulke = str(o.ulke).toUpperCase() || 'TR';
     if (ulke !== 'TR') {

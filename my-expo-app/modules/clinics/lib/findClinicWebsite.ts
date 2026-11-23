@@ -15,6 +15,7 @@
 import { supabase } from '../../../core/api/supabase';
 import { findPlaceWebsite } from '../../auth/api/places';
 import { corporateDomainOf } from './corporateDomain';
+import { autoT } from '../../../core/i18n/autoTranslate';
 
 export { corporateDomainOf };
 
@@ -27,4 +28,14 @@ export async function findClinicWebsite(clinicId: string | null | undefined, nam
     } catch { /* e-posta okunamadı — Places'a geç */ }
   }
   return name.trim() ? findPlaceWebsite(name) : '';
+}
+
+/**
+ * Logo aramasının Instagram sonucu için alanın altındaki kısa not.
+ * Edge function `instagramStatus` döner: 'ok' | 'no_token' | 'not_found' | null.
+ */
+export function igNoteOf(status: unknown, handle: unknown): string | null {
+  if (status === 'no_token') return autoT('Instagram araması henüz etkin değil.');
+  if (status === 'not_found') return autoT('Instagram profili bulunamadı ya da işletme hesabı değil.') + (handle ? ` (@${String(handle)})` : '');
+  return null;
 }

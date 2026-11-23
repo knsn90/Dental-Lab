@@ -12,6 +12,8 @@ import {
   labPendingRequests, type PendingRequest,
 } from '../api';
 import { supabase } from '../../../core/api/supabase';
+import { useAuthStore } from '../../../core/store/authStore';
+import { autoT } from '../../../core/i18n/autoTranslate';
 
 const INK = '#0F172A', INK2 = '#475569', INK3 = '#94A3B8', LINE = '#E5E7EB';
 const GREEN = '#059669', RED = '#DC2626', AMBER = '#D97706', ACCENT = '#2563EB';
@@ -32,6 +34,8 @@ export function LabConnectionsScreen({ embedded = false }: { embedded?: boolean 
   const [autoApprove, setAutoApprove] = useState<boolean>(false);
   const [pending, setPending] = useState<PendingRequest[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [autoErr, setAutoErr] = useState('');
+  const myLabId = useAuthStore(s => (s.profile as any)?.lab_id ?? null) as string | null;
 
   const loadPending = useCallback(async () => {
     try { setPending(await labPendingRequests()); } catch { setPending([]); }
@@ -43,16 +47,20 @@ export function LabConnectionsScreen({ embedded = false }: { embedded?: boolean 
     (async () => {
       try { setPublicCode(await labPublicCode()); } catch {}
       try {
-        const { data } = await supabase.from('labs').select('clinic_auto_approve').limit(1).maybeSingle();
+        // Kendi lab'ı — filtre yokken RLS'in döndürdüğü İLK lab okunuyordu.
+        if (!myLabId) return;
+        const { data } = await supabase.from('labs').select('clinic_auto_approve').eq('id', myLabId).maybeSingle();
         setAutoApprove(!!(data as any)?.clinic_auto_approve);
       } catch {}
     })();
-  }, [loadPending]);
+  }, [loadPending, myLabId]);
 
   const genInvite = async () => { setBusy('invite'); try { setInvite(await labCreateInvite()); } catch {} finally { setBusy(null); } };
   const toggleAuto = async () => {
-    const next = !autoApprove; setAutoApprove(next); setBusy('auto');
-    try { await labSetAutoApprove(next); } catch { setAutoApprove(!next); } finally { setBusy(null); }
+    const next = !autoApprove; setAutoApprove(next); setBusy('auto'); setAutoErr('');
+    try { await labSetAutoApprove(next); }
+    catch { setAutoApprove(!next); setAutoErr(autoT('Otomatik onay ayarı kaydedilemedi.')); }
+    finally { setBusy(null); }
   };
   const act = async (id: string, fn: () => Promise<void>) => {
     setBusy(id); try { await fn(); await loadPending(); } finally { setBusy(null); }
@@ -97,6 +105,7 @@ export function LabConnectionsScreen({ embedded = false }: { embedded?: boolean 
               <Text style={{ color: INK3, fontSize: 12 }}>Açıkken public kodla gelen klinikler anında bağlanır.</Text>
             </View>
           </Pressable>
+          {!!autoErr && <Text style={{ color: '#DC2626', fontSize: 12, marginTop: 6 }}>{autoErr}</Text>}
         </Card>
 
         {/* Bekleyen istekler */}

@@ -9,6 +9,8 @@ interface Props {
   accentColor?: string;
   style?: any;
   disabled?: boolean;
+  /** Ekran okuyucu etiketi (opsiyonel) */
+  accessibilityLabel?: string;
 }
 
 const TRACK_W    = 50;
@@ -28,6 +30,7 @@ export function AppSwitch({
   accentColor = '#0F172A',
   style,
   disabled = false,
+  accessibilityLabel,
 }: Props) {
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
@@ -63,6 +66,7 @@ export function AppSwitch({
       onPress={() => { if (!disabled) onValueChange(!value); }}
       accessibilityRole="switch"
       accessibilityState={{ checked: value, disabled }}
+      accessibilityLabel={accessibilityLabel}
     >
       <Animated.View
         style={[

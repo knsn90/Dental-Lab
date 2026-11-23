@@ -514,6 +514,7 @@ export function StepsTimelineX({
   const NODE = 36;
   const HALO = 50;
   const GAP  = 8;
+  const LABEL_W = 104;   // etiket kutusu (daireden geniş; merkeze ortalı, tek satır)
 
   // ── Işık süpürmesi ──────────────────────────────────────────────────────
   // Segment segment kuyruk DENENDİ ve BIRAKILDI: iz her düğümde sıfırlandığı
@@ -624,7 +625,7 @@ export function StepsTimelineX({
               {isPast && (
                 <View style={{
                   width: NODE, height: NODE, borderRadius: NODE / 2,
-                  backgroundColor: nodePastBg, marginTop: (HALO - NODE) / 2,
+                  backgroundColor: nodePastBg, marginVertical: (HALO - NODE) / 2,
                   alignItems: 'center', justifyContent: 'center',
                 }}>
                   {/* Tamamlanan step — Lucide check ikonu */}
@@ -636,7 +637,7 @@ export function StepsTimelineX({
                   width: NODE, height: NODE, borderRadius: NODE / 2,
                   // Opak: süpürme ışığı boş dairelerin içinden görünmesin.
                   backgroundColor: surfaceBg ?? 'transparent',
-                  borderWidth: 2, borderColor: nodeFutureBorder, marginTop: (HALO - NODE) / 2,
+                  borderWidth: 2, borderColor: nodeFutureBorder, marginVertical: (HALO - NODE) / 2,
                   alignItems: 'center', justifyContent: 'center',
                 }}>
                   {/* Yaklaşan step — soluk ikon (varsa) */}
@@ -645,10 +646,14 @@ export function StepsTimelineX({
                   )}
                 </View>
               )}
-              <Text style={{
+              {/* Etiket dairenin genişliğine hapsedilmez ("Final QC" iki satıra kırılıyordu):
+                  sabit geniş kutu daire merkezine ortalanır, tek satır. Daireler de
+                  aktif halenin yüksekliğini tuttuğu için tüm etiketler aynı hizada. */}
+              <Text numberOfLines={1} style={{
                 fontSize: 12, fontWeight: '500',
                 color: isPast ? labelActive : isCurrent ? labelCurrent : labelRest,
                 marginTop: 12, textAlign: 'center',
+                width: LABEL_W, marginHorizontal: -(LABEL_W - nodeW) / 2,
               }}>
                 {step}
               </Text>

@@ -74,9 +74,9 @@ export const EFATURA_PROVIDERS: ProviderDefinition[] = [
   {
     key:   'luca',
     label: 'Luca (TÜRMOB)',
-    description: 'TÜRMOB Luca e-Fatura / e-Arşiv. Firma bilgileri Ayarlar → Genel → Fatura Bilgileri\'nden alınır; çağrılar Siman\'ın statik IP köprüsünden gider.',
+    description: 'TÜRMOB Luca e-Fatura / e-Arşiv. Firma bilgileri Ayarlar → Finans Ayarları → Fatura Bilgileri\'nden alınır; çağrılar Siman\'ın statik IP köprüsünden gider.',
     // Satıcı künyesi (VKN, vergi dairesi, adres) LAB'a aittir — burada değil,
-    // Ayarlar → Genel → Fatura Bilgileri'nde (labs). Burada yalnız entegratöre özel ayar.
+    // Ayarlar → Finans Ayarları → Fatura Bilgileri'nde (labs). Burada yalnız entegratöre özel ayar.
     fields: [
       { key: 'scenario',    label: 'e-Fatura senaryosu', type: 'select', helpText: 'Ticari faturada alıcı 8 gün içinde kabul/ret yanıtı verebilir', options: [
         { value: 'TEMELFATURA',  label: 'Temel Fatura' },
@@ -631,7 +631,8 @@ export async function activateCredential(id: string) {
   // Trigger diğerlerini pasif yapar
   return supabase.from('provider_credentials')
     .update({ is_active: true, updated_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id)
+    .select('id');
 }
 
 export async function deleteCredential(id: string) {

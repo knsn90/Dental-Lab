@@ -58,7 +58,7 @@ const SORTS: { key: SortKey; label: string }[] = [
 const STATUS_LABEL: Record<string, string> = {
   atama_bekleniyor: 'Atama Bekliyor',
   alindi:           'Alındı',
-  asamada:          'Üretimde',
+  asamada:          'Üretim Aşamasında',
   uretimde:         'Üretimde',
   kalite_kontrol:   'Kalite Kontrol',
   teslimata_hazir:  'Hazır',

@@ -21,6 +21,7 @@ import {
 
 import { HubContext } from '../../../core/ui/HubContext';
 import { toast } from '../../../core/ui/Toast';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
 import { DS } from '../../../core/theme/dsTokens';
 import {
@@ -94,7 +95,9 @@ export function IntegrationsScreen({ accentColor = '#004B87' }: Props) {
   };
 
   const handleActivate = async (r: ProviderCredential) => {
-    await activateCredential(r.id);
+    // RLS satırı süzerse hata dönmez, 0 satır döner → ikisi de başarısızlık.
+    const { data, error } = await activateCredential(r.id);
+    if (error || !data?.length) { toast.error(autoT('Etkinleştirilemedi. Yetkinizi kontrol edip tekrar deneyin.')); return; }
     toast.success('Aktif yapıldı');
     load();
   };

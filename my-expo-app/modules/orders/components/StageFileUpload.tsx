@@ -200,9 +200,12 @@ export function StageFileUpload({
     toast.success('Tasarım hekim onayına gönderildi');
     refreshWoMeta();
   };
-  // Yetki: admin tüm dosyaları, herkes kendi yüklediğini silebilir
+  // Yetki: admin tüm dosyaları, lab kullanıcısı kendi yüklediğini silebilir.
+  // Hekim/klinik SİLEMEZ — work_order_photos DELETE politikası yalnız lab'a açık
+  // (photos_delete_lab). Klinik silmeye çalışınca RLS satırı sessizce eliyor,
+  // ama drafts/ depo nesnesi silinebildiği için kayıt dosyasız kalıyordu.
   const canRemoveFile = (uploadedBy: string) =>
-    isAdmin || profile?.id === uploadedBy;
+    isAdmin || (profile?.user_type === 'lab' && profile?.id === uploadedBy);
 
   const [files, setFiles] = useState<StageFile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -516,9 +519,15 @@ export function StageFileUpload({
       toast.error('Bu dosyayı silme yetkiniz yok');
       return;
     }
-    const { error: dbErr } = await supabase
-      .from('work_order_photos').delete().eq('id', file.id);
+    // .select('id') — RLS silmeyi hata vermeden 0 satıra düşürebilir; gerçekten
+    // silinmediyse depodaki dosyaya DOKUNMA (yoksa kayıt dosyasız kalır).
+    const { data: delRows, error: dbErr } = await supabase
+      .from('work_order_photos').delete().eq('id', file.id).select('id');
     if (dbErr) { toast.error('Silinemedi: ' + dbErr.message); return; }
+    if (!delRows || delRows.length === 0) {
+      toast.error('Bu dosyayı silme yetkiniz yok — yalnız laboratuvar silebilir');
+      return;
+    }
     void supabase.storage.from('work-order-photos').remove([file.storage_path]);
     toast.success('Dosya silindi');
     if (stageId) void recordStageActivity(stageId, 'file_deleted', 'manual', { filename: file.filename });
@@ -731,18 +740,30 @@ export function StageFileUpload({
       count3D={files.filter(f => is3DFile(f.storage_path) || is3DFile(f.filename)).length}
       onPreviewAll3D={async () => {
         const targets = files.filter(f => is3DFile(f.storage_path) || is3DFile(f.filename));
+        // Tek istekte imzala (eskiden dosya başına sırayla bir istek).
+        // Sohbet ekleri ayrı bucket'ta — onların yolu chat_path.
+        const own = targets.filter(f => !f.__chat);
+        const chat = targets.filter(f => f.__chat && f.chat_path);
+        const [ownRes, chatRes] = await Promise.all([
+          own.length ? supabase.storage.from('work-order-photos').createSignedUrls(own.map(f => f.storage_path), 60 * 10) : Promise.resolve({ data: [] as any[] }),
+          chat.length ? supabase.storage.from('chat-attachments').createSignedUrls(chat.map(f => f.chat_path as string), 60 * 10) : Promise.resolve({ data: [] as any[] }),
+        ]);
+        const urlOf = (f: StageFile): string | undefined => {
+          const list = (f.__chat ? chatRes.data : ownRes.data) ?? [];
+          const path = f.__chat ? f.chat_path : f.storage_path;
+          return (list as any[]).find(x => x?.path === path && !x?.error)?.signedUrl;
+        };
         const items: Array<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj' }> = [];
         for (const f of targets) {
           const fmt = is3DFile(f.storage_path) || is3DFile(f.filename);
-          if (!fmt) continue;
-          const { data } = await supabase.storage
-            .from('work-order-photos')
-            .createSignedUrl(f.storage_path, 60 * 10);
-          if (data?.signedUrl) {
-            items.push({ id: f.id, name: f.filename, url: data.signedUrl, format: fmt });
-          }
+          const url = urlOf(f);
+          if (fmt && url) items.push({ id: f.id, name: f.filename, url, format: fmt });
         }
         if (items.length > 0) setViewer3DFiles(items);
+        else toast.error('3D dosyalar açılamadı');
+        if (items.length > 0 && items.length < targets.length) {
+          toast.info(`${targets.length - items.length} ${autoT('dosya açılamadı (depoda bulunamadı)')}`);
+        }
       }}
     />
   );
@@ -766,7 +787,7 @@ export function StageFileUpload({
         orderId={workOrderId}
         visible={!!viewer3DFiles}
         files={viewer3DFiles}
-        title={`${viewer3DFiles.length} tarama birlikte`}
+        title={`${viewer3DFiles.length} ${autoT('tarama birlikte')}`}
         onClose={() => setViewer3DFiles(null)}
       />
     </React.Suspense>

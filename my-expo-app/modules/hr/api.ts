@@ -276,7 +276,7 @@ export interface QrCheckinResult {
   time?: string;
   employee?: string;
   work_minutes?: number;
-  error?: 'invalid_token' | 'out_of_range' | 'employee_not_found' | 'already_complete' | 'lab_location_not_set' | 'no_session';
+  error?: 'invalid_token' | 'out_of_range' | 'employee_not_found' | 'already_complete' | 'lab_location_not_set' | 'no_session' | 'gps_required';
   distance_m?: number;
   allowed_m?: number;
 }

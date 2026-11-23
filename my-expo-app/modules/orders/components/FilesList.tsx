@@ -133,7 +133,7 @@ export function FilesList({
   // Masaüstünde satır 32pt (fare), telefonda 40pt (parmak)
   const rowH = Platform.OS === 'web' && winW >= 1024 ? 32 : 40;
   // 3D viewer state
-  const [viewer3DFile, setViewer3DFile] = useState<{ id: string; name: string; url: string; format: FileFormat; textureUrl?: string|null } | null>(null);
+  const [viewer3DFile, setViewer3DFile] = useState<{ id: string; name: string; url: string; format: FileFormat; textureUrl?: string|null; keepOrientation?: boolean } | null>(null);
   // Uygulama-içi görsel / HTML tasarım önizleme (yeni tab yerine popup) — dosya modalı ile aynı davranış
   const [imageViewer, setImageViewer] = useState<{ url: string; name: string } | null>(null);
   const [htmlViewer, setHtmlViewer]   = useState<{ url?: string; html?: string; name: string } | null>(null);
@@ -214,8 +214,24 @@ export function FilesList({
     const fmt = is3DFileExt(f.storage_path);
     if (fmt) {
       const textureUrl = fmt === 'obj' ? siblingTextureUrl(f.storage_path) : null;
-      setViewer3DFile({ id: f.id, name: filename, url, format: fmt, textureUrl });
+      setViewer3DFile({ id: f.id, name: filename, url, format: fmt, textureUrl,
+                        keepOrientation: Platform.OS !== 'web' && f.storage_path.includes('/facescan-') });
       return;
+    }
+    // USDZ → native: mobil görüntüleyici motoru bu biçimi okumaz; eskiden dosya sistem
+    // tarayıcısına atılıyordu. Aynı klasördeki OBJ aynı modelin dokulu hâlidir → uygulama
+    // içinde o açılır. OBJ yoksa aşağıdaki sistem-tarayıcı yoluna düşer.
+    if (ext === 'usdz' && Platform.OS !== 'web') {
+      const dir = f.storage_path.slice(0, f.storage_path.lastIndexOf('/') + 1);
+      const obj = photos.find(p =>
+        p.storage_path.startsWith(dir) && /\.obj$/i.test(p.storage_path) &&
+        !p.storage_path.slice(dir.length).includes('/'));
+      const objUrl = obj ? (signedUrls[obj.storage_path] ?? (obj as any).signed_url ?? null) : null;
+      if (obj && objUrl) {
+        setViewer3DFile({ id: obj.id, name: filename, url: objUrl, format: 'obj',
+                          textureUrl: siblingTextureUrl(obj.storage_path), keepOrientation: true });
+        return;
+      }
     }
     // ZIP → native: arşiv 3D görüntüleyicinin WebView'inde indirilip açılır.
     // Eskiden burada RN JS thread'inde unzipSync + base64 yapılıyordu: büyük

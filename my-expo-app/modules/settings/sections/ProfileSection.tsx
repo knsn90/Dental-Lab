@@ -17,11 +17,11 @@ import * as ImagePicker from 'expo-image-picker';
 import {
   Camera, Edit2, Mail, Phone, Lock, LogOut, ChevronLeft, ChevronRight, Eye, EyeOff, X,
   MapPin, User as UserIcon, Hash, MessageCircle, GraduationCap, Briefcase, Building2,
-  Receipt, CreditCard, Search, Plus, Calendar,
+  Receipt, CreditCard, Search, Plus, Calendar, Instagram,
 } from '../../../core/ui/icons';
 import { useAuthStore } from '../../../core/store/authStore';
 import { supabase } from '../../../core/api/supabase';
-import { findClinicWebsite } from '../../clinics/lib/findClinicWebsite';
+import { findClinicWebsite, igNoteOf } from '../../clinics/lib/findClinicWebsite';
 import { ColorOrb } from '../../denty/components/ColorOrb';
 import { toast } from '../../../core/ui/Toast';
 import { isRTL } from '../../../core/i18n';
@@ -851,6 +851,8 @@ function ClinicKurumTab({
   const [logoFinderOpen, setLogoFinderOpen] = useState(false);
   const [logoQuery, setLogoQuery] = useState('');
   const [logoWebsite, setLogoWebsite] = useState('');
+  const [logoInstagram, setLogoInstagram] = useState('');
+  const [logoIgNote, setLogoIgNote] = useState<string | null>(null);
   const [logoResults, setLogoResults] = useState<{ name: string; domain: string; url: string }[]>([]);
   const [logoSearching, setLogoSearching] = useState(false);
   const [applyingUrl, setApplyingUrl] = useState<string | null>(null);
@@ -975,13 +977,17 @@ function ClinicKurumTab({
   };
 
   // AI ile logo bul — edge function'dan aday logolar; kullanıcı seçer
-  const runSearch = async (qArg?: string, wArg?: string) => {
+  const runSearch = async (qArg?: string, wArg?: string, igArg?: string) => {
     const q = (qArg ?? logoQuery).trim();
     const website = (wArg ?? logoWebsite).trim();
-    if ((!q && !website) || logoSearching) return;
-    setLogoSearching(true); setLogoSearched(false); setLogoResults([]);
+    const instagram = (igArg ?? logoInstagram).trim();
+    if ((!q && !website && !instagram) || logoSearching) return;
+    setLogoSearching(true); setLogoSearched(false); setLogoResults([]); setLogoIgNote(null);
     try {
-      const { data } = await supabase.functions.invoke('clinic-logo-search', { body: { q, website } });
+      const { data } = await supabase.functions.invoke('clinic-logo-search', { body: { q, website, instagram } });
+      // Sitedeki Instagram bağlantısından bulunan kullanıcı adı alana yazılır.
+      if (!instagram && data?.instagram) setLogoInstagram(`@${data.instagram}`);
+      setLogoIgNote(igNoteOf(data?.instagramStatus, data?.instagram));
       // Clearbit logo servisi kapandı (alan adı çözülmüyor) → boş kare olarak görünüyordu.
       setLogoResults(((data?.candidates ?? []) as any[]).filter((c) => !/logo\.clearbit\.com/i.test(String(c?.url ?? ''))) as any);
     } catch { setLogoResults([]); }
@@ -991,6 +997,8 @@ function ClinicKurumTab({
     const q = clinic?.name ?? '';
     setLogoQuery(q);
     setLogoWebsite('');
+    setLogoInstagram('');
+    setLogoIgNote(null);
     setLogoResults([]);
     setLogoSearched(false);
     setShowManual(false);
@@ -1400,6 +1408,21 @@ function ClinicKurumTab({
                   style={{ flex: 1, fontSize: 14, color: T.ink, ...(Platform.OS === 'web' ? { outline: 'none' } as any : {}) }}
                 />
               </View>
+              {/* Instagram — sitesi olmayan klinikler için (Meta Business Discovery) */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 44, paddingHorizontal: 14, backgroundColor: T.cardSoft, borderRadius: 12, borderWidth: 1, borderColor: T.hairline }}>
+                <Instagram size={15} color={accentColor} strokeWidth={1.8} />
+                <TextInput
+                  value={logoInstagram}
+                  onChangeText={setLogoInstagram}
+                  onSubmitEditing={() => runSearch()}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder={autoT('Instagram kullanıcı adı (örn. @lunadente)')}
+                  placeholderTextColor={T.ink3}
+                  style={{ flex: 1, fontSize: 14, color: T.ink, ...(Platform.OS === 'web' ? { outline: 'none' } as any : {}) }}
+                />
+              </View>
+              {logoIgNote ? <Text style={{ fontSize: 11.5, color: T.ink3, paddingHorizontal: 4 }}>{logoIgNote}</Text> : null}
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, height: 44, paddingHorizontal: 14, backgroundColor: T.cardSoft, borderRadius: 12, borderWidth: 1, borderColor: T.hairline }}>
                   <Search size={15} color={T.ink3} strokeWidth={1.8} />
@@ -1412,8 +1435,8 @@ function ClinicKurumTab({
                     style={{ flex: 1, fontSize: 14, color: T.ink, ...(Platform.OS === 'web' ? { outline: 'none' } as any : {}) }}
                   />
                 </View>
-                <GlassTooltip title={autoT('Ara')} text={autoT('İnternetten aday logoları ara')} enabled={!logoSearching && (!!logoQuery.trim() || !!logoWebsite.trim())}>
-                  <Pressable onPress={() => runSearch()} disabled={logoSearching || (!logoQuery.trim() && !logoWebsite.trim())} style={{ paddingHorizontal: 18, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: (logoQuery.trim() || logoWebsite.trim()) ? accentColor : T.hairline, cursor: 'pointer' as any }}>
+                <GlassTooltip title={autoT('Ara')} text={autoT('İnternetten aday logoları ara')} enabled={!logoSearching && (!!logoQuery.trim() || !!logoWebsite.trim() || !!logoInstagram.trim())}>
+                  <Pressable onPress={() => runSearch()} disabled={logoSearching || (!logoQuery.trim() && !logoWebsite.trim() && !logoInstagram.trim())} style={{ paddingHorizontal: 18, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: (logoQuery.trim() || logoWebsite.trim() || logoInstagram.trim()) ? accentColor : T.hairline, cursor: 'pointer' as any }}>
                     {logoSearching ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Ara</Text>}
                   </Pressable>
                 </GlassTooltip>
@@ -1460,7 +1483,7 @@ function ClinicKurumTab({
                 </View>
               ) : logoSearched ? (
                 <Text style={{ fontSize: 13, color: T.ink3, textAlign: 'center', paddingVertical: 24 }}>
-                  Otomatik bulunamadı. Yukarıya kliniğin web sitesini yazıp tekrar deneyin ya da kamera ile yükleyin.
+                  Otomatik bulunamadı. Yukarıya kliniğin web sitesini ya da Instagram kullanıcı adını yazıp tekrar deneyin veya kamera ile yükleyin.
                 </Text>
               ) : (
                 <Text style={{ fontSize: 12, color: T.ink3, textAlign: 'center', paddingVertical: 24 }}>

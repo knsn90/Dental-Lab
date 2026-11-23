@@ -2,7 +2,7 @@
  * Lab fatura (künye) bilgileri — tek kaynak kurallar.
  *
  * Bu bilgiler bir entegratöre değil LAB'a aittir: e-fatura (Luca ve ileride
- * eklenecek diğerleri), ekstre, iş kâğıdı aynı alanları okur. Ayarlar → Genel
+ * eklenecek diğerleri), ekstre, iş kâğıdı aynı alanları okur. Ayarlar → Finans Ayarları
  * ve kurulum sihirbazı bu kurallarla zorunlu tutar; efatura-luca sunucuda aynı
  * alanları labs tablosundan okur.
  *

@@ -22,10 +22,23 @@ export async function kioskPair(pairingCode: string): Promise<KioskPairResult> {
 
 export interface KioskLoginResult { ok: boolean; error?: string; }
 
-/** Cihaz jetonu + kod → kullanıcının gerçek oturumu (verifyOtp). */
-export async function kioskLogin(deviceToken: string, code: string): Promise<KioskLoginResult> {
+export interface KioskUser { user_id: string; full_name: string; avatar_url: string | null; }
+
+/** Tabletteki kişi listesi (bu lab'da giriş kodu tanımlı, aktif kişiler). */
+export async function kioskListUsers(deviceToken: string): Promise<{ ok: boolean; users: KioskUser[]; error?: string }> {
   const { data, error } = await supabase.functions.invoke('kiosk-login', {
-    body: { device_token: deviceToken, code: code.trim() },
+    body: { action: 'users', device_token: deviceToken },
+  });
+  if (error) return { ok: false, users: [], error: 'network' };
+  const res = data as { ok: boolean; users?: KioskUser[]; error?: string };
+  if (!res?.ok) return { ok: false, users: [], error: res?.error ?? 'server_error' };
+  return { ok: true, users: res.users ?? [] };
+}
+
+/** Cihaz jetonu + seçilen kişi + kod → kullanıcının gerçek oturumu (verifyOtp). */
+export async function kioskLogin(deviceToken: string, userId: string, code: string): Promise<KioskLoginResult> {
+  const { data, error } = await supabase.functions.invoke('kiosk-login', {
+    body: { device_token: deviceToken, user_id: userId, code: code.trim() },
   });
   if (error) return { ok: false, error: 'network' };
   const res = data as { ok: boolean; token_hash?: string; error?: string };
@@ -77,23 +90,52 @@ export async function revokeLabDevice(id: string): Promise<{ ok: boolean; error?
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+export interface MyCodeStatus { ok: boolean; hasCode: boolean; updatedAt: string | null; lockedUntil: string | null; }
+
 /** Kullanıcının kendi kodu var mı? (staff_access_codes self-select) */
-export async function myCodeStatus(): Promise<{ hasCode: boolean }> {
+export async function myCodeStatus(): Promise<MyCodeStatus> {
   const { data: u } = await supabase.auth.getUser();
   const uid = u?.user?.id;
-  if (!uid) return { hasCode: false };
-  const { data } = await supabase.from('staff_access_codes').select('active').eq('user_id', uid).maybeSingle();
-  return { hasCode: !!(data as any)?.active };
+  if (!uid) return { ok: false, hasCode: false, updatedAt: null, lockedUntil: null };
+  const { data, error } = await supabase
+    .from('staff_access_codes')
+    .select('active, updated_at, locked_until')
+    .eq('user_id', uid)
+    .maybeSingle();
+  if (error) return { ok: false, hasCode: false, updatedAt: null, lockedUntil: null };
+  const row = data as { active?: boolean; updated_at?: string | null; locked_until?: string | null } | null;
+  const locked = row?.locked_until && new Date(row.locked_until).getTime() > Date.now() ? row.locked_until : null;
+  return { ok: true, hasCode: !!row?.active, updatedAt: row?.active ? (row.updated_at ?? null) : null, lockedUntil: locked };
 }
 
+/** Kolay tahmin edilen kod mu? (sunucudaki _kiosk_code_is_weak ile aynı kural) */
+export function isWeakCode(code: string): boolean {
+  if (!/^[0-9]{6}$/.test(code)) return false;
+  return code === code[0].repeat(6)
+    || '01234567890'.includes(code)
+    || '09876543210'.includes(code)
+    || code === code.slice(0, 2).repeat(3)
+    || code === code.slice(0, 3).repeat(2);
+}
+
+export type SetCodeError = 'old_code_mismatch' | 'locked' | 'weak_code' | 'invalid_code' | 'save_failed';
+
 /** Kullanıcı kendi 6 haneli kodunu belirler. Mevcut aktif kod varsa eski kod ZORUNLU. */
-export async function setMyCode(code: string, oldCode?: string): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.rpc('staff_set_my_code', { p_code: code, p_old_code: oldCode ?? null });
-  if (!error) return { ok: true };
-  // 42883: eski (tek-arg) fonksiyon imzası bulunamadı → deploy uyumsuzluğu; yine de anlaşılır dön
-  const msg = error.message || '';
-  if (msg.includes('old_code_mismatch')) return { ok: false, error: 'old_code_mismatch' };
-  return { ok: false, error: 'save_failed' };
+export async function setMyCode(code: string, oldCode?: string): Promise<{ ok: boolean; error?: SetCodeError }> {
+  const { data, error } = await supabase.rpc('staff_set_my_code', { p_code: code, p_old_code: oldCode ?? null });
+  if (error) {
+    // Eski sunucu sürümü (void + istisna) ile de uyumlu.
+    const msg = error.message || '';
+    if (msg.includes('old_code_mismatch')) return { ok: false, error: 'old_code_mismatch' };
+    return { ok: false, error: 'save_failed' };
+  }
+  // Yeni sürüm jsonb döndürür; eski sürüm void (null) → başarı.
+  const res = data as { ok?: boolean; error?: string } | null;
+  if (res && res.ok === false) {
+    const e = res.error;
+    return { ok: false, error: (e === 'old_code_mismatch' || e === 'locked' || e === 'weak_code' || e === 'invalid_code') ? e : 'save_failed' };
+  }
+  return { ok: true };
 }
 
 /** Kullanıcı kendi kodunu kaldırır. */
@@ -113,6 +155,50 @@ export function kioskErrorText(code?: string): string {
     case 'expired':       return 'Eşleştirme kodunun süresi dolmuş. Yeni kod isteyin.';
     case 'invalid_code':  return 'Eşleştirme kodu geçersiz.';
     case 'network':       return 'Bağlantı hatası. İnternet bağlantınızı kontrol edin.';
+    case 'user_required': return 'Uygulama güncellendi. Sayfayı yenileyip tekrar deneyin.';
     default:              return 'Bir hata oluştu. Tekrar deneyin.';
   }
+}
+
+// ── Yönetici: personel kodları ─────────────────────────────────────────────
+// Liste, tabletteki kişi listesiyle (kiosk_list_users) aynı kuralı izler:
+// aktif + onaylı, lab personeli/admin. "Tablette görünür" = aktif kodu var.
+export interface StaffCodeRow {
+  user_id: string; full_name: string; avatar_url: string | null;
+  user_type: string | null; role: string | null;
+  hasCode: boolean; updatedAt: string | null; lockedUntil: string | null;
+}
+
+/** Lab personeli + kod durumları (RLS: profiller lab'a, kodlar kiosk_can_manage'e açık). */
+export async function listStaffCodes(labId: string): Promise<{ ok: boolean; rows: StaffCodeRow[] }> {
+  const [{ data: people, error: e1 }, { data: codes, error: e2 }] = await Promise.all([
+    supabase.from('profiles')
+      .select('id, full_name, avatar_url, user_type, role, is_active, approval_status')
+      .eq('lab_id', labId)
+      .in('user_type', ['lab', 'admin']),
+    supabase.from('staff_access_codes').select('user_id, active, updated_at, locked_until').eq('lab_id', labId),
+  ]);
+  if (e1 || e2) return { ok: false, rows: [] };
+  const byUser = new Map<string, any>((codes ?? []).map((c: any) => [c.user_id, c]));
+  const now = Date.now();
+  const rows: StaffCodeRow[] = (people ?? [])
+    .filter((p: any) => p.is_active !== false && (p.approval_status == null || p.approval_status === 'approved'))
+    .map((p: any) => {
+      const c = byUser.get(p.id);
+      const active = !!c?.active;
+      const locked = active && c?.locked_until && new Date(c.locked_until).getTime() > now ? c.locked_until : null;
+      return {
+        user_id: p.id, full_name: (p.full_name || '').trim() || '—', avatar_url: p.avatar_url ?? null,
+        user_type: p.user_type ?? null, role: p.role ?? null,
+        hasCode: active, updatedAt: active ? (c?.updated_at ?? null) : null, lockedUntil: locked,
+      };
+    })
+    .sort((a, b) => a.full_name.localeCompare(b.full_name, 'tr'));
+  return { ok: true, rows };
+}
+
+/** Yönetici bir personelin kodunu sıfırlar (kod pasifleşir, kilit kalkar; kişi yeni kod belirler). */
+export async function resetStaffCode(userId: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc('staff_reset_code', { p_user_id: userId });
+  return error ? { ok: false, error: error.message } : { ok: true };
 }

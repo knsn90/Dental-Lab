@@ -42,9 +42,9 @@ import { createChangeRequest } from '../changeRequests';
 import type { OrderPrefill, OrderEditPrefill } from '../prefillFromOrder';
 import { fetchOrderEditPrefill } from '../prefillFromOrder';
 import { DraftInvoiceNoticeModal, type DraftInvoiceRef } from '../../invoices/components/DraftInvoiceNoticeModal';
-import { implantFieldsPayload } from '../implantInfo';
+import { implantFieldsPayload, encodeImplantDetailSegment } from '../implantInfo';
 import { ageFromDob, parseAgeInput, sanitizeAgeInput } from '../lib/patientAge';
-import { reconcileImplantDetails } from '../implantDetails';
+import { reconcileImplantDetails, autoAbutmentFor } from '../implantDetails';
 import { useImplantBrandNames, ImplantBrandAddRow, ImplantModelField } from '../components/ImplantCatalogParts';
 import { brandWithModel } from '../implantCatalogModel';
 import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
@@ -71,7 +71,7 @@ import { Clinic, Doctor } from '../../clinics/types';
 import { LabService } from '../../services/types';
 import { buildClinicPriceMap, sameClinicPriceMap, clinicListFields, type ClinicPriceEntry } from '../../clinics/clinicDiscount';
 import { ToothNumberPicker } from '../components/ToothNumberPicker';
-import { WORK_TYPES, ALL_SHADES, ORDER_TAGS, OP_CATEGORY, IMPLANT_SYSTEMS, IMPLANT_TYPES, ABUTMENT_TYPES, SCREW_TYPES, REMOVABLE_MATS, CROWN_MATERIALS, WORK_TYPE_TREE, WORK_TYPE_MAIN, deriveDepartment, isImplantWorkType } from '../constants';
+import { WORK_TYPES, ALL_SHADES, ORDER_TAGS, OP_CATEGORY, IMPLANT_SYSTEMS, IMPLANT_TYPES, ABUTMENT_TYPES, IMPLANT_PLATFORMS, SCREW_TYPES, REMOVABLE_MATS, CROWN_MATERIALS, WORK_TYPE_TREE, WORK_TYPE_MAIN, deriveDepartment, isImplantWorkType } from '../constants';
 import { TOOTH_PATHS, TOOTH_LABEL_POS } from '../assets/toothPaths';
 import { C } from '../../../core/theme/colors';
 import { F } from '../../../core/theme/typography';
@@ -93,6 +93,7 @@ import {
 } from '../components/FormPrimitives';
 import type { DropdownOption, SearchableDropdownProps } from '../components/FormPrimitives';
 import { DS } from '../../../core/theme/dsTokens';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { NO, NOType, NORadius, useNOTokens } from '../components/NOTokens';
 import { NOCard, NOCardHead } from '../components/NOCard';
 import { NOStepHeader, NOEmText, NOLabel, NOEyebrow, NOSegment, NOToggle, NOField as NOFieldPrimitive } from '../components/NOFormPrimitives';
@@ -154,6 +155,7 @@ interface ImplantDetail {
   system: string;    // marka
   model?: string;    // markanın modeli (BLX…) — isteğe bağlı, lab kataloğundan
   type: string;      // Bone/Tissue Level, Mini…
+  platform?: string; // platform / bağlantı çapı (NP/RP/WP, RC 4.1…)
   abutment: string;  // Anatomik, Düz, Açılı…
   screw: string;     // Multi-unit, Tekli, Hex
 }
@@ -231,6 +233,19 @@ function toothOpsTotals(ops: ToothOp[]): { labor: number; material: number; gran
     material += g.material * q;
   }
   return { labor, material, grand: labor + material };
+}
+
+/** [15,16,18] → "15–16, 18" (yeni-işlem seçimi etiketi). */
+function teethRangeLabel(teeth: number[]): string {
+  const ts = [...teeth].sort((a, b) => a - b);
+  const parts: string[] = [];
+  for (let i = 0; i < ts.length; i++) {
+    let j = i;
+    while (j + 1 < ts.length && ts[j + 1] === ts[j] + 1) j++;
+    parts.push(i === j ? String(ts[i]) : `${ts[i]}–${ts[j]}`);
+    i = j;
+  }
+  return parts.join(', ');
 }
 
 // Uid generator — same tooth için ikinci/üçüncü op ayırt etmek için
@@ -745,6 +760,7 @@ export function NewOrderScreen({
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const NO = useNOTokens();
+  const U = useInkUI();
   const pageBg = isDark ? T.bg : MOBILE_PANEL_THEMES[PANEL_TO_MOBILE[resolvedPanel]].bgPage;
   const styles = useMemo(() => makeStyles(P, T, isDark), [P, T, isDark]);
   const fus    = useMemo(() => makeFusStyles(P, T, NO, isDark), [P, T, NO, isDark]);
@@ -892,6 +908,10 @@ export function NewOrderScreen({
   // İmplant işaretleme modu — açıkken şemaya dokunulan diş implant olarak
   // işaretlenir (form.implant_teeth), fiyatı/seçimi etkilemez.
   const [implantMode, setImplantMode] = useState(false);
+  // İşlemi olan bir dişe tekrar dokunulunca İş detayı kartında gösterilen seçim:
+  // aynı dişe (veya aynı kalemin tüm dişlerine) yeni işlem ekle. Eskiden
+  // window.confirm ile soruluyordu — bazı ortamlarda pencere hiç çıkmıyordu.
+  const [reopenPrompt, setReopenPrompt] = useState<{ tooth: number; groupTeeth: number[]; workType: string } | null>(null);
   // İmplant işlemi ilk eklendiğinde açılan bilgilendirme popup'ı (bir kez).
   const [implantPrompt, setImplantPrompt] = useState(false);
   const implantPromptShownRef = useRef(false);
@@ -1041,12 +1061,27 @@ export function NewOrderScreen({
   }, [(profile as any)?.lab_id]);
 
   // ── Acil vaka ek ücret oranı (Mali İşler → Fiyat Listesi'nden) ──────
+  // + Varsayılan teslim süreleri (Ayarlar › Laboratuvar › İş Akışı; iş günü).
+  // Klinik/hekim lab_settings'i RLS yüzünden okuyamadığı için dar RPC
+  // (lab_order_defaults) kullanılır; RPC yoksa eski doğrudan okumaya düşer.
   const [urgentSurchargeRate, setUrgentSurchargeRate] = useState<number>(0);
+  const [leadDays, setLeadDays] = useState<{ normal: number; urgent: number }>({ normal: 5, urgent: 1 });
   useEffect(() => {
     const labId = getActiveLabId() ?? (profile as any)?.lab_id;
     if (!labId) return;
     let cancel = false;
     (async () => {
+      const { data: rows, error } = await supabase.rpc('lab_order_defaults', { p_lab_id: labId });
+      if (cancel) return;
+      const row = !error && Array.isArray(rows) ? (rows[0] as any) : null;
+      if (row) {
+        setUrgentSurchargeRate(Number(row.urgent_surcharge_rate) || 0);
+        setLeadDays({
+          normal: Math.max(1, Number(row.default_lead_days) || 5),
+          urgent: Math.max(1, Number(row.urgent_lead_days) || 1),
+        });
+        return;
+      }
       const { data } = await supabase
         .from('lab_settings')
         .select('urgent_surcharge_rate')
@@ -1684,6 +1719,15 @@ export function NewOrderScreen({
 
   // İmplant modunda şema renkleri: mevcut iş-türü renkleri (bağlam) + implant
   // dişleri belirgin mavi.
+  // Diş → abutment tipi: o dişteki işin adından (Custom/Ti-base/Zirkon abutment).
+  const implantAutoAbutments = useMemo<Record<number, string>>(() => {
+    const m: Record<number, string> = {};
+    for (const o of form.tooth_ops) {
+      const a = autoAbutmentFor(o.work_type);
+      if (a && !m[o.tooth]) m[o.tooth] = a;
+    }
+    return m;
+  }, [form.tooth_ops]);
   const implantColorMap = useMemo<Record<number, string>>(() => {
     const map: Record<number, string> = { ...toothColorMap };
     form.implant_teeth.forEach(t => { map[t] = IMPLANT_TOOTH_COLOR; });
@@ -1712,6 +1756,44 @@ export function NewOrderScreen({
     (val: FormData[K]) => {
       setForm((f) => ({ ...f, [key]: val }));
     };
+
+  // ── En erken teslim (iş günü) ─────────────────────────────────────────
+  // Acil: lab'ın acil süresi. Normal: seçilen her işin süresi (Fiyat Listesi'ndeki
+  // hizmet süresi, yoksa lab varsayılanı) — en uzun olan belirler.
+  const requiredLeadDays = useMemo(() => {
+    if (form.is_urgent) return leadDays.urgent;
+    const byName = new Map(services.map(sv => [sv.name, sv] as const));
+    const byId = new Map(services.map(sv => [sv.id, sv] as const));
+    const dayOf = (sv?: LabService | null) => {
+      const d = sv?.production_days;
+      return d != null && d > 0 ? d : leadDays.normal;
+    };
+    const days: number[] = [];
+    form.tooth_ops.forEach(o => { if (o.work_type) days.push(dayOf(byName.get(o.work_type))); });
+    form.pending_items.forEach((it: any) => days.push(dayOf(byId.get(it.service_id) ?? byName.get(it.name))));
+    return days.length ? Math.max(...days) : leadDays.normal;
+  }, [form.is_urgent, form.tooth_ops, form.pending_items, services, leadDays]);
+  const earliestDelivery = useMemo(() => addBusinessDays(new Date(), requiredLeadDays), [requiredLeadDays]);
+
+  // Teslim tarihini kendiliğinden doldur: boşsa ya da en son BİZİM doldurduğumuz
+  // değerse (kullanıcı elle değiştirmediyse) en erken tarihe çek. Düzenlemede dokunma.
+  const autoDeliveryRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isEdit) return;
+    // Yerel takvim günü (toISOString UTC'ye kayar → TR'de gece yarısı bir önceki gün olur)
+    const ymd = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    const iso = ymd(earliestDelivery);
+    setForm(f => {
+      const cur = f.delivery_date instanceof Date && !isNaN(f.delivery_date.getTime())
+        ? ymd(f.delivery_date) : null;
+      if (cur && cur !== autoDeliveryRef.current) return f;   // kullanıcı seçimi
+      if (cur === iso) { autoDeliveryRef.current = iso; return f; }
+      autoDeliveryRef.current = iso;
+      // Öğlen 12:00 — kayıtta toISOString() günü kaydırmasın
+      const d = new Date(earliestDelivery); d.setHours(12, 0, 0, 0);
+      return { ...f, delivery_date: d };
+    });
+  }, [earliestDelivery, isEdit]);
 
   // ── Reactive validation ───────────────────────────────────────────────────
   const [stepAttempted, setStepAttempted] = useState<Record<Step, boolean>>({
@@ -1753,12 +1835,9 @@ export function NewOrderScreen({
         // Normal vakada 5 İŞ GÜNÜ, acil vakada 1 iş günü. Hafta sonu sayılmaz:
         // lab Cumartesi/Pazar üretmediği için takvim günüyle verilen taahhüt
         // hafta sonuna denk geldiğinde fiilen 2 gün eksik süre bırakıyordu.
-        const earliest = addBusinessDays(new Date(), form.is_urgent ? 1 : 5);
         const sel = new Date(form.delivery_date); sel.setHours(0, 0, 0, 0);
-        if (sel < earliest) {
-          e.delivery_date = form.is_urgent
-            ? 'Acil vakada teslim tarihi en erken bir sonraki iş günü olabilir'
-            : 'Teslim tarihi en az 5 iş günü sonra olmalı';
+        if (sel < earliestDelivery) {
+          e.delivery_date = `${autoT('En erken teslim tarihi')}: ${earliestDelivery.toLocaleDateString(localeTag())} (${requiredLeadDays} ${autoT('iş günü')})`;
         }
       }
     }
@@ -1787,7 +1866,7 @@ export function NewOrderScreen({
       }
     }
     return e;
-  }, [form, hasImplantOp]);
+  }, [form, hasImplantOp, earliestDelivery, requiredLeadDays]);
 
   const STEP_FIELDS: Record<Step, string[]> = {
     1: ['doctor_id', 'patient_first_name', 'patient_last_name', 'patient_gender', 'patient_age'],
@@ -2417,6 +2496,16 @@ export function NewOrderScreen({
     }));
   };
 
+  /** Dişleri implant pozisyonuna ekler (mevcutlar korunur); şema moduna girmeden. */
+  const markImplantTeeth = (teeth: number[]) => {
+    setForm(f => {
+      const next = Array.from(new Set([...f.implant_teeth, ...teeth])).sort((a, b) => a - b);
+      return { ...f, implant_teeth: next, implant_details: reconcileImplantDetails(f.implant_details, next) };
+    });
+    setImplantMode(false);
+    setImplantPrompt(false);
+  };
+
   const updateOneTooth = (tooth: number, patch: Partial<Omit<ToothOp, 'tooth'>>) =>
     setForm(f => ({ ...f, tooth_ops: f.tooth_ops.map(o => o.tooth === tooth ? { ...o, ...patch } : o) }));
 
@@ -2553,8 +2642,8 @@ export function NewOrderScreen({
           const sorted = [...form.implant_teeth].sort((a, b) => a - b);
           noteParts.push(`İmplant pozisyonları: ${sorted.join(', ')}`);
           const detailSeg = sorted
-            .filter(t => { const d = form.implant_details[t]; return d && (d.system || d.type || d.abutment || d.screw); })
-            .map(t => { const d = form.implant_details[t]; return `${t} = ${brandWithModel(d.system, d.model)}|${d.type || ''}|${d.abutment || ''}|${d.screw || ''}`; })
+            .filter(t => { const d = form.implant_details[t]; return d && (d.system || d.type || d.platform || d.abutment || d.screw); })
+            .map(t => encodeImplantDetailSegment(t, form.implant_details[t]))
             .join('; ');
           if (detailSeg) noteParts.push(`İmplant detayları: ${detailSeg}`);
         }
@@ -2905,8 +2994,8 @@ export function NewOrderScreen({
           const sorted = [...form.implant_teeth].sort((a, b) => a - b);
           noteParts.push(`İmplant pozisyonları: ${sorted.join(', ')}`);
           const detailSeg = sorted
-            .filter(t => { const d = form.implant_details[t]; return d && (d.system || d.type || d.abutment || d.screw); })
-            .map(t => { const d = form.implant_details[t]; return `${t} = ${brandWithModel(d.system, d.model)}|${d.type || ''}|${d.abutment || ''}|${d.screw || ''}`; })
+            .filter(t => { const d = form.implant_details[t]; return d && (d.system || d.type || d.platform || d.abutment || d.screw); })
+            .map(t => encodeImplantDetailSegment(t, form.implant_details[t]))
             .join('; ');
           if (detailSeg) noteParts.push(`İmplant detayları: ${detailSeg}`);
         }
@@ -3579,7 +3668,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
   </div>
 
   ${ops.length > 0 ? `<div class="card teethCard">
-    <div class="ch">${toothLogoSvg.replace('width="24"','width="14"').replace('height="24"','height="14"')} Dişler &amp; İşlemler <span class="chBadge">· ${ops.length} diş</span></div>
+    <div class="ch">${toothLogoSvg.replace('width="24"','width="14"').replace('height="24"','height="14"')} Dişler &amp; İşlemler <span class="chBadge">· ${ops.filter((o: any) => o.work_type).length} işlem</span></div>
     <div class="teethBox">
       <div class="archCol">${archSVG}</div>
       <div class="tableCol">
@@ -4281,8 +4370,8 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                       <Text style={{ fontSize: 12, fontWeight: '500', color: NO.inkStrong }}>Acil vaka</Text>
                       <Text style={{ fontSize: 10, color: NO.inkMute }}>
                         {urgentSurchargeRate > 0
-                          ? `+%${urgentSurchargeRate.toFixed(urgentSurchargeRate % 1 === 0 ? 0 : 2)} ek ücret · 5 gün öncelik`
-                          : 'Ek ücretsiz · 5 gün öncelik'}
+                          ? `+%${urgentSurchargeRate.toFixed(urgentSurchargeRate % 1 === 0 ? 0 : 2)} ${autoT('ek ücret')} · ${leadDays.urgent} ${autoT('iş günde teslim')}`
+                          : `${autoT('Ek ücretsiz')} · ${leadDays.urgent} ${autoT('iş günde teslim')}`}
                       </Text>
                     </View>
                     <NOToggle on={form.is_urgent} onChange={(v) => set('is_urgent')(v)} accentColor={P} />
@@ -4303,7 +4392,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                     // Normal vakada en erken 5 iş günü sonra; acil vakada bir sonraki
                     // iş günü (hafta sonu sayılmaz). Düzenlemede alt sınır YOK —
                     // bitmiş işin teslim tarihi geçmişte kalıyor.
-                    minDate={isEdit ? undefined : addBusinessDays(new Date(), form.is_urgent ? 1 : 5)}
+                    minDate={isEdit ? undefined : earliestDelivery}
                     error={fe('delivery_date')}
                     accentColor={P}
                   />
@@ -4801,9 +4890,20 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                   </View>
                 )}
                 {implantMode && (
-                  <Text style={{ fontSize: 11, color: IMPLANT_TOOTH_COLOR, marginBottom: 8 }}>
-                    {autoT('Hangi dişlerde implant var? Şema üzerinde işaretle.')}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
+                    <Text style={{ fontSize: 11, color: IMPLANT_TOOTH_COLOR, flexShrink: 1 }}>
+                      {autoT('Hangi dişlerde implant var? Şema üzerinde işaretle.')}
+                    </Text>
+                    {/* İmplant modundan çıkış — açık kalınca şemaya dokunuşlar işlem seçmiyordu */}
+                    <Pressable
+                      onPress={() => setImplantMode(false)}
+                      style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: NORadius.pill,
+                               borderWidth: 1, borderColor: IMPLANT_TOOTH_COLOR,
+                               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: IMPLANT_TOOTH_COLOR }}>{autoT('İşaretlemeyi bitir')}</Text>
+                    </Pressable>
+                  </View>
                 )}
                 {hasImplantOp && <FieldError msg={fe('implant_teeth')} />}
                 <ToothNumberPicker
@@ -4832,24 +4932,26 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                     if (editingOp && removed.length > 0 && editingOp.teeth.every(t => removed.includes(t))) return;
                     if (!editingOp && removed.length === 1 && added.length === 0) {
                       const t = removed[0];
-                      const hasWork = form.tooth_ops.some(o => o.tooth === t && !!o.work_type);
-                      if (hasWork) {
-                        const wantSecond = typeof window !== 'undefined' && (window as any).confirm
-                          ? (window as any).confirm(`Diş ${t} için zaten bir işlem var.\n\nİkinci bir işlem eklemek ister misiniz?\n\n(Diş seçimini iptal etmek için işlem listesindeki çarpı (×) butonunu kullanın.)`)
-                          : false;
-                        if (wantSecond) {
-                          const uid = newOpUid();
-                          setForm(f => ({ ...f, tooth_ops: [...f.tooth_ops, { tooth: t, ...BLANK_OP, __uid: uid }] }));
-                          setSecondaryOpUids([uid]);
-                          setActiveTooth(t);
-                          setSelectedTeeth([t]);
-                          return; // ToothPicker'a deselect propagasyonu yapma
-                        }
-                        // İptal seçildi — yine de silme, sadece seçili kalsın
-                        return;
+                      const workOps = form.tooth_ops.filter(o => o.tooth === t && !!o.work_type);
+                      if (workOps.length > 0) {
+                        // Diş silinmez; İş detayı kartında "yeni işlem ekle" seçimi açılır.
+                        // Aynı kalemdeki (aynı iş + ayarlar) diğer dişler de önerilir —
+                        // ör. 15–16 Custom Abutment → ikisine birden Zirkon Kron.
+                        const src = workOps[workOps.length - 1];
+                        const keyOf = (o: ToothOp) => [o.work_type, o.shade, o.material, o.price, o.price_unit].join('||');
+                        const k = keyOf(src);
+                        const groupTeeth = Array.from(new Set(
+                          form.tooth_ops.filter(o => o.work_type && keyOf(o) === k).map(o => o.tooth),
+                        )).sort((a, b) => a - b);
+                        setReopenPrompt({ tooth: t, groupTeeth, workType: src.work_type });
+                        setSelectedTeeth([]);
+                        setActiveTooth(null);
+                        setSecondaryOpUids([]);
+                        return; // ToothPicker'a deselect propagasyonu yapma
                       }
                     }
 
+                    setReopenPrompt(null);
                     setForm(f => {
                       let ops = f.tooth_ops.filter(o => !removed.includes(o.tooth));
                       // Yerinde düzenlemede eklenen diş BOŞ gelmez: düzenlenen kalemin
@@ -4924,7 +5026,62 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                       badge={validTooth ? 'Aktif' : undefined}
                       accent={P}
                     />
-                    {!validTooth ? (
+                    {!validTooth && reopenPrompt ? (() => {
+                      const { tooth: rt, groupTeeth, workType } = reopenPrompt;
+                      const addNewOp = (teeth: number[]) => {
+                        const entries = teeth.map(t => ({ tooth: t, ...BLANK_OP, __uid: newOpUid() }));
+                        setForm(f => ({ ...f, tooth_ops: [...f.tooth_ops, ...entries] }));
+                        setSecondaryOpUids(entries.map(e => e.__uid!));
+                        setSelectedTeeth(teeth);
+                        setActiveTooth(teeth[0]);
+                        setImplantMode(false);
+                        setReopenPrompt(null);
+                        setOpResetKey(k => k + 1);
+                      };
+                      const groupLabel = teethRangeLabel(groupTeeth);
+                      return (
+                        <View style={{ gap: 10, paddingVertical: 4 }}>
+                          <Text style={{ fontSize: 13, color: NO.inkStrong, fontWeight: '600' }}>
+                            {autoT('Diş')} {rt} · {workType}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: NO.inkMedium, lineHeight: 17 }}>
+                            {autoT('Bu dişte zaten bir işlem var. Üzerine yeni bir işlem ekleyebilirsin (ör. abutment üzerine kron).')}
+                          </Text>
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                            {groupTeeth.length > 1 && (
+                              <Pressable
+                                onPress={() => addNewOp(groupTeeth)}
+                                style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: NORadius.pill, backgroundColor: P,
+                                         ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                              >
+                                <Text style={{ fontSize: 12.5, fontWeight: '600', color: '#FFFFFF' }}>
+                                  {autoT('Hepsine yeni işlem ekle')} ({groupLabel})
+                                </Text>
+                              </Pressable>
+                            )}
+                            <Pressable
+                              onPress={() => addNewOp([rt])}
+                              style={groupTeeth.length > 1
+                                ? { paddingHorizontal: 14, paddingVertical: 9, borderRadius: NORadius.pill, borderWidth: 1, borderColor: NO.borderMedium,
+                                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }
+                                : { paddingHorizontal: 14, paddingVertical: 9, borderRadius: NORadius.pill, backgroundColor: P,
+                                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                            >
+                              <Text style={{ fontSize: 12.5, fontWeight: '600', color: groupTeeth.length > 1 ? NO.inkStrong : '#FFFFFF' }}>
+                                {autoT('Yalnız diş')} {rt}
+                              </Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={() => setReopenPrompt(null)}
+                              style={{ paddingHorizontal: 12, paddingVertical: 9, borderRadius: NORadius.pill,
+                                       ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                            >
+                              <Text style={{ fontSize: 12.5, color: NO.inkMute }}>{autoT('Vazgeç')}</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      );
+                    })() : !validTooth ? (
                       <View style={{ paddingVertical: 16, alignItems: 'center', opacity: 0.45 }}>
                         <Text style={{ color: NO.inkSoft, fontSize: 12, textAlign: 'center' }}>
                           Önce bir diş seçin
@@ -4985,6 +5142,8 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                             return { ...f, implant_details: { ...f.implant_details, [tooth]: { ...src } } };
                           })}
                           onEnterImplantMode={() => setImplantMode(true)}
+                          onMarkImplantTeeth={markImplantTeeth}
+                          implantAutoAbutments={implantAutoAbutments}
                           onNightGuard={(jaw) => {
                             const upper = [11,12,13,14,15,16,17,18,21,22,23,24,25,26,27,28];
                             const lower = [31,32,33,34,35,36,37,38,41,42,43,44,45,46,47,48];
@@ -5013,6 +5172,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                               setConfirmedTeeth(prev => prev.includes(t) ? prev : [...prev, t]);
                             });
                             setEditingOp(null);   // yerinde düzenleme bittiyse kapat
+                            setImplantMode(false); // iş onaylandı → şema yeniden iş seçimine dönsün
                             setSelectedTeeth([]);
                             setActiveTooth(null);
                             setSecondaryOpUids([]);
@@ -5163,8 +5323,9 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                       title="İş listesi"
                       badge={(confirmed.length > 0 || form.pending_items.length > 0)
                         ? (showPrices
-                            ? `${confirmed.length} ${autoT('diş')} · ${curSym(confirmed[0]?.currency ?? orderCur)}${(totalPrice + itemTotal).toLocaleString('tr-TR')}`
-                            : `${confirmed.length} ${autoT('diş')}`)
+                            // Aynı dişe birden çok iş (abutment + kron) olabilir → benzersiz diş sayısı.
+                            ? `${confirmed.filter(o => o.work_type).length} ${autoT('işlem')} · ${curSym(confirmed[0]?.currency ?? orderCur)}${(totalPrice + itemTotal).toLocaleString('tr-TR')}`
+                            : `${confirmed.filter(o => o.work_type).length} ${autoT('işlem')}`)
                         : undefined}
                       accent={P}
                     />
@@ -5601,7 +5762,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
 
               return (
                 <NOCard>
-                  <NOCardHead num={2} title="İşlemler" sub={`${ops.length} ${autoT('diş')} · ${groups.length} ${autoT('işlem')}`} badge={showPrices && grandTotal > 0 ? `${curSym(ops[0]?.currency ?? orderCur)}${grandTotal.toLocaleString('tr-TR')}` : undefined} accent={P} />
+                  <NOCardHead num={2} title="İşlemler" sub={`${ops.filter(o => o.work_type).length} ${autoT('işlem')}`} badge={showPrices && grandTotal > 0 ? `${curSym(ops[0]?.currency ?? orderCur)}${grandTotal.toLocaleString('tr-TR')}` : undefined} accent={P} />
                   {ops.length === 0 ? (
                     <View style={{ paddingVertical: 16, alignItems: 'center', opacity: 0.5 }}>
                       <Text style={{ fontSize: 12, color: NO.inkMute }}>Henüz işlem eklenmedi</Text>
@@ -5784,10 +5945,12 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
         }}
       />
 
-      {/* İmplant bilgilendirme popup — hibrit/implant işlem eklenince bir kez açılır */}
+      {/* İmplant bilgilendirme popup — hibrit/implant işlem eklenince bir kez açılır.
+          Seçili dişler genelde implant dişleridir (abutment/implant kron): tek dokunuşla
+          işaretlenir; farklıysa şema moduna geçilir; "Sonra" ile kapatılır. */}
       <Modal visible={implantPrompt} transparent animationType="fade" onRequestClose={() => setImplantPrompt(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <View style={{ width: '100%', maxWidth: 380, backgroundColor: '#FFFFFF', borderRadius: 20, padding: 22, gap: 14 }}>
+        <Pressable style={U.modalOverlay} onPress={() => setImplantPrompt(false)}>
+          <Pressable style={[U.modalCard, { maxWidth: 400, padding: 22, gap: 14 }]} onPress={() => {}}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={{ width: 44, height: 44, borderRadius: 13, backgroundColor: IMPLANT_TOOTH_COLOR + '1A', alignItems: 'center', justifyContent: 'center' }}>
                 <View style={{ width: 12, height: 12, borderRadius: 999, backgroundColor: IMPLANT_TOOTH_COLOR }} />
@@ -5799,20 +5962,40 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
             <Text style={{ fontSize: 13, color: NO.inkMedium, lineHeight: 19 }}>
               {autoT('Bu vaka için implantların hangi dişlerde olduğunu şema üzerinde işaretleyin. İşaretlenen dişler farklı renkte görünür.')}
             </Text>
+            {selectedTeeth.length > 0 && (
+              <Pressable
+                onPress={() => markImplantTeeth(selectedTeeth)}
+                style={{
+                  marginTop: 4, paddingVertical: 12, borderRadius: NORadius.pill,
+                  backgroundColor: IMPLANT_TOOTH_COLOR, alignItems: 'center',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>
+                  {autoT('Seçili dişler implant')} ({teethRangeLabel(selectedTeeth)})
+                </Text>
+              </Pressable>
+            )}
             <Pressable
               onPress={() => { setImplantMode(true); setImplantPrompt(false); }}
-              style={{
-                marginTop: 4, paddingVertical: 12, borderRadius: NORadius.pill,
-                backgroundColor: IMPLANT_TOOTH_COLOR, alignItems: 'center',
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              }}
+              style={selectedTeeth.length > 0
+                ? { paddingVertical: 11, borderRadius: NORadius.pill, borderWidth: 1, borderColor: IMPLANT_TOOTH_COLOR, alignItems: 'center',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }
+                : { marginTop: 4, paddingVertical: 12, borderRadius: NORadius.pill, backgroundColor: IMPLANT_TOOTH_COLOR, alignItems: 'center',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
             >
-              <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>
-                {autoT('Şemada işaretle')}
+              <Text style={{ fontSize: 14, fontWeight: '700', color: selectedTeeth.length > 0 ? IMPLANT_TOOTH_COLOR : '#FFFFFF' }}>
+                {autoT(selectedTeeth.length > 0 ? 'Şemada başka dişler işaretle' : 'Şemada işaretle')}
               </Text>
             </Pressable>
-          </View>
-        </View>
+            <Pressable
+              onPress={() => setImplantPrompt(false)}
+              style={{ alignSelf: 'center', paddingVertical: 4, paddingHorizontal: 12, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+            >
+              <Text style={{ fontSize: 12.5, color: NO.inkMute }}>{autoT('Sonra')}</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* ── File Preview Modal ── */}
@@ -5940,7 +6123,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
           <Viewer3DModalLazy
             visible
             files={viewer3DFiles}
-            title={viewer3DFiles.length > 1 ? `${viewer3DFiles.length} tarama birlikte` : viewer3DFiles[0]?.name}
+            title={viewer3DFiles.length > 1 ? `${viewer3DFiles.length} ${autoT('tarama birlikte')}` : viewer3DFiles[0]?.name}
             onClose={() => setViewer3DFiles(null)}
           />
         </React.Suspense>
@@ -6337,18 +6520,22 @@ function ImplantInfoSection({
 
 // ── Diş başına implant bilgisi — collapsible kartlar + "öncekiyle aynı" ──
 function ImplantDetailsList({
-  teeth, details, accent, onChange, onCopyPrev,
+  teeth, details, accent, onChange, onCopyPrev, autoAbutments = {},
 }: {
   teeth: number[];
   details: Record<number, ImplantDetail>;
   accent: string;
   onChange: (tooth: number, patch: Partial<ImplantDetail>) => void;
   onCopyPrev: (tooth: number, prev: number) => void;
+  /** Diş → iş türünden çıkarılan abutment tipi (ör. 15'te Custom Abutment işi →
+   *  "Kişiye özel (Custom)"). Seçimden bağımsız: o dişte abutment işi varsa uygulanır. */
+  autoAbutments?: Record<number, string>;
 }) {
   const NO = useNOTokens();
   const [openTooth, setOpenTooth] = useState<number | null>(teeth[0] ?? null);
   const BLANK: ImplantDetail = { system: '', type: '', abutment: '', screw: '' };
-  const isFilled = (t: number | null) => t != null && !!details[t] && !!(details[t].system || details[t].type || details[t].abutment || details[t].screw);
+  const hasAnyField = (d?: ImplantDetail | null) => !!d && !!(d.system || d.type || d.platform || d.abutment || d.screw);
+  const isFilled = (t: number | null) => t != null && hasAnyField(details[t]);
   // İlk diş değişince (şemada yeni/küçük numara işaretlenince) ve açık diş HENÜZ
   // boşsa listeyi ilk dişe hizala — kullanıcı dolu bir dişi düzenliyorsa bozma.
   const firstTooth = teeth[0] ?? null;
@@ -6357,11 +6544,29 @@ function ImplantDetailsList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstTooth]);
 
+  // Abutment tipi iş türünden belliyse (Custom Abutment vb.) boş dişlere bir kez
+  // yazılır. Kullanıcı sonradan değiştirir/temizlerse tekrar dayatılmaz.
+  const autoAppliedRef = useRef<Set<string>>(new Set());
+  const autoKey = JSON.stringify(autoAbutments);
+  useEffect(() => {
+    for (const t of teeth) {
+      const auto = autoAbutments[t];
+      if (!auto) continue;
+      const k = `${t}|${auto}`;
+      if (autoAppliedRef.current.has(k)) continue;
+      autoAppliedRef.current.add(k);
+      if (!(details[t]?.abutment ?? '').trim()) onChange(t, { abutment: auto });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoKey, teeth.join(',')]);
+
+  const doneCount = teeth.filter(t => !!(details[t]?.system ?? '').trim()).length;
+
   const Pill = ({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) => (
     <TouchableOpacity
       onPress={onPress}
       style={{
-        paddingHorizontal: 10, paddingVertical: 5, borderRadius: NORadius.pill,
+        paddingHorizontal: active ? 12 : 10, paddingVertical: 6, borderRadius: NORadius.pill,
         borderWidth: 1,
         borderColor: active ? accent : NO.borderMedium,
         backgroundColor: active ? accent + '14' : 'transparent',
@@ -6370,57 +6575,74 @@ function ImplantDetailsList({
       <Text style={{ fontSize: 11.5, fontWeight: active ? '700' : '500', color: active ? accent : NO.inkMedium }}>{label}</Text>
     </TouchableOpacity>
   );
-  const PillRow = ({ label, opts, value, onSel }: { label: string; opts: readonly string[]; value: string; onSel: (v: string) => void }) => (
-    <View style={{ marginBottom: 10 }}>
-      <Text style={{ fontSize: 10.5, fontWeight: '600', color: NO.inkMedium, marginBottom: 5 }}>{autoT(label)}</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
-        {opts.map(o => <Pill key={o} label={o} active={value === o} onPress={() => onSel(value === o ? '' : o)} />)}
+  const FieldLabel = ({ children, hint }: { children: string; hint?: string }) => (
+    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginBottom: 5, flexWrap: 'wrap' }}>
+      <Text style={{ fontSize: 11, fontWeight: '600', color: NO.inkMedium }}>{autoT(children)}</Text>
+      {!!hint && <Text style={{ fontSize: 10.5, color: NO.inkSoft }}>{hint}</Text>}
+    </View>
+  );
+  const PillRow = ({ label, hint, opts, value, onSel }: { label: string; hint?: string; opts: readonly string[]; value: string; onSel: (v: string) => void }) => (
+    <View style={{ marginBottom: 12 }}>
+      <FieldLabel hint={hint}>{label}</FieldLabel>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {opts.map(o => <Pill key={o} label={autoT(o)} active={value === o} onPress={() => onSel(value === o ? '' : o)} />)}
       </View>
     </View>
   );
 
   return (
     <View style={{ marginTop: 12 }}>
-      <Text style={{ fontSize: 10.5, fontWeight: '700', color: accent, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
-        {autoT('İmplant bilgileri (diş başına)')}
-      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+        <Text style={{ flex: 1, fontSize: 10.5, fontWeight: '700', color: accent, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+          {autoT('İmplant bilgileri (diş başına)')}
+        </Text>
+        {/* İlerleme: marka zorunlu alan — tamamlanan diş sayısı */}
+        <Text style={{ fontSize: 11, fontWeight: '600', color: doneCount === teeth.length ? NO.success : NO.inkSoft }}>
+          {doneCount}/{teeth.length} {autoT('tamam')}
+        </Text>
+      </View>
       {/* Tek çerçeveli, hairline ayraçlı minimal liste — kutu-kutu değil */}
       <View style={{ borderWidth: 1, borderColor: NO.borderMedium, borderRadius: 10, overflow: 'visible' }}>
       {teeth.map((t, i) => {
         const d = details[t] ?? BLANK;
-        const filled = !!(d.system || d.type || d.abutment || d.screw);
+        const filled = hasAnyField(d);
+        const hasBrand = !!(d.system ?? '').trim();
         const open = openTooth === t;
         const prevTooth = i > 0 ? teeth[i - 1] : null;
-        const prevFilled = prevTooth != null && !!details[prevTooth] &&
-          !!(details[prevTooth].system || details[prevTooth].type || details[prevTooth].abutment || details[prevTooth].screw);
+        const prevFilled = prevTooth != null && hasAnyField(details[prevTooth]);
         // Marka ZORUNLU: dolu ama markasız kart da eksik sayılır, satır bunu söyler
         // (aksi halde hekim türü/abutment'ı girip tamam sanıyor).
         const summary = !filled ? autoT('Bilgi girilmedi')
-          : !d.system ? autoT('Marka seçilmedi')
-          : [brandWithModel(d.system, d.model), d.type, d.abutment, d.screw].filter(Boolean).join(' · ');
-        const goNext = () => { const next = teeth[i + 1]; setOpenTooth(next != null ? next : null); };
+          : !hasBrand ? autoT('Marka seçilmedi')
+          : [brandWithModel(d.system, d.model), d.type, d.platform, d.abutment, d.screw].filter(Boolean).map(v => autoT(String(v))).join(' · ');
+        const nextTooth = teeth[i + 1] ?? null;
+        const goNext = () => setOpenTooth(nextTooth);
+        const abutIsAuto = !!autoAbutments[t] && d.abutment === autoAbutments[t];
         return (
           <View key={`impdet-${t}`} style={{ borderTopWidth: i > 0 ? 1 : 0, borderTopColor: NO.borderSoft, overflow: 'visible', zIndex: open ? 30 : 1, backgroundColor: open ? accent + '08' : 'transparent' }}>
             <Pressable
               onPress={() => setOpenTooth(open ? null : t)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 12, paddingVertical: 9,
+              accessibilityRole="button"
+              accessibilityState={{ expanded: open }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 12, paddingVertical: 10,
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
             >
               <Text style={{ width: 24, fontSize: 13, fontWeight: '700', color: accent }}>{t}</Text>
-              <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, fontSize: 12, color: filled ? NO.inkStrong : NO.inkSoft, fontWeight: filled ? '600' : '400' }}>
+              <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, fontSize: 12, color: filled && hasBrand ? NO.inkStrong : NO.inkSoft, fontWeight: filled && hasBrand ? '600' : '400' }}>
                 {summary}
               </Text>
-              {/* Yeşil/aksan nokta = kart TAMAM. Marka zorunlu olduğu için yalnız
-                  tür/abutment girilmiş kart tamam sayılmaz. */}
-              {!!d.system && <View style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: accent }} />}
-              <Text style={{ fontSize: 11, color: NO.inkSoft }}>{open ? '⌃' : '⌄'}</Text>
+              {/* Durum: marka girilmişse tamam, girilmemişse "Eksik" — yalnız renkle değil yazıyla da. */}
+              {hasBrand
+                ? <AppIcon name="check" size={13} color={NO.success} />
+                : <Text style={{ fontSize: 10.5, fontWeight: '700', color: NO.error }}>{autoT('Eksik')}</Text>}
+              <AppIcon name={open ? 'chevron-up' : 'chevron-down'} size={14} color={NO.inkSoft} />
             </Pressable>
             {open && (
               <View style={{ paddingHorizontal: 12, paddingBottom: 12, paddingTop: 2 }}>
                 {prevFilled && (
                   <TouchableOpacity
                     onPress={() => { onCopyPrev(t, prevTooth!); goNext(); }}
-                    style={{ alignSelf: 'flex-start', marginBottom: 10,
+                    style={{ alignSelf: 'flex-start', marginBottom: 12,
                       paddingHorizontal: 12, paddingVertical: 6, borderRadius: NORadius.pill, borderWidth: 1, borderColor: accent, backgroundColor: accent + '10' }}
                   >
                     <Text style={{ fontSize: 11.5, fontWeight: '700', color: accent }}>
@@ -6428,14 +6650,58 @@ function ImplantDetailsList({
                     </Text>
                   </TouchableOpacity>
                 )}
-                <Text style={{ fontSize: 11, fontWeight: '600', color: NO.inkMedium, marginBottom: 5 }}>{autoT('İmplant Markası')} *</Text>
+                <FieldLabel>İmplant Markası *</FieldLabel>
                 <View style={{ marginBottom: 10, zIndex: 50 }}>
                   <ImplantBrandCombobox value={d.system} onChange={(v) => onChange(t, v === d.system ? { system: v } : { system: v, model: '' })} accent={accent} />
                 </View>
                 <ImplantModelField brand={d.system} value={d.model ?? ''} onChange={(m) => onChange(t, { model: m })} accent={accent} />
-                <PillRow label="İmplant Türü"  opts={IMPLANT_TYPES}  value={d.type}     onSel={(v) => onChange(t, { type: v })} />
-                <PillRow label="Abutment Tipi" opts={ABUTMENT_TYPES} value={d.abutment} onSel={(v) => onChange(t, { abutment: v })} />
-                <PillRow label="Vida Tipi"     opts={SCREW_TYPES}    value={d.screw}    onSel={(v) => { onChange(t, { screw: v }); if (v) setTimeout(goNext, 150); }} />
+                <PillRow label="İmplant Türü" opts={IMPLANT_TYPES} value={d.type} onSel={(v) => onChange(t, { type: v })} />
+
+                {/* Platform / bağlantı çapı — custom abutment tasarımı için kritik.
+                    Hızlı seçim + kesin değer için serbest metin (marka-özel adlar: RC, NC, CC…). */}
+                <View style={{ marginBottom: 12 }}>
+                  <FieldLabel hint={autoAbutments[t] ? autoT('abutment tasarımı için önerilir') : undefined}>Platform / Çap</FieldLabel>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+                    {IMPLANT_PLATFORMS.map(o => (
+                      <Pill key={o} label={autoT(o)} active={d.platform === o}
+                        onPress={() => onChange(t, { platform: d.platform === o ? '' : o })} />
+                    ))}
+                  </View>
+                  <TextInput
+                    value={(IMPLANT_PLATFORMS as readonly string[]).includes(d.platform ?? '') ? '' : (d.platform ?? '')}
+                    onChangeText={(v) => onChange(t, { platform: v.replace(/[·|;=]/g, ' ') })}
+                    placeholder={autoT('veya kesin değer: RC, 4.1 mm…')}
+                    placeholderTextColor={NO.inkMute}
+                    maxLength={40}
+                    style={{
+                      borderWidth: 1, borderColor: NO.borderMedium, borderRadius: 10,
+                      paddingHorizontal: 10, paddingVertical: Platform.OS === 'web' ? 7 : 8,
+                      fontSize: 12.5, color: NO.inkStrong, backgroundColor: NO.bgInput,
+                      ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+                    }}
+                  />
+                </View>
+
+                <PillRow
+                  label="Abutment Tipi"
+                  hint={abutIsAuto ? autoT('iş türünden otomatik') : undefined}
+                  opts={ABUTMENT_TYPES} value={d.abutment}
+                  onSel={(v) => onChange(t, { abutment: v })}
+                />
+                <PillRow label="Vida Tipi" opts={SCREW_TYPES} value={d.screw} onSel={(v) => onChange(t, { screw: v })} />
+
+                {/* Açık ilerleme: otomatik kapanma yerine tek düğme — kullanıcı
+                    platform/vidayı girmeden kart kaybolmasın. */}
+                <TouchableOpacity
+                  onPress={goNext}
+                  style={{ alignSelf: 'flex-end', marginTop: 2, paddingHorizontal: 14, paddingVertical: 7, borderRadius: NORadius.pill,
+                    backgroundColor: hasBrand ? accent : 'transparent', borderWidth: 1, borderColor: hasBrand ? accent : NO.borderMedium,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: hasBrand ? '#FFFFFF' : NO.inkMedium }}>
+                    {nextTooth != null ? `${autoT('Sonraki diş')} (${nextTooth})` : autoT('Tamam')}
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -8602,6 +8868,8 @@ function WorkTypeSelector({
   onImplantDetailChange,
   onImplantCopyPrev,
   onEnterImplantMode,
+  onMarkImplantTeeth,
+  implantAutoAbutments,
 }: {
   op: ToothOp;
   updateToothOp: (patch: Partial<Omit<ToothOp, 'tooth'>>) => void;
@@ -8624,6 +8892,10 @@ function WorkTypeSelector({
   onImplantDetailChange?: (tooth: number, patch: Partial<ImplantDetail>) => void;
   onImplantCopyPrev?: (tooth: number, prev: number) => void;
   onEnterImplantMode?: () => void;
+  /** Verilen dişleri implant pozisyonu olarak işaretle (şemaya gitmeden). */
+  onMarkImplantTeeth?: (teeth: number[]) => void;
+  /** Diş → iş türünden çıkan abutment tipi (implant kartında otomatik doldurulur). */
+  implantAutoAbutments?: Record<number, string>;
 }) {
   const P = accentColor ?? C.primary;
   const _T_wts = useMobileTokens();
@@ -8992,6 +9264,7 @@ function WorkTypeSelector({
                     accent={implantAccent}
                     onChange={(tooth, patch) => onImplantDetailChange?.(tooth, patch)}
                     onCopyPrev={(tooth, prev) => onImplantCopyPrev?.(tooth, prev)}
+                    autoAbutments={implantAutoAbutments}
                   />
                   <FieldError msg={implantBrandError} />
                 </>
@@ -9003,12 +9276,32 @@ function WorkTypeSelector({
                   <Text style={{ fontSize: 11.5, color: NO.inkMedium, lineHeight: 17 }}>
                     {autoT('Şema üzerinde hangi dişlerde implant olduğunu işaretleyin; her implant için marka/tür bilgisi burada istenir.')}
                   </Text>
-                  <TouchableOpacity
-                    onPress={() => onEnterImplantMode?.()}
-                    style={{ alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 8, borderRadius: NORadius.pill, backgroundColor: implantAccent }}
-                  >
-                    <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF' }}>{autoT('Şemada işaretle')}</Text>
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {/* Tek diş/abutment işlerinde implant zaten seçili dişlerde — tek dokunuş */}
+                    {selectedTeeth.length > 0 && !!onMarkImplantTeeth && (
+                      <TouchableOpacity
+                        onPress={() => onMarkImplantTeeth(selectedTeeth)}
+                        style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: NORadius.pill, backgroundColor: implantAccent,
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                      >
+                        <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF' }}>
+                          {autoT('Seçili dişler implant')} ({teethRangeLabel(selectedTeeth)})
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => onEnterImplantMode?.()}
+                      style={selectedTeeth.length > 0 && !!onMarkImplantTeeth
+                        ? { paddingHorizontal: 14, paddingVertical: 8, borderRadius: NORadius.pill, borderWidth: 1, borderColor: implantAccent,
+                            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }
+                        : { paddingHorizontal: 14, paddingVertical: 8, borderRadius: NORadius.pill, backgroundColor: implantAccent,
+                            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                    >
+                      <Text style={{ fontSize: 12.5, fontWeight: '700', color: selectedTeeth.length > 0 && !!onMarkImplantTeeth ? implantAccent : '#FFFFFF' }}>
+                        {autoT('Şemada başka dişler işaretle')}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               )}
 

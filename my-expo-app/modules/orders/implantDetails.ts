@@ -36,3 +36,19 @@ export function reconcileImplantDetails(
   }
   return next;
 }
+
+/**
+ * İş türünün adından abutment tipini çıkarır — hekim "Custom Abutment" seçtiyse
+ * implant kartında abutment tipini yeniden sormak gereksiz (zaten seçti).
+ * Eşleşme yoksa '' döner (tahmin yok, seçim kullanıcıya kalır).
+ * Dönen değerler ABUTMENT_TYPES içindeki etiketlerle birebir aynıdır.
+ */
+export function autoAbutmentFor(workType: string | null | undefined): string {
+  const s = String(workType ?? '').toLocaleLowerCase('tr-TR');
+  if (!s.includes('abutment') && !s.includes('abudman')) return '';
+  if (/custom|kişiye|kisiye|özel|ozel/.test(s)) return 'Kişiye özel (Custom)';
+  if (/ti-?\s?base|tibase/.test(s)) return 'Ti-base';
+  if (/zirkon|zircon/.test(s)) return 'Zirkonyum';
+  if (/açılı|acili|angled/.test(s)) return 'Açılı (Angled)';
+  return '';
+}

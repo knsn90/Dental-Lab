@@ -7,9 +7,20 @@ export type NotificationCategory =
   | 'material_request' | 'order_watch' | 'stage_critical' | 'stock_count'
   | 'implant_parts' | 'scan_annotation' | 'account' | 'scan_schedule'
   | 'review_request' | 'review_problem' | 'review_minor'
-  | 'review_low' | 'review_low_reminder';
+  | 'review_low' | 'review_low_reminder'
+  | 'phone_lead' | 'ready_for_delivery' | 'support';
 
 export type NotificationChannel = 'in_app' | 'browser_push' | 'email' | 'whatsapp';
+
+/**
+ * WhatsApp'ın GERÇEKTEN gönderildiği kategoriler — send-whatsapp-meta TEMPLATES +
+ * LAB_TEMPLATES anahtarları (Meta onaylı şablon). Diğerlerinde WhatsApp anahtarı
+ * hiçbir şey göndermediği için ayarlar sayfasında pasif gösterilir.
+ */
+export const WHATSAPP_CAPABLE: readonly NotificationCategory[] = [
+  'new_order', 'approval', 'payment', 'delivery', 'account',
+  'review_problem', 'review_low', 'review_low_reminder',
+];
 
 export interface CategoryToggles {
   in_app:       boolean;
@@ -76,5 +87,12 @@ export const DEFAULT_PREFS: NotificationPrefs = {
     review_low:     { in_app: true, browser_push: true, email: false, whatsapp: true },
     // Düşük puan 2 gündür aranmadı (lab yöneticisi) — Meta şablonu dusuk_puan_hatirlatma. Mail yok.
     review_low_reminder: { in_app: true, browser_push: true, email: false, whatsapp: true },
+    // Telefon asistanı talebi (lab yöneticisi/admin) — geri dönüş gerektirir: uygulama içi + push.
+    phone_lead:     { in_app: true, browser_push: true, email: false, whatsapp: false },
+    // İş teslime hazır (hekim/klinik) — sunucu bugün mail DAHİL gönderiyor (_notify_channels);
+    // varsayılan aynı kalsın diye e-posta açık.
+    ready_for_delivery: { in_app: true, browser_push: true, email: true, whatsapp: false },
+    // WhatsApp hattına gelen müşteri mesajı (lab yöneticisi, insan devri) — uygulama içi + push.
+    support:        { in_app: true, browser_push: true, email: false, whatsapp: false },
   },
 };

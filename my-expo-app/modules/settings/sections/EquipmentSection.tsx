@@ -33,6 +33,7 @@ import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useFeature } from '../../../core/store/featureFlagsStore';
+import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
 
 // ─── Patterns tokens ─────────────────────────────────────────
 const DISPLAY = {
@@ -126,6 +127,8 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<Equipment | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState('');
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
 
   // QR etiket preview
   const [qrItem, setQrItem] = useState<Equipment | null>(null);
@@ -175,6 +178,7 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
   useEffect(() => { load(); loadTechs(); loadStations(); }, []);
 
   const openNew = () => {
+    setSaveErr('');
     setEditItem(null);
     setForm({
       name: '', brand: '', model: '', serial_number: '',
@@ -186,6 +190,7 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
   };
 
   const openEdit = (item: Equipment) => {
+    setSaveErr('');
     setEditItem(item);
     setForm({
       name: item.name,
@@ -222,19 +227,32 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
       ...(scanOn ? { scan_kind: form.scan_kind || null } : {}),
     };
 
-    if (editItem) {
-      await supabase.from('equipment').update(payload).eq('id', editItem.id);
-    } else {
-      await supabase.from('equipment').insert(payload);
-    }
+    setSaveErr('');
+    const { error } = editItem
+      ? await supabase.from('equipment').update(payload).eq('id', editItem.id)
+      : await supabase.from('equipment').insert(payload);
     setSaving(false);
+    if (error) { setSaveErr(autoT('Kaydedilemedi. Bağlantınızı kontrol edip tekrar deneyin.')); return; }
     setModalOpen(false);
     load();
   };
 
   const handleDelete = async (id: string) => {
-    await supabase.from('equipment').delete().eq('id', id);
+    setSaveErr('');
+    const { error } = await supabase.from('equipment').delete().eq('id', id);
+    if (error) { setSaveErr(autoT('Silinemedi. Bu demirbaş başka kayıtlarda kullanılıyor olabilir.')); return; }
+    setModalOpen(false);
     load();
+  };
+
+  const askDelete = (item: Equipment) => {
+    setConfirm({
+      title: autoT('Demirbaşı sil'),
+      message: `${item.name} — ${autoT('kalıcı olarak silinir. Bu işlem geri alınamaz.')}`,
+      label: autoT('Sil'),
+      variant: 'danger',
+      onConfirm: async () => { setConfirm(null); await handleDelete(item.id); },
+    });
   };
 
   // Filter
@@ -949,7 +967,7 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <GlassTooltip title={autoT('Sil')} text={autoT('Bu demirbaşı kalıcı olarak sil')}>
                     <Pressable
-                      onPress={() => { handleDelete(editItem.id); setModalOpen(false); }}
+                      onPress={() => askDelete(editItem)}
                       style={{
                         flexDirection: 'row', alignItems: 'center', gap: 5,
                         paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
@@ -1001,6 +1019,12 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
                 </Pressable>
               </GlassTooltip>
             </View>
+            {!!saveErr && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6, paddingHorizontal: 24, paddingBottom: 14 }}>
+                <AlertTriangle size={13} color={isDark ? '#F87171' : '#DC2626'} strokeWidth={2} />
+                <Text style={{ fontSize: 12, color: isDark ? '#F87171' : '#DC2626' }}>{saveErr}</Text>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -1239,6 +1263,7 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
           </View>
         </View>
       </Modal>
+      <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />
     </ScrollView>
   );
 }

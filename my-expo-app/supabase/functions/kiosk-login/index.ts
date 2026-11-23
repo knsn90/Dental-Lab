@@ -1,9 +1,10 @@
 // kiosk-login — kayıtlı tablette kod ile giriş → kullanıcının GERÇEK oturumunu üretir.
-// Girdi: { device_token, code }
-// Çıktı: { ok, email, token_hash }  → istemci: supabase.auth.verifyOtp({ token_hash, type:'magiclink' })
+// Girdi: { action:'users', device_token }            → { ok, users:[{user_id, full_name, avatar_url}] }
+//        { device_token, user_id, code }               → giriş
+// Çıktı: { ok, token_hash }  → istemci: supabase.auth.verifyOtp({ token_hash, type:'magiclink' })
 // Kimlik: kullanıcı JWT'si GEREKMEZ (tablette oturum yok) → deploy: --no-verify-jwt.
-//   Kimlik/kapsam = cihaz jetonu (SHA-256 eşleşmesi) + kiosk_resolve_user (cihaz-kapsamlı,
-//   bcrypt kod eşleşmesi, hız-sınırı/kilit). generateLink e-postayı auth.users'tan alır.
+//   Kimlik/kapsam = cihaz jetonu (SHA-256 eşleşmesi) + kiosk_resolve_user (seçilen kişinin
+//   bcrypt kodu, kişi + cihaz hız-sınırı/kilit). generateLink e-postayı auth.users'tan alır.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.7'
 
 const corsHeaders = {
@@ -24,10 +25,9 @@ Deno.serve(async (req: Request) => {
     const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
     const body = await req.json().catch(() => ({}));
+    const action = String(body?.action ?? 'login');
     const deviceToken = String(body?.device_token ?? '').trim();
-    const code = String(body?.code ?? '').trim();
-    if (!/^[a-f0-9]{64}$/.test(deviceToken) || !/^[0-9]{6}$/.test(code))
-      return json({ ok: false, error: 'invalid_input' });
+    if (!/^[a-f0-9]{64}$/.test(deviceToken)) return json({ ok: false, error: 'invalid_input' });
 
     // 1) Cihazı jeton hash'iyle bul (aktif)
     const tokenHash = await sha256Hex(deviceToken);
@@ -38,19 +38,29 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (!dev || !dev.active) return json({ ok: false, error: 'device_invalid' });
 
-    // 2) Kod → kullanıcı (cihaz-kapsamlı, hız-sınırlı; service_role RPC)
-    const { data: userId, error: resolveErr } = await admin.rpc('kiosk_resolve_user', {
+    // 1b) Tabletteki kişi listesi (yalnız kodu tanımlı + aktif kişiler; ad + avatar)
+    if (action === 'users') {
+      const { data: users, error: listErr } = await admin.rpc('kiosk_list_users', { p_device_id: dev.id });
+      if (listErr) return json({ ok: false, error: 'server_error' });
+      return json({ ok: true, users: users ?? [] });
+    }
+
+    // 2) Seçilen kişi + kod → doğrulama (kişi + cihaz hız-sınırlı; service_role RPC).
+    //    Kişi seçimi ZORUNLU: yalnız-kod girişte aynı kodu seçen iki kişi çakışıyordu.
+    const userIdIn = String(body?.user_id ?? '').trim();
+    const code = String(body?.code ?? '').trim();
+    if (!/^[0-9a-f-]{36}$/i.test(userIdIn)) return json({ ok: false, error: 'user_required' });
+    if (!/^[0-9]{6}$/.test(code)) return json({ ok: false, error: 'invalid_input' });
+
+    const { data: res, error: resolveErr } = await admin.rpc('kiosk_resolve_user', {
       p_device_id: dev.id,
+      p_user_id: userIdIn,
       p_code: code,
     });
-    if (resolveErr || !userId) {
-      const msg = String(resolveErr?.message ?? '');
-      const reason = /device_locked/.test(msg) ? 'device_locked'
-        : /user_locked/.test(msg) ? 'user_locked'
-        : /device_invalid/.test(msg) ? 'device_invalid'
-        : 'no_match';
-      return json({ ok: false, error: reason });
-    }
+    if (resolveErr || !res) return json({ ok: false, error: 'server_error' });
+    const r = res as { ok: boolean; user_id?: string; error?: string };
+    if (!r.ok || !r.user_id) return json({ ok: false, error: r.error ?? 'no_match' });
+    const userId = r.user_id;
 
     // 3) Kullanıcı aktif mi? (kod eşleşse de pasif/onaysızsa giriş yok)
     const { data: prof } = await admin
@@ -71,7 +81,7 @@ Deno.serve(async (req: Request) => {
     const tokenHashOtp = (link as any)?.properties?.hashed_token;
     if (linkErr || !tokenHashOtp) return json({ ok: false, error: 'server_error' });
 
-    return json({ ok: true, email, token_hash: tokenHashOtp });
+    return json({ ok: true, token_hash: tokenHashOtp });
   } catch (_e) {
     return json({ ok: false, error: 'server_error' });
   }

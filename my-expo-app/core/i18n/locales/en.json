@@ -390,7 +390,7 @@
       },
       "general": {
         "label": "General",
-        "sub": "Language, time zone, format"
+        "sub": "Theme, language and calendar"
       },
       "users": {
         "label": "Users",
@@ -414,7 +414,7 @@
       },
       "finance": {
         "label": "Finance",
-        "sub": "Currency, tax and payment reminders"
+        "sub": "Currency, VAT, billing details, reminders"
       },
       "currency": {
         "label": "Exchange rates",
@@ -430,11 +430,11 @@
       },
       "workflows": {
         "label": "Workflows",
-        "sub": "Production flow designer"
+        "sub": "Stations, flow design and rules"
       },
       "mycode": {
-        "label": "My Login Code",
-        "sub": "Tablet login code (PIN)"
+        "label": "Tablet Login",
+        "sub": "Login code and tablet management"
       },
       "devices": {
         "label": "Tablets",
@@ -451,6 +451,14 @@
       "implants": {
         "label": "Implant Brands",
         "sub": "Brand and model list"
+      },
+      "equipment": {
+        "label": "Equipment",
+        "sub": "Devices, fixed assets and scanners"
+      },
+      "laboratory": {
+        "label": "Laboratory",
+        "sub": "Identity, branding, region, orders and privacy"
       }
     },
     "modules": {

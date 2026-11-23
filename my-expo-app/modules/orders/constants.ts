@@ -69,7 +69,7 @@ export const STATUS_CONFIG: Record<string, StatusConfig> = {
   },
   // Yeni: iş aktif istasyonda — tüm stage'ler bitince otomatik kalite_kontrol'e geçer
   asamada: {
-    label: 'Üretimde',
+    label: 'Üretim Aşamasında',
     color: '#D97706',
     bgColor: '#FEF3C7',
     next: 'kalite_kontrol',
@@ -212,7 +212,9 @@ export function isImplantWorkType(workType?: string | null): boolean {
 
 export const IMPLANT_SYSTEMS = ['Straumann', 'Nobel', 'Osstem', 'Zimmer', 'Dentsply', 'Megagen', 'Diğer'] as const;
 export const IMPLANT_TYPES   = ['Bone Level', 'Tissue Level', 'Mini', 'Diğer'] as const;
-export const ABUTMENT_TYPES  = ['Anatomik', 'Düz', 'Açılı (Angled)', 'Ti-base', 'Zirkonyum'] as const;
+export const ABUTMENT_TYPES  = ['Kişiye özel (Custom)', 'Anatomik', 'Düz', 'Açılı (Angled)', 'Ti-base', 'Zirkonyum'] as const;
+/** Platform / bağlantı çapı için hızlı seçimler — kesin değer serbest metinle yazılır. */
+export const IMPLANT_PLATFORMS = ['NP (Dar)', 'RP (Standart)', 'WP (Geniş)'] as const;
 export const SCREW_TYPES     = ['Multi-unit', 'Tekli', 'Hex'] as const;
 export const REMOVABLE_MATS  = ['Akrilik', 'Krom-Kobalt', 'Flexible (Valplast)', 'Diğer'] as const;
 export const CROWN_MATERIALS = ['Monolitik', 'Katmanlı (Layered)'] as const;

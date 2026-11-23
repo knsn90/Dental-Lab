@@ -123,6 +123,9 @@ export interface ImplantDetail {
   /** Markanın modeli (Straumann → "BLX"); isteğe bağlı, lab kataloğundan seçilir. */
   model?: string;
   type: string;
+  /** Platform / bağlantı çapı (ör. "RP (Standart)", "RC 4.1"). Custom abutment
+   *  tasarımı için kritik; isteğe bağlı serbest metin. */
+  platform?: string;
   abutment: string;
   screw: string;
 }

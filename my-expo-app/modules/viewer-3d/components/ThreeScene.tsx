@@ -14,7 +14,7 @@
  *   • Çok dosya birlikte yüklenirken paralel fetch
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, ActivityIndicator, Platform, Pressable } from 'react-native';
 import * as THREE from 'three';
 import type { ViewerFile, LayerStyle, Measurement, CutAxis } from '../types';
 import { loadGeometry } from '../lib/loaders';
@@ -26,6 +26,8 @@ import { computeGroupOrientation } from '../lib/orient';
 import { analyzeMesh, type MeshDiagnostics } from '../lib/meshDiagnostics';
 import { applyPreset, applyPresetSmooth, type CameraPreset } from '../lib/cameraPresets';
 import { useViewerTheme } from '../lib/viewerTheme';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { X } from '../../../core/ui/icons';
 import { createPerfMonitor, downsampleGeometry, type PerfStats } from '../lib/perfMonitor';
 import { MeshBVH } from 'three-mesh-bvh';
 import {
@@ -88,6 +90,8 @@ interface Props {
   autoAlign?: boolean;
   /** S4: mesh diagnostics callback — yükleme sonrası parent'a haber ver */
   onDiagnostics?: (fileId: string, diag: MeshDiagnostics) => void;
+  /** Yüklenemeyen dosya id'leri değişince — başlıktaki sayı doğru kalsın. */
+  onLoadErrorsChange?: (fileIds: string[]) => void;
 
   // ── 3D kalem (tarama üzerine not) ─────────────────────────────────────────
   /** Kalem aktifken kamera kontrolü kapanır, sürükleme çizgi çizer. */
@@ -117,7 +121,7 @@ interface MeshEntry {
 }
 
 export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function ThreeScene(
-  { files, onThumbnail, layerStyles, bg = 0x0e0e0e, measureMode, measurements = [], onAddMeasurement, cutAxis = 'none', cutPosition = 0, showGrid = false, xrayMode = false, autoAlign = false, onDiagnostics,
+  { files, onThumbnail, layerStyles, bg = 0x0e0e0e, measureMode, measurements = [], onAddMeasurement, cutAxis = 'none', cutPosition = 0, showGrid = false, xrayMode = false, autoAlign = false, onDiagnostics, onLoadErrorsChange,
     penMode = false, penKind = 'stroke', penColor = '#DC2626', penWidth = 0.35, onPenCapture,
     annotations = [], annotationsVisible = true }: Props,
   ref,
@@ -131,12 +135,23 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
 
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // "Tekrar dene" — dosya eşitleme efektini yeniden tetikler; yüklenemeyen
+  // dosyalar meshesRef'te olmadığı için yeniden yüklenir.
+  const [retryTick, setRetryTick] = useState(0);
+  const [errorsDismissed, setErrorsDismissed] = useState(false);
+  const errorKey = Object.keys(errors).sort().join('|');
+  useEffect(() => {
+    onLoadErrorsChange?.(errorKey ? errorKey.split('|') : []);
+    if (errorKey) setErrorsDismissed(false);   // yeni hata gelirse şerit yeniden görünsün
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [errorKey]);
   const [initError, setInitError] = useState<string | null>(null);
   const [stats, setStats] = useState<PerfStats>({ fps: 60, triCount: 0, meshCount: 0 });
   // Küçük resim tek sefer gönderilir (dosya değişince sıfırlanır).
   const thumbSentRef = useRef(false);
   const perfRef = useRef<ReturnType<typeof createPerfMonitor> | null>(null);
   const T = useViewerTheme();
+  const isDarkUI = useThemeModeStore((st) => st.resolvedDark);
 
   // Sahnede duran not nesneleri: id → { obj, sig }. Fark-tabanlı güncelleme
   // için (her değişimde hepsini yeniden kurmak yanıp sönmeye yol açıyordu).
@@ -406,6 +421,10 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
 
         group.add(mesh);
         meshesRef.current.push({ fileId: file.id, mesh });
+        setErrors(prev => {
+          if (!(file.id in prev)) return prev;
+          const next = { ...prev }; delete next[file.id]; return next;
+        });
 
         // Mesh diagnostics — yükleme sonrası kalite analizi (async-ish, non-blocking)
         if (onDiagnostics) {
@@ -632,7 +651,7 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
     // autoAlign değişince geometriler yeniden işlenmeli — diff effect zaten
     // var olan meshleri korur, autoAlign değiştiğinde hepsini temizle + reload
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files.map(f => f.id).join('|'), autoAlign]);
+  }, [files.map(f => f.id).join('|'), autoAlign, retryTick]);
 
   // ── Style sync — visibility/opacity/color/wireframe/offsetY ──
   useEffect(() => {
@@ -1370,26 +1389,59 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
         </View>
       )}
 
-      {Object.keys(errors).length > 0 && (
+      {Object.keys(errors).length > 0 && !errorsDismissed && (
+        // FPS göstergesinin (sol alt, bottom 12) ÜSTÜNDE durur — eskiden ona biniyordu.
         <View style={{
-          position: 'absolute', bottom: 14, left: 14, right: 14,
+          position: 'absolute', bottom: 52, left: 14, right: 14,
+          flexDirection: 'row', alignItems: 'center', gap: 10,
           paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12,
-          backgroundColor: 'rgba(220,38,38,0.18)',
+          backgroundColor: isDarkUI ? 'rgba(127,29,29,0.85)' : '#FEF2F2',
           borderWidth: 1, borderColor: 'rgba(220,38,38,0.4)',
         } as any}>
-          <Text style={{ color: '#DC2626', fontSize: 11.5, fontWeight: '700', marginBottom: 4 }}>
-            {Object.keys(errors).length} dosya yüklenemedi
-          </Text>
-          {Object.entries(errors).slice(0, 2).map(([id, msg]) => {
-            const f = files.find(x => x.id === id);
-            return (
-              <Text key={id} style={{ color: '#B91C1C', fontSize: 10.5 }} numberOfLines={1}>
-                · {f?.name ?? id}: {msg}
-              </Text>
-            );
-          })}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: isDarkUI ? '#FCA5A5' : '#DC2626', fontSize: 11.5, fontWeight: '700', marginBottom: 4 }}>
+              {Object.keys(errors).length} dosya yüklenemedi
+            </Text>
+            {Object.entries(errors).slice(0, 2).map(([id, msg]) => {
+              const f = files.find(x => x.id === id);
+              return (
+                <Text key={id} style={{ color: isDarkUI ? '#FECACA' : '#B91C1C', fontSize: 10.5 }} numberOfLines={1}>
+                  · {f?.name ?? id}: {friendlyLoadError(msg)}
+                </Text>
+              );
+            })}
+          </View>
+          {!anyLoading && (
+            <Pressable
+              onPress={() => { setErrors({}); setRetryTick(t => t + 1); }}
+              accessibilityLabel="Tekrar dene"
+              style={({ hovered }: any) => ({
+                paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+                backgroundColor: hovered ? '#B91C1C' : '#DC2626',
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              })}
+            >
+              <Text style={{ color: '#FFFFFF', fontSize: 11.5, fontWeight: '700' }}>Tekrar dene</Text>
+            </Pressable>
+          )}
+          <Pressable
+            onPress={() => setErrorsDismissed(true)}
+            hitSlop={6}
+            accessibilityLabel="Kapat"
+            style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+          >
+            <X size={13} color={isDarkUI ? '#FECACA' : '#B91C1C'} strokeWidth={2.2} />
+          </Pressable>
         </View>
       )}
     </View>
   );
 });
+
+/** Ham ağ hatasını kullanıcı diline çevirir ("Failed to fetch" teknik). */
+function friendlyLoadError(msg: string): string {
+  if (/failed to fetch|networkerror|load failed|network request failed/i.test(msg)) return 'bağlantı koptu';
+  if (/HTTP 40[03]/.test(msg)) return 'bağlantının süresi doldu — pencereyi kapatıp yeniden aç';
+  if (/HTTP 404/.test(msg)) return 'dosya depoda bulunamadı';
+  return msg;
+}

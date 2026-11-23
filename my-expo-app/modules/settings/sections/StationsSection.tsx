@@ -601,7 +601,12 @@ function DefaultStationsPreviewModal({
 }
 
 // ── Main Component ──────────────────────────────────────────────────────
-export function StationsSection({ accentColor = '#F5C24B' }: Props) {
+export function StationsSection({ accentColor = '#F5C24B', embedded = false, onChanged }: Props & {
+  /** İş Akışları stüdyosunun içinde: kendi kaydırma kabı ve yatay dolgu yok (dış kap verir). */
+  embedded?: boolean;
+  /** Ekle/düzenle/sil/sırala sonrası — stüdyo kendi istasyon listesini tazeler. */
+  onChanged?: () => void;
+}) {
   const { profile } = useAuthStore();
   const labId = profile?.lab_id ?? profile?.id ?? '';
   const T = useMobileTokens();
@@ -629,6 +634,7 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
   }, [labId]);
 
   useEffect(() => { loadStations(); }, [loadStations]);
+  const afterChange = () => { loadStations(); onChanged?.(); };
 
   // ── Save / Update ───────────────────────────────────────────────────
   async function handleSave(data: FormData) {
@@ -636,18 +642,20 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
     setSaving(true);
 
     if (editing) {
-      const { error } = await supabase
+      const { data: updated, error } = await supabase
         .from('lab_stations')
         .update({
           name: data.name, color: data.color, icon: data.icon,
           is_critical: data.is_critical, is_active: data.is_active,
           sequence_hint: data.sequence_hint,
         })
-        .eq('id', editing.id);
+        .eq('id', editing.id)
+        .select('id');
 
       setSaving(false);
-      if (error) { toast.error('Güncelleme hatası: ' + error.message); }
-      else { toast.success('İstasyon güncellendi.'); setFormVisible(false); loadStations(); }
+      // RLS satırı süzerse hata dönmez, 0 satır döner → o da başarısızlık.
+      if (error || !updated?.length) { toast.error(autoT('İstasyon güncellenemedi. Yetkinizi kontrol edip tekrar deneyin.')); }
+      else { toast.success('İstasyon güncellendi.'); setFormVisible(false); afterChange(); }
     } else {
       const maxHint = stations.reduce((m, s) => Math.max(m, s.sequence_hint), 0);
       const { error } = await supabase.from('lab_stations').insert({
@@ -658,12 +666,9 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
 
       setSaving(false);
       if (error) {
-        const isFK = error.message.includes('lab_profile_id_fkey');
-        const detail = isFK
-          ? `\n\nlab_profile_id "${labId}" profiles tablosunda yok.`
-          : '';
-        toast.error('Ekleme hatası: ' + error.message + detail);
-      } else { toast.success('İstasyon eklendi.'); setFormVisible(false); loadStations(); }
+        if (__DEV__) console.warn('[stations] insert', error);
+        toast.error(autoT('İstasyon eklenemedi. Bağlantınızı kontrol edip tekrar deneyin.'));
+      } else { toast.success('İstasyon eklendi.'); setFormVisible(false); afterChange(); }
     }
   }
 
@@ -679,8 +684,8 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
     if (error) {
       toast.error(error.code === '23503'
         ? 'Bu istasyona bağlı aktif aşamalar var. Önce aşamaları tamamlayın.'
-        : error.message);
-    } else { toast.success('İstasyon silindi.'); loadStations(); }
+        : autoT('İstasyon silinemedi. Tekrar deneyin.'));
+    } else { toast.success('İstasyon silindi.'); afterChange(); }
   }
 
   // ── Reorder ─────────────────────────────────────────────────────────
@@ -693,12 +698,19 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
     const bHint = next[target].sequence_hint;
     next[index]  = { ...next[index],  sequence_hint: bHint };
     next[target] = { ...next[target], sequence_hint: aHint };
+    const prev = stations;
     setStations(next);
 
-    await Promise.all([
-      supabase.from('lab_stations').update({ sequence_hint: bHint }).eq('id', stations[index].id),
-      supabase.from('lab_stations').update({ sequence_hint: aHint }).eq('id', stations[target].id),
+    const res = await Promise.all([
+      supabase.from('lab_stations').update({ sequence_hint: bHint }).eq('id', stations[index].id).select('id'),
+      supabase.from('lab_stations').update({ sequence_hint: aHint }).eq('id', stations[target].id).select('id'),
     ]);
+    if (res.some(r => r.error || !r.data?.length)) {
+      // Yarım kalmış olabilir → sunucudaki sırayı yeniden oku, ekranda yanlış sıra kalmasın.
+      setStations(prev);
+      toast.error(autoT('Sıralama kaydedilemedi. Tekrar deneyin.'));
+      afterChange();
+    } else onChanged?.();
   }
 
   // ── Seed defaults ───────────────────────────────────────────────────
@@ -720,8 +732,8 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
     setSaving(false);
     setPreviewVisible(false);
 
-    if (error) { toast.error('Ekleme hatası: ' + error.message); }
-    else { toast.success(`${toAdd.length} istasyon eklendi.`); loadStations(); }
+    if (error) { toast.error(autoT('İstasyonlar eklenemedi. Tekrar deneyin.')); }
+    else { toast.success(`${toAdd.length} ${autoT('istasyon eklendi.')}`); afterChange(); }
   }
 
   // ── Loading state ───────────────────────────────────────────────────
@@ -735,12 +747,13 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
   }
 
   const existingNames = new Set(stations.map(st => st.name));
+  const Wrap: any = embedded ? View : ScrollView;
 
   return (
-    <ScrollView
-      className="flex-1"
-      contentContainerStyle={{ paddingHorizontal: PAGE_PADDING, paddingTop: 0, paddingBottom: 40 }}
-      showsVerticalScrollIndicator={false}
+    <Wrap
+      {...(embedded
+        ? { style: { paddingBottom: 8 } }
+        : { className: 'flex-1', contentContainerStyle: { paddingHorizontal: PAGE_PADDING, paddingTop: 0, paddingBottom: 40 }, showsVerticalScrollIndicator: false })}
     >
       {/* ── Header row ─────────────────────────────────────── */}
       <View className="flex-row items-center justify-between mb-3">
@@ -948,6 +961,6 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
         saving={saving}
         accentColor={accentColor}
       />
-    </ScrollView>
+    </Wrap>
   );
 }
