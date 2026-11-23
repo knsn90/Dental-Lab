@@ -914,12 +914,27 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
       .map(it => it.name)));
   const requiredProcs = procNamesOf(data?.items as any);
   const lanesRequired = requiredProcs.length > 1;
-  const laneAutoRef = useRef(false);
+  // İşlem kümesi değişince (ör. Düzenle ile sipariş kaydedildi → kalemler yeni
+  // id'lerle geldi) eşleme yeniden kurulur. Önceden yalnız İLK yüklemede kuruluyordu;
+  // düzenlemeden sonra yeni kalemlerin hiçbiri haritada olmadığından hepsi "Şerit 1"
+  // görünüyordu.
+  const procKey = requiredProcs.join('\u0001') + '#' + (data?.items ?? []).map(it => it.id).join(',');
+  const laneAutoRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (loading || laneAutoRef.current) return;
+    if (loading || laneAutoRef.current === procKey) return;
     if (!lanesRequired || activeRows.length === 0) return;
-    laneAutoRef.current = true;
+    laneAutoRef.current = procKey;
+    const itemMap = () => {
+      const m: Record<string, number> = {};
+      (data?.items ?? []).forEach(it => {
+        const idx = requiredProcs.indexOf(it.name);
+        m[it.id] = idx >= 0 ? idx + 1 : 1;
+      });
+      return m;
+    };
+    // Şerit sayısı aynıysa operatörün şerit düzenine dokunma; yalnız kalem eşlemesini yenile.
+    if (laneCount === requiredProcs.length && laneRows.length > 0) { setItemLanes(itemMap()); return; }
     // Her şerit, onaylanan tek-şerit planının kopyasıyla başlar; operatör kendi
     // şeridinden gereksiz istasyonları çıkarır (cam seramikte Sinterleme gibi).
     const base = activeRows.map(r => ({ uid: newLaneUid(), stationId: r.stationId, lane: 1, technicianId: r.technicianId }));
@@ -927,14 +942,9 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
     for (let lane = 2; lane <= requiredProcs.length; lane++) {
       base.forEach(r => rows.push({ uid: newLaneUid(), stationId: r.stationId, lane, technicianId: r.technicianId }));
     }
-    const il: Record<string, number> = {};
-    (data?.items ?? []).forEach(it => {
-      const idx = requiredProcs.indexOf(it.name);
-      il[it.id] = idx >= 0 ? idx + 1 : 1;
-    });
-    setLaneRows(rows); setItemLanes(il); setLaneCount(requiredProcs.length);
+    setLaneRows(rows); setItemLanes(itemMap()); setLaneCount(requiredProcs.length);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, lanesRequired, activeRows.length]);
+  }, [loading, lanesRequired, activeRows.length, procKey]);
 
   // Mevcut aktif aşama sırasını yeniden kullanılabilir şablon olarak kaydet
   const openSaveTemplate = () => {
