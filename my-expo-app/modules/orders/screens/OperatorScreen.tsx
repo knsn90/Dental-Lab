@@ -34,6 +34,7 @@ import { recordStageActivity, completeStageResilient, startStage } from '../api/
 import { StageMaterialModal } from '../components/StageMaterialModal';
 import { ValidationChecklistModal } from '../components/ValidationChecklistModal';
 import { LivingToothChart } from '../components/LivingToothChart';
+import { normalizeConnectors } from '../toothConnectors';
 import { useStationTheme, hexA, type StationPalette } from '../../../core/theme/stationPalette';
 import { getStationDescriptor } from '../stations/registry';
 import type { TimelineStage } from '../components/WorkflowTimeline';
@@ -94,6 +95,8 @@ interface AssignedJob {
   is_urgent:       boolean;
   tooth_count:     number;
   tooth_numbers:   number[];
+  /** Köprü bağlantıları (plan ekranında belirlenir) — salt okunur */
+  tooth_connectors: [number, number][];
   work_type:       string | null;
   shade:           string | null;
   machine_type:    string | null;
@@ -283,7 +286,7 @@ export function OperatorScreen() {
         station:lab_stations(name, color, is_critical),
         work_order:work_orders!work_order_id(
           id, order_number, patient_name, delivery_date,
-          is_urgent, tooth_numbers, work_type, shade,
+          is_urgent, tooth_numbers, tooth_connectors, work_type, shade,
           machine_type, model_type, notes, lab_notes,
           doctor_id
         )
@@ -352,6 +355,7 @@ export function OperatorScreen() {
         is_urgent:       !!r.work_order?.is_urgent,
         tooth_count:     teeth.length,
         tooth_numbers:   teeth,
+        tooth_connectors: normalizeConnectors(r.work_order?.tooth_connectors, teeth),
         work_type:       r.work_order?.work_type ?? null,
         shade:           r.work_order?.shade ?? null,
         machine_type:    r.work_order?.machine_type ?? null,
@@ -1382,6 +1386,7 @@ function FilesAndToothSplit({ job, onFilesChanged }: { job: AssignedJob; onFiles
               activeTooth={activeTooth}
               onToothPress={(fdi) => setActiveTooth(prev => (prev === fdi ? null : fdi))}
               frameless
+              connectors={job.tooth_connectors ?? []}
             />
           </View>
 

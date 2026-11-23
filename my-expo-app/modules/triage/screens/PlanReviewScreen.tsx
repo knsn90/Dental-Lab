@@ -27,6 +27,7 @@ import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import {
   fetchTriageData, matchTemplate, saveTriagePlan, autoAssignTech, isQualified, createTemplate,
   summarizePlanTiming, fmtDuration, fetchAutoTriage, approveTriagePlan, signWorkOrderFile, setOrderItemLanes,
+  saveToothConnectors,
   type TriageStation, type TriageTech, type TriageData, type PlanLine,
 } from '../api';
 import { getStationKind, type StationKind } from '../../orders/stations/registry';
@@ -37,6 +38,10 @@ import { lazyRoute } from '../../../core/_lazyRoute';
 import type { FileFormat } from '../../viewer-3d/types';
 import { unzipToViewer, isArchiveExt } from '../../orders/fileArchive';
 import { LivingToothChart } from '../../orders/components/LivingToothChart';
+import {
+  normalizeConnectors, suggestBridgeConnectors, toggleConnector, connectorGroups, adjacentPairs, CONNECTOR_GREEN,
+  type ToothConnector,
+} from '../../orders/toothConnectors';
 import { FilesList } from '../../orders/components/FilesList';
 import { readImplantInfo, implantLineFor } from '../../orders/implantInfo';
 import type { WorkOrder } from '../../orders/types';
@@ -218,6 +223,43 @@ const rowStyle = (fn: (s: any) => any): any =>
  * kapsayıcıda duruyor — metin ne kadar uzun olursa olsun ortalı kalıyor.
  * Dokunmatikte hover kavramı olmadığı için native'de hiç render edilmiyor.
  */
+/**
+ * Diş şeması altında köprü bağlantı özeti: bağlı gruplar (köprü/blok) çip olarak,
+ * öneri durumu ve kayıt hatası. Grup yoksa yalnız kısa ipucu.
+ */
+function ConnectorSummary({ teeth, connectors, suggested, error, inkSoft, inkFaint }: {
+  teeth: number[]; connectors: ToothConnector[]; suggested: boolean; error: string;
+  inkSoft: string; inkFaint: string;
+}) {
+  const isDark = useThemeModeStore(st => st.resolvedDark);
+  const bridges = connectorGroups(teeth, connectors).filter(g => g.length > 1);
+  // Çip rengi = şemadaki bağlantı noktasıyla aynı exocad yeşili
+  const toneOf = (_g: number[]) => CONNECTOR_GREEN;
+  return (
+    <View style={{ gap: 6 }}>
+      {bridges.length > 0 && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+          {bridges.map(g => (
+            <View key={g.join('-')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: tint(toneOf(g), isDark ? 0.24 : 0.14) }}>
+              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: toneOf(g) }} />
+              <Text style={{ fontSize: 11.5, fontWeight: '600', color: isDark ? '#F7F2E9' : INK[900] }}>{g.join('·')}</Text>
+              <Text style={{ fontSize: 11, color: isDark ? 'rgba(247,242,233,0.7)' : INK[500] }}>{`${autoT('Köprü')} ${g.length} ${autoT('ünite')}`}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+      <Text style={{ fontSize: 11, color: suggested ? inkSoft : inkFaint, textAlign: 'center' }}>
+        {suggested
+          ? autoT('Köprü önerisi · plan kaydedilince işlenir')
+          : autoT('Dişler arasındaki noktaya dokun: köprü / blok olarak bağla')}
+      </Text>
+      {!!error && (
+        <Text style={{ fontSize: 11, color: isDark ? '#FCA5A5' : '#D94B4B', textAlign: 'center' }}>{error}</Text>
+      )}
+    </View>
+  );
+}
+
 function Tip({ label, children, grow, block }: {
   label: string; children: React.ReactNode;
   /** satır içinde tam genişliğe yayılan buton (mobil ana CTA) */
@@ -389,6 +431,45 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   const [addOpen, setAddOpen] = useState(false);                 // "Aşama Ekle" açılır listesi
   const [selProc, setSelProc] = useState<string | null>(null);   // seçili işlem (diş vurgusu)
   const [selTooth, setSelTooth] = useState<number | null>(null); // seçili diş (işlem detayı)
+  // Köprü bağlantıları (exocad konnektörü). DB null → köprü işlemlerinden öneri
+  // gösterilir (connPersisted=false) ve plan kaydedilince yazılır; noktaya
+  // dokunmak anında kaydeder.
+  const [connectors, setConnectors] = useState<ToothConnector[]>([]);
+  const [connPersisted, setConnPersisted] = useState(true);
+  const [connErr, setConnErr] = useState('');
+  useEffect(() => {
+    const ord = data?.order;
+    if (!ord) return;
+    const teethAll = ord.tooth_numbers ?? [];
+    if (ord.tooth_connectors != null) {
+      setConnectors(normalizeConnectors(ord.tooth_connectors, teethAll));
+      setConnPersisted(true);
+      return;
+    }
+    // Öneri: aynı köprü kalemindeki komşu dişler. Kalem yoksa work_type pozisyonel.
+    const its = (data?.items ?? []).filter(it => Array.isArray(it.tooth_numbers) && it.tooth_numbers!.length > 0);
+    const wt = (ord.work_type ?? '').split(/,\s*/).map(x => x.trim()).filter(Boolean);
+    const procsOf = (t: number): string[] => its.length > 0
+      ? its.filter(it => it.tooth_numbers!.includes(t)).map(it => it.name)
+      : (wt.length === teethAll.length ? [wt[teethAll.indexOf(t)]].filter(Boolean) : wt.length === 1 ? wt : []);
+    setConnectors(suggestBridgeConnectors(teethAll, procsOf));
+    setConnPersisted(false);
+  }, [data]);
+  const toggleConn = async (a: number, b: number) => {
+    const prev = connectors;
+    const next = toggleConnector(prev, a, b);
+    setConnectors(next);
+    setConnErr('');
+    const { error: e } = await saveToothConnectors(orderId, next);
+    if (e) { setConnectors(prev); setConnErr(e.message ?? autoT('Bağlantı kaydedilemedi')); return; }
+    setConnPersisted(true);
+  };
+  /** Plan kaydında: henüz yazılmamış öneriyi yaz (hata planı engellemez). */
+  const persistConnectorsIfNeeded = async () => {
+    if (connPersisted) return;
+    const { error: e } = await saveToothConnectors(orderId, connectors);
+    if (!e) setConnPersisted(true);
+  };
   const [autoTriage, setAutoTriage] = useState(false);           // Faz 5c: oto-triaj ayarı
   const [matchedTpl, setMatchedTpl] = useState(false);           // Faz 5c: şablon güvenle eşleşti mi
   // Planı ekran açılırken OTOMATİK şekillendiren kararlar — kullanıcıya söylenir,
@@ -828,6 +909,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
       const { error: rpcErr } = await saveTriagePlan(orderId, lines, laneRows[0]?.technicianId ?? null);
       if (rpcErr) { setSaving(false); setError(rpcErr.message ?? 'Kayıt hatası'); return false; }
       await setOrderItemLanes(orderId, (data?.items ?? []).map(it => ({ id: it.id, lane: itemLaneOf(it.id) })));
+      await persistConnectorsIfNeeded();
       if (opts?.approve) {
         const { error: apErr } = await approveTriagePlan(orderId);
         if (apErr) { setSaving(false); setError(apErr.message ?? 'Onay hatası'); return false; }
@@ -862,6 +944,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
 
     const { error: rpcErr } = await saveTriagePlan(orderId, lines, firstTechId);
     if (rpcErr) { setSaving(false); setError(rpcErr.message ?? 'Kayıt hatası'); return false; }
+    await persistConnectorsIfNeeded();
 
     // Faz 5c: tek-tıkla / oto-triaj → kaydı hemen onayla (ilk aşamayı aktive eder)
     if (opts?.approve) {
@@ -1380,8 +1463,20 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                   onToothPress={(t) => setSelTooth(selTooth === t ? null : t)}
                   accentColor={A}
                   frameless
+                  connectors={connectors}
+                  onConnectorToggle={toggleConn}
                 />
               </View>
+              {adjacentPairs(teeth).length > 0 && (
+                <ConnectorSummary
+                  teeth={teeth}
+                  connectors={connectors}
+                  suggested={!connPersisted && connectors.length > 0}
+                  error={connErr}
+                  inkSoft={HI.inkSoft}
+                  inkFaint={HI.inkFaint}
+                />
+              )}
               {!hasToothProc && (
                 <Text style={{ fontSize: 10.5, color: INK[400], textAlign: 'center', fontStyle: 'italic' }}>
                   Diş-işlem eşlemesi yok — tüm dişler tek renk gösteriliyor.

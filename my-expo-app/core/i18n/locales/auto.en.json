@@ -11184,5 +11184,12 @@
   "model/platform yok": "no model/platform",
   "Şablonla Başlat": "Start with template",
   "Diş, işlem, teslim tarihi gibi sipariş bilgilerini düzelt": "Correct order details such as teeth, procedures and delivery date",
-  "Her işlemin kendi şeridi var; zorunlu ayrımda taşınmaz": "Each procedure has its own lane; it cannot be moved when lanes are required"
+  "Her işlemin kendi şeridi var; zorunlu ayrımda taşınmaz": "Each procedure has its own lane; it cannot be moved when lanes are required",
+  "ünite": "units",
+  "bağla": "connect",
+  "bağlantıyı kaldır": "remove connection",
+  "Bağlantı kaydedilemedi": "Couldn't save the connection",
+  "Bağlantılar kaydedilemedi (yetki)": "Couldn't save connections (permission)",
+  "Köprü önerisi · plan kaydedilince işlenir": "Suggested bridge · applied when the plan is saved",
+  "Dişler arasındaki noktaya dokun: köprü / blok olarak bağla": "Tap the dot between teeth to join them as a bridge / splint"
 }

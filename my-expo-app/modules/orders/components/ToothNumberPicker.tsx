@@ -58,6 +58,17 @@ function ensureToothData(): Promise<void> {
   return toothDataLoading;
 }
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { adjacentPairs, hasConnector, CONNECTOR_GREEN, type ToothConnector } from '../toothConnectors';
+
+// Ark iç merkezleri (viewBox) — bağlantı noktası iki dişin temas noktasından
+// bu merkezin TERSİNE (dış/bukkal taraf) itilir (exocad yerleşimi).
+const UPPER_ARCH_CENTER: [number, number] = [1514, 1750];
+const LOWER_ARCH_CENTER: [number, number] = [1514, 3050];
+const CONNECTOR_OUTSET = 300;   // seçili diş glow halesiyle çakışmasın
+// Dış noktalar için viewBox payı (yalnız connectors verilince): üstte 11-21,
+// altta 41-31 noktaları kırpılmasın.
+const CONNECTOR_PAD_TOP = 150;
+const CONNECTOR_PAD_BOTTOM = 320;
 
 // ── FDI quadrant groups ──────────────────────────────────────────────
 const Q1 = [18, 17, 16, 15, 14, 13, 12, 11]; // upper-right
@@ -123,6 +134,14 @@ interface Props {
    *  - 'none' : aspect korunmaz → dişler çarpık görünebilir
    */
   fit?: 'meet' | 'slice' | 'none';
+  /**
+   * Köprü bağlantıları (exocad konnektörü). Verilmezse hiçbir şey çizilmez —
+   * diğer ekranlar etkilenmez. Yalnız ikisi de `selected` olan komşu dişler.
+   */
+  connectors?: ToothConnector[];
+  /** Verilirse noktalar tıklanabilir (plan ekranı). Yoksa yalnız bağlı çubuklar
+   *  salt okunur çizilir. */
+  onConnectorToggle?: (a: number, b: number) => void;
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -140,6 +159,8 @@ export function ToothNumberPicker({
   forceJawMode,
   containerHeight,
   fit = 'meet',
+  connectors,
+  onConnectorToggle,
 }: Props) {
   const PRIMARY = accentColor ?? C.primary;
   const { width: screenWidth } = useWindowDimensions();
@@ -196,9 +217,14 @@ export function ToothNumberPicker({
   const onlyRight = false;
   void hasQ1; void hasQ2; void hasQ3; void hasQ4;
 
-  const activeVB = jawMode === 'upper' ? UPPER_VB
-                 : jawMode === 'lower' ? LOWER_VB
-                 : FULL_VB;
+  const baseVB = jawMode === 'upper' ? UPPER_VB
+               : jawMode === 'lower' ? LOWER_VB
+               : FULL_VB;
+  // Bağlantı noktaları dişlerin DIŞINDA → yalnız connectors verildiğinde pay ekle.
+  // (Diğer ekranlarda viewBox birebir aynı kalır.)
+  const padTop    = connectors && jawMode !== 'lower' ? CONNECTOR_PAD_TOP : 0;
+  const padBottom = connectors && jawMode !== 'upper' ? CONNECTOR_PAD_BOTTOM : 0;
+  const activeVB = { y: baseVB.y - padTop, h: baseVB.h + padTop + padBottom };
 
   // Çeyrek çene viewBox — tek kadranda seçim varsa orta hattan (11/21 veya 31/41) kes
   // VB_X=-320, VB_W=3720 → merkez x=1540, sağ uç=3400, sol uç=-320
@@ -460,6 +486,52 @@ export function ToothNumberPicker({
     );
   };
 
+  // ── Köprü bağlantıları (konnektör) ─────────────────────────────
+  // Yalnız `connectors` verildiyse. Düzenlenebilir modda (onConnectorToggle)
+  // her komşu-seçili çiftte nokta; salt okunur modda yalnız bağlı çiftler.
+  // exocad tarzı: bağlı değil = gri nokta; bağlı = HER ZAMAN yeşil (diş
+  // rengi ne olursa olsun) — exocad DentalDB'deki konnektör rengi.
+  const CONN_OFF = isDark ? '#686761' : '#B4B2A9';
+  const CONN_ON  = CONNECTOR_GREEN;
+  const connectorSpots = (!connectors || !toothDataReady) ? [] : adjacentPairs(selected)
+    .filter(([a]) => jawMode === 'both' || (jawMode === 'upper') === UPPER_SET.has(a))
+    .map(([a, b]) => {
+      const pa = TOOTH_LABEL_POS[a], pb = TOOTH_LABEL_POS[b];
+      if (!pa || !pb) return null;
+      const on = hasConnector(connectors, a, b);
+      const [cx0, cy0] = UPPER_SET.has(a) ? UPPER_ARCH_CENTER : LOWER_ARCH_CENTER;
+      // Temas noktası: iki diş merkezinin ortası; dışa doğru, çiftin dik
+      // ekseninde (arka dişlerde yana, ön dişlerde öne) itilir.
+      let mx = (pa[0] + pb[0]) / 2, my = (pa[1] + pb[1]) / 2;
+      const dx = pb[0] - pa[0], dy = pb[1] - pa[1], dl = Math.hypot(dx, dy) || 1;
+      let nx = -dy / dl, ny = dx / dl;
+      if (nx * (mx - cx0) + ny * (my - cy0) < 0) { nx = -nx; ny = -ny; }
+      mx += nx * CONNECTOR_OUTSET; my += ny * CONNECTOR_OUTSET;
+      return { a, b, mx, my, on };
+    })
+    .filter(Boolean) as Array<{ a: number; b: number; mx: number; my: number; on: boolean }>;
+
+  // exocad gibi: her zaman yuvarlak nokta — yalnız RENGİ değişir.
+  const renderConnectors = () => connectorSpots.map(({ a, b, mx, my, on }) => {
+    const r = svgPx * 4.5;
+    const nativePress: any = onConnectorToggle && Platform.OS !== 'web'
+      ? { onPressIn: () => onConnectorToggle(a, b) } : {};
+    return (
+      <G key={`conn-${a}-${b}`}>
+        {/* Native dokunma alanı (web'de HTML overlay) */}
+        {onConnectorToggle && Platform.OS !== 'web' && (
+          <Circle cx={mx} cy={my} r={svgPx * 12} fill="rgba(0,0,0,0.001)" {...nativePress} />
+        )}
+        <Circle
+          cx={mx} cy={my} r={r}
+          fill={on ? CONN_ON : CONN_OFF}
+          // @ts-ignore
+          pointerEvents="none"
+        />
+      </G>
+    );
+  });
+
   // Hover tooltip rendered as SVG overlay
   const renderHoverTooltip = () => {
     if (!hoverTooth) return null;
@@ -622,6 +694,7 @@ export function ToothNumberPicker({
           </SvgText>
         )}
 
+        {renderConnectors()}
         {renderHoverTooltip()}
       </Svg>
 
@@ -661,6 +734,29 @@ export function ToothNumberPicker({
               // @ts-ignore — web cursor passthrough
               cursor: 'pointer',
               backgroundColor: 'transparent',
+            }}
+          />
+        );
+      })}
+      {/* Bağlantı noktası tıklama alanları (web) — diş alanlarının ÜSTÜNDE */}
+      {Platform.OS === 'web' && onConnectorToggle && connectorSpots.map(({ a, b, mx, my, on }) => {
+        const dom = svgToDom(mx, my);
+        const size = 22;
+        return (
+          <Pressable
+            key={`conn-hit-${a}-${b}`}
+            onPress={() => onConnectorToggle(a, b)}
+            accessibilityRole="button"
+            accessibilityLabel={`${a}–${b} ${autoT(on ? 'bağlantıyı kaldır' : 'bağla')}`}
+            style={{
+              position: 'absolute',
+              left: dom.x - size / 2,
+              top:  dom.y - size / 2,
+              width: size, height: size, borderRadius: size / 2,
+              // @ts-ignore — web cursor passthrough
+              cursor: 'pointer',
+              backgroundColor: 'transparent',
+              zIndex: 2,
             }}
           />
         );

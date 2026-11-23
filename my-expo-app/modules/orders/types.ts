@@ -28,6 +28,8 @@ export interface WorkOrder {
   lab_notes_visible: boolean;
   tags: string[];
   tooth_numbers: number[];
+  /** Köprü bağlantıları [[a,b],...] — toothConnectors.ts. Eski kayıtlarda yok. */
+  tooth_connectors?: [number, number][] | null;
   work_type: string;
   shade: string | null;
   machine_type: MachineType;

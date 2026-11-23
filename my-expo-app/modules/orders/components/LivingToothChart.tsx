@@ -9,6 +9,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { ToothNumberPicker } from './ToothNumberPicker';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import type { WorkOrder } from '../types';
+import type { ToothConnector } from '../toothConnectors';
 
 interface LivingToothChartProps {
   order:         WorkOrder;
@@ -23,6 +24,10 @@ interface LivingToothChartProps {
   forceJawMode?: 'upper' | 'lower' | 'both';
   /** Per-tooth fill color override — örn: işlem grubuna göre farklı renkler */
   colorMap?: Record<number, string>;
+  /** Köprü bağlantıları — verilmezse çizilmez (bkz. ToothNumberPicker). */
+  connectors?: ToothConnector[];
+  /** Verilirse bağlantı noktaları tıklanabilir (plan ekranı). */
+  onConnectorToggle?: (a: number, b: number) => void;
 }
 
 export function LivingToothChart({
@@ -36,6 +41,8 @@ export function LivingToothChart({
   onToothPress,
   forceJawMode,
   colorMap,
+  connectors,
+  onConnectorToggle,
 }: LivingToothChartProps) {
   const sorted = useMemo(
     () => [...(order.tooth_numbers ?? [])].sort((a, b) => a - b),
@@ -69,6 +76,8 @@ export function LivingToothChart({
           colorMap={colorMap}
           activeTooth={activeTooth}
           onToothPress={onToothPress}
+          connectors={connectors}
+          onConnectorToggle={onConnectorToggle}
         />
       </View>
 

@@ -46,6 +46,7 @@ import { SupportIcon } from '../../../core/ui/SupportIcon';
 import { RowActionsMenu, type RowAction } from '../../../core/ui/RowActionsMenu';
 import { useOrderStages } from '../hooks/useOrderStages';
 import { LivingToothChart } from '../components/LivingToothChart';
+import { normalizeConnectors } from '../toothConnectors';
 import { readImplantInfo, groupImplantTeeth } from '../implantInfo';
 import { LinearProgressX, PercentRingX, StepsTimelineX } from '../../../core/ui/ProgressX';
 import { Bell, Printer, Check, ArrowUpRight, ChevronLeft, ChevronRight, Phone, MapPin, Download, MessageSquare, FileText, Image as ImageIcon, File as FileIcon, RotateCcw, UserCheck, Upload, AlertTriangle, CircleCheck, Circle, Clock, ChevronDown, ChevronUp, ListChecks, Play, Truck, Eye, Trash2, Plus, SkipForward, Pause, Layers, CornerUpLeft, User, History } from '../../../core/ui/icons';
@@ -1047,6 +1048,11 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     photos: [],
   } as unknown as WorkOrder), [allTeeth]);
   const forcedJaw = jawView === 'both' ? undefined : jawView;
+  // Köprü bağlantıları (plan ekranında belirlenir) — burada salt okunur
+  const toothConnectors = useMemo(
+    () => normalizeConnectors((order as any)?.tooth_connectors, allTeeth),
+    [(order as any)?.tooth_connectors, allTeeth],
+  );
 
   // ── Diş renk haritası — order_items'a göre dağıt ──────────────────
   // Birden fazla item varsa her birine farklı renk; tek item / yoksa panelAccent
@@ -1878,6 +1884,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
               onToothPress={(fdi) => setActiveTooth(prev => (prev === fdi ? null : fdi))}
               forceJawMode={forcedJaw}
               frameless
+              connectors={toothConnectors}
             />
           </View>
         }
@@ -3638,6 +3645,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
               onToothPress={(fdi) => setActiveTooth(prev => (prev === fdi ? null : fdi))}
               forceJawMode={forcedJaw}
               frameless
+              connectors={toothConnectors}
             />
 
             <View className="flex-row gap-0.5 p-0.5 rounded-full mt-3.5 self-center" style={{ backgroundColor: softPanelBg }}>

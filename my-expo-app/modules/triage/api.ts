@@ -66,6 +66,8 @@ export interface TriageOrderSummary {
   patient_gender: string | null;
   work_type: string | null;
   tooth_numbers: number[] | null;
+  /** Köprü bağlantıları — null = henüz belirlenmedi (öneri gösterilir). */
+  tooth_connectors?: [number, number][] | null;
   shade: string | null;
   model_type: string | null;
   machine_type: string | null;
@@ -160,7 +162,7 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
   // 1) Sipariş
   const { data: ord } = await supabase
     .from('work_orders')
-    .select('order_number, patient_name, patient_gender, work_type, tooth_numbers, shade, model_type, machine_type, is_urgent, delivery_date, created_at, notes, lab_notes, doctor_id, measurement_type, implant_brand, implant_teeth, implant_details, revision_of_id, continues_order_id')
+    .select('order_number, patient_name, patient_gender, work_type, tooth_numbers, tooth_connectors, shade, model_type, machine_type, is_urgent, delivery_date, created_at, notes, lab_notes, doctor_id, measurement_type, implant_brand, implant_teeth, implant_details, revision_of_id, continues_order_id')
     .eq('id', orderId)
     .maybeSingle();
 
@@ -456,6 +458,19 @@ export async function saveTriagePlan(orderId: string, lines: PlanLine[], firstTe
     p_lines: lines,
     p_first_tech_id: firstTechId,
   });
+}
+
+/** Diş şeması köprü bağlantılarını yaz ([] = bilerek bağlantısız). RLS reddi
+ *  sessiz 0 satır döndürür → hata sayılır, düğmenin yanında gösterilir. */
+export async function saveToothConnectors(orderId: string, connectors: [number, number][]) {
+  const { data, error } = await supabase
+    .from('work_orders')
+    .update({ tooth_connectors: connectors })
+    .eq('id', orderId)
+    .select('id');
+  if (error) return { error };
+  if (!data || data.length === 0) return { error: { message: 'Bağlantılar kaydedilemedi (yetki)' } };
+  return { error: null };
 }
 
 /** Faz 2 (paralel şerit): order_items → lane atamasını yaz. Lab müdürü RLS

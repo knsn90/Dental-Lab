@@ -11184,5 +11184,12 @@
   "model/platform yok": "kein Modell/Plattform",
   "Şablonla Başlat": "Mit Vorlage starten",
   "Diş, işlem, teslim tarihi gibi sipariş bilgilerini düzelt": "Auftragsdaten wie Zähne, Leistungen und Liefertermin korrigieren",
-  "Her işlemin kendi şeridi var; zorunlu ayrımda taşınmaz": "Jede Leistung hat ihre eigene Spur; bei Pflichttrennung nicht verschiebbar"
+  "Her işlemin kendi şeridi var; zorunlu ayrımda taşınmaz": "Jede Leistung hat ihre eigene Spur; bei Pflichttrennung nicht verschiebbar",
+  "ünite": "Einheiten",
+  "bağla": "verbinden",
+  "bağlantıyı kaldır": "Verbindung entfernen",
+  "Bağlantı kaydedilemedi": "Verbindung konnte nicht gespeichert werden",
+  "Bağlantılar kaydedilemedi (yetki)": "Verbindungen konnten nicht gespeichert werden (Berechtigung)",
+  "Köprü önerisi · plan kaydedilince işlenir": "Brückenvorschlag · wird beim Speichern des Plans übernommen",
+  "Dişler arasındaki noktaya dokun: köprü / blok olarak bağla": "Tippe auf den Punkt zwischen den Zähnen, um sie als Brücke / Block zu verbinden"
 }
