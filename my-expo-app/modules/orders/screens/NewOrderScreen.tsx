@@ -60,6 +60,7 @@ import { useSuppressDentyFab, useBottomActionBar } from '../../../core/store/uiO
 import { isRTL } from '../../../core/i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fetchClinics, fetchAllDoctors, createClinic, createDoctor } from '../../clinics/api';
+import { fetchMyClinicDoctors } from '../../clinic/api';
 import { titleCaseTR } from '../../../core/utils/textCase';
 import { toast } from '../../../core/ui/Toast';
 import { ApptDraftEditor, type DraftAppt } from '../prova/ApptDraftEditor';
@@ -1564,7 +1565,8 @@ export function NewOrderScreen({
     const doctorsPromise = doctorMode
       ? Promise.resolve({ data: [] })
       : clinicMode
-        ? supabase.from('my_clinic_doctors').select('id, full_name, phone, avatar_url, clinic_id')
+        // Klinik yetkilisi (hekim olabilir) da listelenir — bkz. fetchMyClinicDoctors.
+        ? fetchMyClinicDoctors((profile as any)?.clinic_id ?? null)
         : fetchAllDoctors();
 
     Promise.all([
@@ -1586,6 +1588,7 @@ export function NewOrderScreen({
           phone: d.phone,
           clinic_id: d.clinic_id,
           clinic: null,
+          is_clinic_admin: !!d.is_clinic_admin,
         })) as unknown as Doctor[];
       } else {
         freshDoctors = (doctorsRes?.data as Doctor[]) ?? [];
@@ -4134,7 +4137,11 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                       <SearchableDropdown
                         label="Diş hekimi"
                         placeholder={allDoctors.length > 0 ? 'Hekimi seçin veya ekleyin' : 'Hekim bulunmuyor — yeni ekleyin'}
-                        options={allDoctors.map(d => ({ id: d.id, label: d.full_name, sublabel: (d as any).phone ?? undefined }))}
+                        options={allDoctors.map(d => ({
+                          id: d.id,
+                          label: d.full_name,
+                          sublabel: [(d as any).is_clinic_admin ? autoT('klinik yetkilisi') : null, (d as any).phone].filter(Boolean).join(' · ') || undefined,
+                        }))}
                         selectedId={form.doctor_id}
                         onSelect={set('doctor_id')}
                         onAddNew={async (name) => { setDoctorModal({ visible: true, prefill: name }); }}

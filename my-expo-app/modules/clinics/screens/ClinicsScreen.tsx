@@ -2462,7 +2462,10 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
           .from('profiles')
           .select('id, full_name, user_type')
           .eq('clinic_id', payload.clinic_id)
-          .in('user_type', ['doctor', 'clinic_admin', 'clinic_secretary'])
+          // Yalnız seçicide GERÇEKTEN listelenen roller (hekim + klinik yetkilisi; lab tarafı
+          // fetchAllDoctors, klinik tarafı fetchMyClinicDoctors). Sekreter hiçbir seçicide
+          // yok → "listeden seçin" demek kullanıcıyı çıkmaza sokuyordu.
+          .in('user_type', ['doctor', 'clinic_admin'])
           .ilike('full_name', finalName.replace(/^(Dr|Dt|Prof|Doç|Opr|Uzm)\.?\s+/i, '%'))
           .limit(1);
         if (dupe && dupe.length) {

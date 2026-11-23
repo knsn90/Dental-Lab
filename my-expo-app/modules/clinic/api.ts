@@ -6,11 +6,58 @@
 import { supabase } from '../../core/api/supabase';
 import { getActiveLabId } from '../../core/store/activeLabStore';
 
-/** Klinik müdürünün kendi kliniğindeki tüm hekimler (RLS otomatik filtreler). */
-export async function fetchMyClinicDoctors() {
-  return supabase
-    .from('my_clinic_doctors')
-    .select('id, full_name, phone, avatar_url, is_active, clinic_id, clinic_name');
+/** Ünvan öneki (Dt./Dr./Prof. …) atılmış, küçük harf ad — aynı kişiyi eşlemek için. */
+function doctorNameKey(name: string | null | undefined): string {
+  return (name ?? '').trim().replace(/^(Dr|Dt|Prof|Doç|Opr|Uzm)\.?\s+/i, '').trim().toLocaleLowerCase('tr');
+}
+
+/**
+ * Klinik müdürünün kendi kliniğindeki tüm hekimler (RLS otomatik filtreler).
+ *
+ * KLİNİK YETKİLİSİ DE HEKİM OLABİLİR: tek hekimli muayenehanede hesabın sahibi
+ * user_type='clinic_admin' olur ve `my_clinic_doctors` view'u yalnız 'doctor'
+ * profillerini + doctors satırlarını verir → liste boş kalıyordu. Hekim ekleme
+ * formu ise aynı kişiyi "zaten kayıtlı, listeden seçin" diye reddediyordu (çıkmaz).
+ * Lab tarafı (clinics/api fetchAllDoctors) bunu zaten yapıyor; burada da kliniğin
+ * aktif yetkilileri eklenir. Aynı adda doctors satırı varsa (ilk siparişte açılır)
+ * yetkili ikinci kez listelenmez.
+ */
+export async function fetchMyClinicDoctors(clinicId?: string | null) {
+  let adminQ = supabase
+    .from('profiles')
+    .select('id, full_name, phone, avatar_url, is_active, clinic_id, doctor_id')
+    .eq('user_type', 'clinic_admin')
+    .eq('is_active', true)
+    .not('clinic_id', 'is', null);
+  if (clinicId) adminQ = adminQ.eq('clinic_id', clinicId);
+
+  const [docRes, adminRes] = await Promise.all([
+    supabase
+      .from('my_clinic_doctors')
+      .select('id, full_name, phone, avatar_url, is_active, clinic_id, clinic_name'),
+    adminQ,
+  ]);
+  if (docRes.error) return docRes;
+
+  const doctors = (docRes.data ?? []) as any[];
+  const ids = new Set(doctors.map(d => d.id));
+  const names = new Set(doctors.map(d => doctorNameKey(d.full_name)));
+  // Yetkili satırları okunamazsa (RLS/ağ) liste eskisi gibi yalnız hekimlerden kurulur.
+  const admins = ((adminRes.error ? [] : adminRes.data) ?? []) as any[];
+  const extra = admins
+    .filter(p => !ids.has(p.id) && !(p.doctor_id && ids.has(p.doctor_id)) && !names.has(doctorNameKey(p.full_name)))
+    .map(p => ({
+      id: p.id,
+      full_name: p.full_name,
+      phone: p.phone,
+      avatar_url: p.avatar_url,
+      is_active: true,
+      clinic_id: p.clinic_id,
+      clinic_name: doctors[0]?.clinic_name ?? null,
+      is_clinic_admin: true,
+    }));
+
+  return { ...docRes, data: [...doctors, ...extra] };
 }
 
 /** Klinik müdürünün kendi kliniğindeki TÜM kullanıcılar (hekim + sekreter + yedek admin). */
