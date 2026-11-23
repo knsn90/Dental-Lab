@@ -7,7 +7,8 @@
  * projede daha önce adres biçimlendiricinin dört kopyaya bölünmesiyle yaşandı.
  *
  * Sağlık Bakanlığı gereği hastanın adı etikete GİTMEZ: şablona yalnız baş
- * harfler verilir. Fiyat, mesajlar, lab iç notu ve imza alanları basılmaz.
+ * harfler verilir. Fiyat, lab iç notu, lab'ın kendi mesajları ve imza alanları
+ * basılmaz. Klinikten gelen yazılı mesajlar "Hekim notları" olarak basılır (A4/A5).
  *
  * Şablon ve QR üreticisi dinamik import ile yükleniyor; yazdırmaya
  * basılmadıkça pakete girmez.
@@ -34,6 +35,50 @@ export interface WorkLabelDocOptions {
   /** Alttaki kutulara basılacak metinler (boşsa kutu elle yazmaya çizgili kalır). */
   labWork?: string | null;
   labNotes?: string | null;
+  /** Hekim notlarını (sipariş notu + klinik mesajları) bas — varsayılan açık. */
+  doctorNotes?: boolean;
+}
+
+// Müşteri (klinik/hekim) tarafı kullanıcı tipleri — yalnız bunların mesajı basılır.
+const CLIENT_TYPES = new Set(['doctor', 'clinic', 'clinic_admin', 'clinic_secretary']);
+// Kağıtta yer: A5'te en yeni 4, A4'te 6 mesaj (her biri en çok 3 satır).
+const MAX_NOTES: Record<LabelSize, number> = { A4: 6, A5: 4, A6: 0 };
+
+/**
+ * Hekim notları: sipariş notu (varsa, en başta) + klinikten gelen yazılı sohbet
+ * mesajları (reddedilenler hariç). Çok mesajda en yeniler basılır; kalan sayı ve
+ * basılamayan ses/dosya sayısı ayrıca döner.
+ */
+export async function collectDoctorNotes(order: WorkOrder, size: LabelSize) {
+  const fmt = new Intl.DateTimeFormat(printLocale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const lines: { who: string; when: string; text: string }[] = [];
+  let audio = 0, files = 0;
+  const { data } = await supabase
+    .from('order_messages')
+    .select('content, created_at, attachment_type, approval_status, external_source, external_sender, sender:profiles!order_messages_sender_id_fkey(full_name, user_type)')
+    .eq('work_order_id', order.id)
+    .order('created_at', { ascending: true });
+  for (const m of (data ?? []) as any[]) {
+    if (m.approval_status === 'rejected') continue;
+    const sender = Array.isArray(m.sender) ? m.sender[0] : m.sender;
+    const fromClient = sender ? CLIENT_TYPES.has(sender.user_type) : !!m.external_source;
+    if (!fromClient) continue;
+    if (m.attachment_type === 'audio') audio++;
+    else if (m.attachment_type) files++;
+    const text = String(m.content ?? '').trim();
+    if (!text) continue;
+    lines.push({
+      who: sender?.full_name || m.external_sender || autoT('Klinik'),
+      when: m.created_at ? fmt.format(new Date(m.created_at)) : '',
+      text,
+    });
+  }
+  const max = MAX_NOTES[size];
+  const more = Math.max(0, lines.length - max);
+  const kept = more > 0 ? lines.slice(-max) : lines;
+  const orderNote = (order.notes ?? '').trim();
+  if (orderNote) kept.unshift({ who: autoT('Sipariş notu'), when: '', text: orderNote });
+  return { lines: kept, more, media: { audio, files } };
 }
 
 type PrintItem = { name: string; quantity: number; tooth_numbers?: number[] | null; notes?: string | null };
@@ -116,6 +161,10 @@ export async function buildOrderPrintDoc(order: WorkOrder, opts: WorkLabelDocOpt
   }
 
   const { teeth, work, ops } = collectWorkRows(order);
+  // Mesajlar okunamazsa iş kağıdı yine basılsın (eski tek not bölümüne düşer).
+  const notes = opts.doctorNotes !== false && opts.size !== 'A6'
+    ? await collectDoctorNotes(order, opts.size).catch(() => null)
+    : null;
 
   return buildWorkLabelHtml({
     size: opts.size,
@@ -134,6 +183,9 @@ export async function buildOrderPrintDoc(order: WorkOrder, opts: WorkLabelDocOpt
     ops,
     labWork: opts.labWork,
     labNotes: opts.labNotes,
+    doctorNotes: notes?.lines,
+    doctorNotesMore: notes?.more,
+    doctorNotesMedia: notes?.media,
     qrSvg: await localQrSvg(opts.qrUrl),
     qrUrl: opts.qrUrl,
     t: autoT,

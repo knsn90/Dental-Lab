@@ -11191,5 +11191,12 @@
   "Bağlantı kaydedilemedi": "Couldn't save the connection",
   "Bağlantılar kaydedilemedi (yetki)": "Couldn't save connections (permission)",
   "Köprü önerisi · plan kaydedilince işlenir": "Suggested bridge · applied when the plan is saved",
-  "Dişler arasındaki noktaya dokun: köprü / blok olarak bağla": "Tap the dot between teeth to join them as a bridge / splint"
+  "Dişler arasındaki noktaya dokun: köprü / blok olarak bağla": "Tap the dot between teeth to join them as a bridge / splint",
+  "Hekim notları": "Doctor notes",
+  "mesaj daha": "more messages",
+  "sesli mesaj": "voice messages",
+  "uygulamada": "in the app",
+  "Sipariş notu": "Order note",
+  "Klinik mesajlarını bas": "Print clinic messages",
+  "Hekimin sohbette yazdığı notlar iş kağıdında \"Hekim notları\" bölümüne basılır; lab mesajları basılmaz": "Notes the doctor wrote in the chat are printed in the \"Doctor notes\" section of the work slip; lab messages are not printed"
 }

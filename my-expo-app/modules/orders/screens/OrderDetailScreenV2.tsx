@@ -335,6 +335,9 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   // İş kağıdının altındaki kutular: uygulamada yazılır, boşsa kutu elle yazmaya çizgili basılır.
   const [labWorkText, setLabWorkText] = useState('');
   const [labNotesText, setLabNotesText] = useState('');
+  // Klinikten gelen sohbet mesajları iş kağıdında "Hekim notları" olarak basılır (varsayılan açık).
+  const [printClientMsgs, setPrintClientMsgs] = useState(true);
+  const printClientMsgsRef = useRef(true);
   const labBoxTimer = useRef<any>(null);
   const [printingLegId, setPrintingLegId] = useState<string | null>(null);   // gönderi fişi hazırlanıyor
   const U = useInkUI();
@@ -2022,6 +2025,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
       const html = await buildOrderPrintDoc(order, {
         size, qrUrl, screenBg: isDark ? '#141312' : '#EEF0F3',
         labWork: boxes.labWork, labNotes: boxes.labNotes,
+        doctorNotes: printClientMsgsRef.current,
       });
       if (req === printReq.current) setPrintPreviewHtml(html);
     } catch (e) {
@@ -2043,6 +2047,12 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     if (which === 'work') setLabWorkText(v); else setLabNotesText(v);
     clearTimeout(labBoxTimer.current);
     labBoxTimer.current = setTimeout(() => { void buildLabelPreview(labelSize, next, true); }, 350);
+  };
+  const toggleClientMsgs = () => {
+    const v = !printClientMsgsRef.current;
+    printClientMsgsRef.current = v;
+    setPrintClientMsgs(v);
+    void buildLabelPreview(labelSize, undefined, true);
   };
   const closePrint = () => {
     printReq.current++;
@@ -4334,6 +4344,28 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                     />
                   </View>
                 ))}
+              </View>
+            ) : null}
+            {allPrintouts && labelSize !== 'A6' ? (
+              <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+                <GlassTooltip title={autoT('Klinik mesajlarını bas')} text={autoT('Hekimin sohbette yazdığı notlar iş kağıdında "Hekim notları" bölümüne basılır; lab mesajları basılmaz')} placement="bottom">
+                  <Pressable
+                    onPress={toggleClientMsgs}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: printClientMsgs }}
+                    accessibilityLabel={autoT('Klinik mesajlarını bas')}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 8, cursor: 'pointer' } as any}
+                  >
+                    <View style={{
+                      width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
+                      borderWidth: 1.5, borderColor: printClientMsgs ? U.ink[900] : U.fieldBorder,
+                      backgroundColor: printClientMsgs ? U.ink[900] : 'transparent',
+                    }}>
+                      {printClientMsgs ? <Check size={12} color={U.onDarkPill} strokeWidth={2.4} /> : null}
+                    </View>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{autoT('Klinik mesajlarını bas')}</Text>
+                  </Pressable>
+                </GlassTooltip>
               </View>
             ) : null}
             {Platform.OS === 'web' && printPreviewHtml ? (

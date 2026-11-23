@@ -13,6 +13,8 @@ import {
   groupFdi, crossLayout, formatLabelDate,
 } from '../modules/orders/lib/workLabel';
 
+export interface DoctorNoteLine { who: string; when: string; text: string }
+
 export interface WorkLabelInput {
   size: LabelSize;
   orderNumber: string;
@@ -39,6 +41,16 @@ export interface WorkLabelInput {
    */
   labWork?: string | null;
   labNotes?: string | null;
+  /**
+   * Hekim notları (A4/A5): sipariş notu + klinikten gelen sohbet mesajları,
+   * eskiden yeniye, zaten kırpılmış. Verilirse eski tek "Hekim notu" bölümünün
+   * yerine basılır. A6'da yer olmadığı için yalnız eski not basılır.
+   */
+  doctorNotes?: DoctorNoteLine[];
+  /** Kırpılan (basılmayan) eski mesaj sayısı → "+N mesaj daha". */
+  doctorNotesMore?: number;
+  /** Basılamayan sesli mesaj / dosya sayıları → tek satır bilgi. */
+  doctorNotesMedia?: { audio: number; files: number };
   /** Hazır QR SVG'si (tercih edilen). Yoksa qrUrl'den dış servis görseli. */
   qrSvg?: string;
   qrUrl?: string;
@@ -152,6 +164,22 @@ function note(p: WorkLabelInput, s: SizeSpec, t: (x: string) => string): string 
     + `<div class="note" style="font-size:${u(s.noteFont)};-webkit-line-clamp:${s.noteLines};line-clamp:${s.noteLines}">${esc(text)}</div></div>`;
 }
 
+function doctorNotesBlock(p: WorkLabelInput, s: SizeSpec, t: (x: string) => string): string {
+  const lines = (p.doctorNotes ?? []).filter(l => l.text.trim());
+  const more = p.doctorNotesMore ?? 0;
+  const media = p.doctorNotesMedia ?? { audio: 0, files: 0 };
+  if (lines.length === 0 && more === 0 && media.audio === 0 && media.files === 0) return '';
+  const extra: string[] = [];
+  if (more > 0) extra.push(`+${more} ${t('mesaj daha')}`);
+  if (media.audio > 0) extra.push(`${media.audio} ${t('sesli mesaj')}`);
+  if (media.files > 0) extra.push(`${media.files} ${t('dosya')}`);
+  return `<div class="hnotes"><span class="lbl">${esc(t('Hekim notları'))}</span><div class="hlist">`
+    + lines.map(l => `<div class="hmsg"><div class="hmeta">${esc(l.who)}${l.when ? ` · ${esc(l.when)}` : ''}</div>`
+      + `<div class="htext" style="font-size:${u(s.noteFont)}">${esc(l.text.trim())}</div></div>`).join('')
+    + (extra.length ? `<div class="hmeta">${esc(extra.join(' · '))} — ${esc(t('uygulamada'))}</div>` : '')
+    + `</div></div>`;
+}
+
 function opsTable(p: WorkLabelInput, t: (x: string) => string): string {
   const rows = p.ops ?? [];
   if (rows.length === 0) return '';
@@ -218,6 +246,11 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .cross .dash{color:#C4C4C4;font-weight:400}
 .hnote{border-top:1px solid #D4D4D4;padding-top:calc(var(--u)*2)}
 .note{line-height:1.4;color:#2C2C2C;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;margin-top:calc(var(--u)*1);white-space:pre-line;overflow-wrap:anywhere}
+.hnotes{border-top:1px solid #D4D4D4;padding-top:calc(var(--u)*2)}
+.hlist{display:flex;flex-direction:column;gap:calc(var(--u)*1.6);margin-top:calc(var(--u)*1.4)}
+.hmsg{display:flex;flex-direction:column;gap:calc(var(--u)*.4);min-width:0}
+.hmeta{font-size:calc(var(--u)*2.3);font-weight:700;color:#6B6B6B;letter-spacing:.02em}
+.htext{line-height:1.4;color:#0A0A0A;white-space:pre-line;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden}
 .ex{display:flex;flex-direction:column;gap:calc(var(--u)*2);margin-top:calc(var(--u)*1)}
 .sec{border-bottom:1px solid #EAEAEA;padding-bottom:calc(var(--u)*1)}
 .tbl{width:100%;border-collapse:collapse;font-size:calc(var(--u)*2.8)}
@@ -251,7 +284,7 @@ export function buildWorkLabelHtml(p: WorkLabelInput): string {
     + dates(p, s, t, locale)
     + work(p, s, t)
     + cross(p, s)
-    + note(p, s, t)
+    + (p.size !== 'A6' && p.doctorNotes ? doctorNotesBlock(p, s, t) : note(p, s, t))
     + (p.size === 'A4' ? opsTable(p, t) : '')
     + labBoxes(p, s, t);
   const stage = p.screenBg ? `<style>:root{--stage:${esc(p.screenBg)}}</style>` : '';

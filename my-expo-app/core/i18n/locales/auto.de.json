@@ -11191,5 +11191,12 @@
   "Bağlantı kaydedilemedi": "Verbindung konnte nicht gespeichert werden",
   "Bağlantılar kaydedilemedi (yetki)": "Verbindungen konnten nicht gespeichert werden (Berechtigung)",
   "Köprü önerisi · plan kaydedilince işlenir": "Brückenvorschlag · wird beim Speichern des Plans übernommen",
-  "Dişler arasındaki noktaya dokun: köprü / blok olarak bağla": "Tippe auf den Punkt zwischen den Zähnen, um sie als Brücke / Block zu verbinden"
+  "Dişler arasındaki noktaya dokun: köprü / blok olarak bağla": "Tippe auf den Punkt zwischen den Zähnen, um sie als Brücke / Block zu verbinden",
+  "Hekim notları": "Notizen des Zahnarztes",
+  "mesaj daha": "weitere Nachrichten",
+  "sesli mesaj": "Sprachnachrichten",
+  "uygulamada": "in der App",
+  "Sipariş notu": "Auftragsnotiz",
+  "Klinik mesajlarını bas": "Kliniknachrichten drucken",
+  "Hekimin sohbette yazdığı notlar iş kağıdında \"Hekim notları\" bölümüne basılır; lab mesajları basılmaz": "Notizen, die der Zahnarzt im Chat geschrieben hat, werden im Abschnitt „Notizen des Zahnarztes“ des Arbeitszettels gedruckt; Labornachrichten werden nicht gedruckt"
 }

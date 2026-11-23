@@ -11191,5 +11191,12 @@
   "Bağlantı kaydedilemedi": "اتصال ذخیره نشد",
   "Bağlantılar kaydedilemedi (yetki)": "اتصال‌ها ذخیره نشد (دسترسی)",
   "Köprü önerisi · plan kaydedilince işlenir": "پیشنهاد بریج · با ذخیرهٔ برنامه اعمال می‌شود",
-  "Dişler arasındaki noktaya dokun: köprü / blok olarak bağla": "روی نقطهٔ بین دندان‌ها بزنید تا به‌صورت بریج / اسپلینت متصل شوند"
+  "Dişler arasındaki noktaya dokun: köprü / blok olarak bağla": "روی نقطهٔ بین دندان‌ها بزنید تا به‌صورت بریج / اسپلینت متصل شوند",
+  "Hekim notları": "یادداشت‌های دندانپزشک",
+  "mesaj daha": "پیام دیگر",
+  "sesli mesaj": "پیام صوتی",
+  "uygulamada": "در برنامه",
+  "Sipariş notu": "یادداشت سفارش",
+  "Klinik mesajlarını bas": "چاپ پیام‌های کلینیک",
+  "Hekimin sohbette yazdığı notlar iş kağıdında \"Hekim notları\" bölümüne basılır; lab mesajları basılmaz": "یادداشت‌هایی که دندانپزشک در گفتگو نوشته، در بخش «یادداشت‌های دندانپزشک» برگه کار چاپ می‌شود؛ پیام‌های لابراتوار چاپ نمی‌شوند"
 }
