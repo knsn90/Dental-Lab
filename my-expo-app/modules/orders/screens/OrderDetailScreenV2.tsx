@@ -2980,7 +2980,12 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             {spotlight && <NeonPulse radius={24} color={spotlight.glow} />}
             {/* Üst sıra — şu an + sorumlu */}
             <View className="p-6 flex-row items-center gap-5 flex-wrap">
-              <PercentRingX value={progressPct} size={88} theme={progressTheme} />
+              <PercentRingX
+                value={progressPct} size={88} theme={progressTheme}
+                // Kart lacivert/koyu; exec temasının yayı (#004B87) zeminle aynı
+                // tondaydı ve görünmüyordu → koyu yüzeyde parlak mavi.
+                {...(progressTheme === 'exec' ? { arcColor: '#7CC4F5', arcDeep: '#38BDF8' } : {})}
+              />
               <View className="flex-1" style={{ minWidth: 160 }}>
                 <Text className="text-[11px] font-semibold uppercase" style={{ letterSpacing: 1.1, color: 'rgba(255,255,255,0.68)' }}>
                   Şu an

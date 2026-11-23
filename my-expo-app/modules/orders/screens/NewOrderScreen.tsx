@@ -51,7 +51,7 @@ import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
 import { useOnboardingStore } from '../../../core/onboarding/onboardingStore';
 import { useTourTarget } from '../../../core/onboarding/useTourTarget';
 import { OnboardingOverlay } from '../../../core/onboarding/OnboardingOverlay';
-import { sendMessage, uploadChatAttachment, AttachmentType } from '../chatApi';
+import { sendMessage, uploadChatAttachment, fetchMessages, AttachmentType } from '../chatApi';
 import { supabase } from '../../../core/api/supabase';
 import { getActiveLabId } from '../../../core/store/activeLabStore';
 import { CURRENCY_META } from '../../../core/money/currency';
@@ -119,6 +119,12 @@ interface ChatMessage {
   fileSize?: number;
   duration?: number;
   ts: string; // ISO
+  /** Düzenlemede sunucudan gelen mevcut mesaj — yeniden gönderilmez, buradan silinmez. */
+  persisted?: boolean;
+  /** Mevcut mesajı giriş yapan kullanıcı mı yazdı (sağ/sol balon). */
+  mine?: boolean;
+  /** Başkasının mesajında gönderen adı. */
+  senderName?: string;
 }
 
 // ── Attached file model ──────────────────────────────────────────────────────
@@ -1026,6 +1032,27 @@ export function NewOrderScreen({
           });
         }
       } catch { /* ekler yüklenemese de düzenleme çalışsın */ }
+      // Mevcut sohbet — düzenlemede mesaj kutusu boş görünmesin. Yalnız
+      // gösterilir; kayıtta tekrar gönderilmez (persisted).
+      try {
+        const { data: msgs } = await fetchMessages(editOrderId);
+        base.chat_messages = ((msgs ?? []) as any[])
+          .filter((m) => m?.approval_status !== 'rejected')
+          .map((m): ChatMessage => {
+            const at = m.attachment_type as string | null;
+            const type: ChatMessage['type'] = !m.attachment_url ? 'text'
+              : at === 'image' ? 'image' : at === 'audio' ? 'voice' : 'file';
+            return {
+              id: m.id, type, text: m.content || undefined,
+              uri: m.attachment_url || undefined,
+              fileName: m.attachment_name || undefined,
+              fileSize: m.attachment_size ?? undefined,
+              ts: m.created_at, persisted: true,
+              mine: !!profile?.id && m.sender_id === profile.id,
+              senderName: m.sender?.full_name || m.external_sender || undefined,
+            };
+          });
+      } catch { /* mesajlar yüklenemese de düzenleme çalışsın */ }
       if (!alive) return;
       setForm(base);
       setEditOrderRow({ triaged_at: p.triaged_at, status: p.status });
@@ -2602,6 +2629,70 @@ export function NewOrderScreen({
     return { added, removed, failed, keptOnServer };
   };
 
+  // Formda yazılan (henüz kaydedilmemiş) sohbet mesajlarını order_messages'a yazar.
+  // Yeni siparişte ve düzenlemede ortak; mevcut (persisted) mesajlar atlanır.
+  const persistChatMessages = async (orderId: string) => {
+    if (!profile?.id) return;
+    console.log('[chat-persist] starting loop, total messages:', form.chat_messages.length, 'order:', orderId);
+    let chatPersistFailures = 0;
+    let chatPersistSuccess = 0;
+    for (const m of form.chat_messages) {
+      if (m.persisted) continue;
+      try {
+        if (m.type === 'text') {
+          if (m.text?.trim()) {
+            const res = await sendMessage(orderId, profile!.id, m.text.trim());
+            if ((res as any)?.error) {
+              chatPersistFailures++;
+              console.error('[chat-persist] sendMessage TEXT error', { msgId: m.id, error: (res as any).error, hint: (res as any).error?.hint, code: (res as any).error?.code });
+              toast.error(`Mesaj kaydedilemedi: ${(res as any).error?.message ?? 'bilinmeyen hata'}`);
+            } else {
+              chatPersistSuccess++;
+              console.log('[chat-persist] sendMessage TEXT OK', m.id);
+            }
+          }
+        } else if (m.uri) {
+          // Voice / file / image — blob'a çevir, upload et, sonra send
+          const response = await fetch(m.uri);
+          const blob     = await response.blob();
+          const ext      = m.type === 'image' ? 'jpg'
+                         : m.type === 'voice' ? 'webm'
+                         : 'bin';
+          const fileName = m.fileName ?? `${m.type}-${m.id}.${ext}`;
+          const upRes    = await uploadChatAttachment(blob, orderId, fileName);
+          if (upRes.url) {
+            const attachmentType: AttachmentType =
+              m.type === 'image' ? 'image' :
+              m.type === 'voice' ? 'audio' :
+                                   'file';
+            const res = await sendMessage(orderId, profile!.id, m.text ?? '', {
+              url: upRes.url,
+              type: attachmentType,
+              name: fileName,
+              size: m.fileSize,
+            });
+            if ((res as any)?.error) {
+              chatPersistFailures++;
+              console.warn('[chat-persist] sendMessage with attach error', m.id, (res as any).error);
+            }
+          } else {
+            chatPersistFailures++;
+            console.warn('[chat-persist] upload failed', m.id, upRes.error);
+          }
+        }
+      } catch (e) {
+        chatPersistFailures++;
+        console.warn('[chat-persist] failed for message', m.id, e);
+      }
+    }
+    console.log('[chat-persist] done. success:', chatPersistSuccess, 'failures:', chatPersistFailures);
+    if (chatPersistFailures > 0) {
+      toast.error(`${chatPersistFailures} mesaj kaydedilemedi. Sipariş detayından tekrar yazabilirsiniz.`);
+    } else if (chatPersistSuccess > 0) {
+      toast.success(`${chatPersistSuccess} mesaj kaydedildi`);
+    }
+  };
+
   // ── DÜZENLEME kaydet — yeni oluşturmaz, mevcut siparişi günceller ──
   // Kalemler yeni-sipariş ile AYNI kodlamayla üretilir (opGroupMap + notes: "Marka:…·Renk:…")
   // ki tekrar düzenlemede prefill parse'ı bozulmasın. Ekler/ses/sohbet düzenlemede korunur
@@ -2770,6 +2861,8 @@ export function NewOrderScreen({
     else if (apptChanges > 0 && requestMode) toast.info(autoT('Randevu değişikliği lab onayına gönderildi'));
 
     const att = await persistEditAttachments(editOrderId, adminEdit);
+    // Düzenlemede yazılan yeni mesajlar da kaydedilsin (önceden sessizce düşüyordu).
+    await persistChatMessages(editOrderId);
     setLoading(false);
     if (att.failed > 0) toast.error(`${att.failed} dosya kaydedilemedi`);
     if (att.keptOnServer > 0) toast.info(`${att.keptOnServer} dosya yalnız lab tarafından silinebilir — siparişte kalacak.`);
@@ -3167,63 +3260,7 @@ export function NewOrderScreen({
     // ─── Form'da yazılan chat mesajlarını order_messages tablosuna persist et ──
     // Yeni iş emrindeki sohbet, sipariş açıldıktan sonra detay sayfasında
     // ve mesaj kutusunda dahil olan herkesin panelinde görünmeli.
-    console.log('[chat-persist] starting loop, total messages:', form.chat_messages.length, 'order:', order.id);
-    let chatPersistFailures = 0;
-    let chatPersistSuccess = 0;
-    for (const m of form.chat_messages) {
-      try {
-        if (m.type === 'text') {
-          if (m.text?.trim()) {
-            const res = await sendMessage(order.id, profile.id, m.text.trim());
-            if ((res as any)?.error) {
-              chatPersistFailures++;
-              console.error('[chat-persist] sendMessage TEXT error', { msgId: m.id, error: (res as any).error, hint: (res as any).error?.hint, code: (res as any).error?.code });
-              toast.error(`Mesaj kaydedilemedi: ${(res as any).error?.message ?? 'bilinmeyen hata'}`);
-            } else {
-              chatPersistSuccess++;
-              console.log('[chat-persist] sendMessage TEXT OK', m.id);
-            }
-          }
-        } else if (m.uri) {
-          // Voice / file / image — blob'a çevir, upload et, sonra send
-          const response = await fetch(m.uri);
-          const blob     = await response.blob();
-          const ext      = m.type === 'image' ? 'jpg'
-                         : m.type === 'voice' ? 'webm'
-                         : 'bin';
-          const fileName = m.fileName ?? `${m.type}-${m.id}.${ext}`;
-          const upRes    = await uploadChatAttachment(blob, order.id, fileName);
-          if (upRes.url) {
-            const attachmentType: AttachmentType =
-              m.type === 'image' ? 'image' :
-              m.type === 'voice' ? 'audio' :
-                                   'file';
-            const res = await sendMessage(order.id, profile.id, m.text ?? '', {
-              url: upRes.url,
-              type: attachmentType,
-              name: fileName,
-              size: m.fileSize,
-            });
-            if ((res as any)?.error) {
-              chatPersistFailures++;
-              console.warn('[chat-persist] sendMessage with attach error', m.id, (res as any).error);
-            }
-          } else {
-            chatPersistFailures++;
-            console.warn('[chat-persist] upload failed', m.id, upRes.error);
-          }
-        }
-      } catch (e) {
-        chatPersistFailures++;
-        console.warn('[chat-persist] failed for message', m.id, e);
-      }
-    }
-    console.log('[chat-persist] done. success:', chatPersistSuccess, 'failures:', chatPersistFailures);
-    if (chatPersistFailures > 0) {
-      toast.error(`${chatPersistFailures} mesaj kaydedilemedi. Sipariş detayından tekrar yazabilirsiniz.`);
-    } else if (chatPersistSuccess > 0) {
-      toast.success(`${chatPersistSuccess} mesaj kaydedildi`);
-    }
+    await persistChatMessages(order.id);
 
     // Hastanın randevuları — yeni sipariş planlama öncesi olduğu için sunucu doğrudan yazar.
     if (appts.length > 0) {
@@ -5561,7 +5598,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
               <ChatBox
                 messages={form.chat_messages}
                 onAdd={(msg) => { console.log('[NewOrderScreen.onAdd] received msg', msg.id, 'type:', msg.type); setForm(f => { const next = { ...f, chat_messages: [...f.chat_messages, msg] }; console.log('[NewOrderScreen.onAdd] new chat_messages count:', next.chat_messages.length); return next; }); }}
-                onDelete={(id) => setForm(f => ({ ...f, chat_messages: f.chat_messages.filter(m => m.id !== id) }))}
+                onDelete={(id) => setForm(f => ({ ...f, chat_messages: f.chat_messages.filter(m => m.id !== id || m.persisted) }))}
                 accentColor={P}
               />
 
@@ -6160,7 +6197,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
             <ChatBox
               messages={form.chat_messages}
               onAdd={(msg) => { console.log('[NewOrderScreen.onAdd] received msg', msg.id, 'type:', msg.type); setForm(f => { const next = { ...f, chat_messages: [...f.chat_messages, msg] }; console.log('[NewOrderScreen.onAdd] new chat_messages count:', next.chat_messages.length); return next; }); }}
-              onDelete={(id) => setForm(f => ({ ...f, chat_messages: f.chat_messages.filter(m => m.id !== id) }))}
+              onDelete={(id) => setForm(f => ({ ...f, chat_messages: f.chat_messages.filter(m => m.id !== id || m.persisted) }))}
               hideHeader
               accentColor={P}
             />
@@ -9508,7 +9545,8 @@ function MessageBubble({ msg, onDelete, accentColor }: { msg: ChatMessage; onDel
   const _T_cb = useMobileTokens();
   const _isDark_cb = useThemeModeStore(s => s.resolvedDark);
   const cb = useMemo(() => makeCbStyles(P, _T_cb, _isDark_cb), [P, _T_cb, _isDark_cb]);
-  const isSelf = true; // new order form — always self (right side, blue)
+  // Yeni sipariş: hep kendi mesajın. Düzenlemede mevcut mesajlar yazarına göre.
+  const isSelf = msg.persisted ? !!msg.mine : true;
   const fmt = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
   const time = new Date(msg.ts).toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' });
@@ -9516,6 +9554,9 @@ function MessageBubble({ msg, onDelete, accentColor }: { msg: ChatMessage; onDel
   return (
     <View style={isSelf ? cb.msgRow : cb.msgRowLeft}>
       <View style={[cb.bubble, !isSelf && cb.bubbleLeft]}>
+        {!isSelf && !!msg.senderName && (
+          <Text style={[cb.bubbleTime, cb.bubbleTimeLeft, { fontWeight: '700', marginBottom: 2 }]} numberOfLines={1}>{msg.senderName}</Text>
+        )}
         {msg.type === 'text' && (
           <Text style={[cb.bubbleTxt, !isSelf && cb.bubbleTxtLeft]}>{msg.text}</Text>
         )}
@@ -9537,11 +9578,16 @@ function MessageBubble({ msg, onDelete, accentColor }: { msg: ChatMessage; onDel
             </View>
           </View>
         )}
+        {msg.type !== 'text' && !!msg.text?.trim() && (
+          <Text style={[cb.bubbleTxt, !isSelf && cb.bubbleTxtLeft, { marginTop: 6 }]}>{msg.text}</Text>
+        )}
         <View style={cb.bubbleMeta}>
           <Text style={[cb.bubbleTime, !isSelf && cb.bubbleTimeLeft]}>{time}</Text>
-          <TouchableOpacity onPress={onDelete} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-            <AppIcon name={'close' as any} size={10} color={isSelf ? 'rgba(255,255,255,0.6)' : '#CBD5E1'} />
-          </TouchableOpacity>
+          {!msg.persisted && (
+            <TouchableOpacity onPress={onDelete} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <AppIcon name={'close' as any} size={10} color={isSelf ? 'rgba(255,255,255,0.6)' : '#CBD5E1'} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </View>

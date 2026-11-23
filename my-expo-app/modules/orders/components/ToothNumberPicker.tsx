@@ -64,7 +64,52 @@ import { adjacentPairs, hasConnector, CONNECTOR_GREEN, type ToothConnector } fro
 // bu merkezin TERSİNE (dış/bukkal taraf) itilir (exocad yerleşimi).
 const UPPER_ARCH_CENTER: [number, number] = [1514, 1750];
 const LOWER_ARCH_CENTER: [number, number] = [1514, 3050];
-const CONNECTOR_OUTSET = 300;   // seçili diş glow halesiyle çakışmasın
+const CONNECTOR_OUTSET = 300;   // yedek: dış hat okunamazsa sabit uzaklık
+
+// Dişin dış hattının noktaları (yol komutlarının uç + kontrol noktaları) —
+// konnektör noktasını dişin GERÇEK kenarından itmek için. Sabit uzaklık
+// azılarda (büyük diş) noktayı kenara/parıltıya yapıştırıyordu.
+const outlineCache = new Map<number, { pts: Array<[number, number]>; r: number }>();
+function toothOutline(fdi: number): { pts: Array<[number, number]>; r: number } | null {
+  const hit = outlineCache.get(fdi);
+  if (hit) return hit;
+  const d = TOOTH_PATHS[fdi]?.[0];
+  if (!d) return null;
+  const pts: Array<[number, number]> = [];
+  let x = 0, y = 0, sx = 0, sy = 0;
+  const re = /([MmLlHhVvCcSsQqTtZz])|(-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)/g;
+  let cmd = 'M'; let nums: number[] = [];
+  const flush = () => {
+    const rel = cmd === cmd.toLowerCase();
+    const CU = cmd.toUpperCase();
+    const step = CU === 'H' || CU === 'V' ? 1 : CU === 'C' ? 6 : (CU === 'S' || CU === 'Q') ? 4 : 2;
+    for (let i = 0; i + step <= nums.length; i += step) {
+      const g = nums.slice(i, i + step);
+      if (CU === 'H') { x = rel ? x + g[0] : g[0]; }
+      else if (CU === 'V') { y = rel ? y + g[0] : g[0]; }
+      else {
+        for (let k = 0; k < step - 2; k += 2) pts.push(rel ? [x + g[k], y + g[k + 1]] : [g[k], g[k + 1]]);
+        const nx = rel ? x + g[step - 2] : g[step - 2], ny = rel ? y + g[step - 1] : g[step - 1];
+        x = nx; y = ny;
+        if (CU === 'M' && i === 0) { sx = x; sy = y; }
+      }
+      pts.push([x, y]);
+    }
+    nums = [];
+  };
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(d))) {
+    if (m[1]) { flush(); cmd = m[1]; if (cmd === 'Z' || cmd === 'z') { x = sx; y = sy; } }
+    else nums.push(parseFloat(m[2]));
+  }
+  flush();
+  if (pts.length < 3) return null;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const [px, py] of pts) { x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py); }
+  const out = { pts, r: Math.max(x1 - x0, y1 - y0) / 2 };
+  outlineCache.set(fdi, out);
+  return out;
+}
 // Dış noktalar için viewBox payı (yalnız connectors verilince): üstte 11-21,
 // altta 41-31 noktaları kırpılmasın.
 const CONNECTOR_PAD_TOP = 150;
@@ -506,7 +551,25 @@ export function ToothNumberPicker({
       const dx = pb[0] - pa[0], dy = pb[1] - pa[1], dl = Math.hypot(dx, dy) || 1;
       let nx = -dy / dl, ny = dx / dl;
       if (nx * (mx - cx0) + ny * (my - cy0) < 0) { nx = -nx; ny = -ny; }
-      mx += nx * CONNECTOR_OUTSET; my += ny * CONNECTOR_OUTSET;
+      // Dış kenar: iki dişin, temas noktası çevresindeki (teğet yönde ±W)
+      // hat noktalarının normal üzerindeki en dış izdüşümü.
+      const oa = toothOutline(a), ob = toothOutline(b);
+      let outset = CONNECTOR_OUTSET;
+      if (oa && ob) {
+        const tx = dx / dl, ty = dy / dl;
+        const W = svgPx * 16;
+        let ext = -Infinity, extAll = -Infinity;
+        for (const o of [oa, ob]) for (const [px, py] of o.pts) {
+          const along = (px - mx) * nx + (py - my) * ny;
+          extAll = Math.max(extAll, along);
+          if (Math.abs((px - mx) * tx + (py - my) * ty) <= W) ext = Math.max(ext, along);
+        }
+        if (!isFinite(ext)) ext = extAll;
+        // Boşluk: nefes alan hale %8 büyür + parıltı çizgisi + nokta yarıçapı + nefes payı.
+        const haloGrow = 0.08 * Math.max(oa.r, ob.r);
+        outset = ext + haloGrow + SW_MAIN * 2.5 + svgPx * 4.5 + svgPx * 8;
+      }
+      mx += nx * outset; my += ny * outset;
       return { a, b, mx, my, on };
     })
     .filter(Boolean) as Array<{ a: number; b: number; mx: number; my: number; on: boolean }>;

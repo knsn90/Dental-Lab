@@ -326,12 +326,17 @@ export function LinearProgressX({
 export function PercentRingX({
   value: targetValue, size = 200, theme = 'lab',
   weight = '300', animate = true,
-  textColor,
+  textColor, arcColor, arcDeep,
 }: {
   value: number; size?: number; theme?: DsTheme;
   weight?: '200' | '300' | '400' | '500' | '600' | '700';
   animate?: boolean;
   textColor?: string;
+  /** Yay rengi (açık uç). Tema rengi zeminle aynıysa (lacivert kart üstünde
+   *  exec laciverti) yay görünmez → koyu yüzeylerde parlak ton verilir. */
+  arcColor?: string;
+  /** Yay gradyanının koyu ucu (verilmezse arcColor). */
+  arcDeep?: string;
 }) {
   const animatedValue = useCountUp(targetValue, animate ? 1400 : 0);
   const value = animate ? animatedValue : targetValue;
@@ -343,9 +348,9 @@ export function PercentRingX({
   const dash = (value / 100) * c;
   const t = dsTheme(theme);
 
-  const lightColor = t.primary;
-  const deepColor = t.primaryDeep;
-  const id = `prx-${theme}-${targetValue}-${size}`;
+  const lightColor = arcColor ?? t.primary;
+  const deepColor = arcDeep ?? arcColor ?? t.primaryDeep;
+  const id = `prx-${theme}-${arcColor ?? ''}-${targetValue}-${size}`.replace(/#/g, '');
 
   const outerPillColor = lightColor + '22';
   const innerTrackColor = lightColor + '15';
