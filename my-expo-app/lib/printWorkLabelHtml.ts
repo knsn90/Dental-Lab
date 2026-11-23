@@ -280,11 +280,17 @@ export function buildWorkLabelHtml(p: WorkLabelInput): string {
   const fontFamilies = 'family=Inter+Tight:wght@300;400;600;700;800&family=JetBrains+Mono:wght@600;700'
     + (p.rtl ? '&family=Vazirmatn:wght@300;400;600;700;800' : '');
   const sheetStyle = `--lbl:${u(s.lbl)};width:${s.w}mm;height:${s.h}mm;padding:${s.pad}mm`;
+  // Hekim notları basılıyorsa iş başlığı + diş haçı küçülür; yer notlara ve
+  // alttaki kutulara kalır (iri başlık + haç sayfanın üçte birini kaplıyordu).
+  const notesHtml = p.size !== 'A6' && p.doctorNotes ? doctorNotesBlock(p, s, t) : '';
+  const mid: SizeSpec = notesHtml
+    ? { ...s, work: s.work * 0.7, cross: s.cross * 0.72, teeth: s.teeth * 0.85 }
+    : s;
   const body = head(p, s, t)
     + dates(p, s, t, locale)
-    + work(p, s, t)
-    + cross(p, s)
-    + (p.size !== 'A6' && p.doctorNotes ? doctorNotesBlock(p, s, t) : note(p, s, t))
+    + work(p, mid, t)
+    + cross(p, mid)
+    + (notesHtml || (p.size !== 'A6' && p.doctorNotes ? '' : note(p, s, t)))
     + (p.size === 'A4' ? opsTable(p, t) : '')
     + labBoxes(p, s, t);
   const stage = p.screenBg ? `<style>:root{--stage:${esc(p.screenBg)}}</style>` : '';
