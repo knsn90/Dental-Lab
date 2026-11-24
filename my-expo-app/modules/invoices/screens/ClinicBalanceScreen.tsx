@@ -51,6 +51,7 @@ import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { useInvoiceApprovalEnabled } from '../../../core/store/labSettingsStore';
 import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
 import { AnchorMenu } from '../components/AnchorMenu';
+import { ClinicLogoAvatar, useClinicLogos } from '../../clinicSummary/components/ClinicLogoAvatar';
 
 /** Vadesi geçmiş alacak — tek tanım (2026-10-26): kliniğin avansı düşülmüş (v_clinic_balance_ccy.overdue_net);
  *  Özet'teki "hatırlatılacak" listesi ve hatırlatma tutarıyla aynı. Görünüm eskiyse brüt değere düşer. */
@@ -283,6 +284,8 @@ export function ClinicBalanceScreen() {
       }
     });
   }, [allRows, search, seg, sortKey, unbilledByClinic, draftByClinic]);
+  // Satır avatarı: klinik logosu (yoksa diş ikonu) — diğer listelerle aynı.
+  const clinicLogos = useClinicLogos(allRows.map(b => b.clinic_id));
 
   // Hero & footer için per-currency gruplar (KATI — asla toplanmaz)
   // Lab alacağı (tek tanım): yalnız POZİTİF bakiyeler; bir kliniğin avans fazlası başkasının borcunu kapatmaz.
@@ -641,9 +644,7 @@ export function ClinicBalanceScreen() {
                   />
                 );
                 const avatar = (
-                  <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: tone.fg }}>{initialsOf(b.clinic_name)}</Text>
-                  </View>
+                  <ClinicLogoAvatar uri={clinicLogos[b.clinic_id]} tone={tone} />
                 );
 
                 return isDesktop ? (
@@ -874,13 +875,6 @@ export function ClinicBalanceScreen() {
       <EdgeSwipeBack onBack={() => safeBack('/')} />
     </View>
   );
-}
-
-/** Kurum adının baş harfleri ("Dt."/"Dr." öneki atlanır) — satır avatarı. */
-function initialsOf(name: string | null | undefined): string {
-  const words = String(name ?? '').replace(/^(dt|dr|prof|doç)\.?\s+/i, '').trim().split(/\s+/).filter(Boolean);
-  const s = (words[0]?.[0] ?? '') + (words[1]?.[0] ?? '');
-  return (s || '—').toLocaleUpperCase('tr');
 }
 
 // ─── Hero Stat ───────────────────────────────────────────────────────

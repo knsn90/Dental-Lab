@@ -4,11 +4,15 @@
 import React, { useState } from 'react';
 import { View, Text } from 'react-native';
 
+import { ClinicLogoAvatar, useClinicLogos } from '../../clinicSummary/components/ClinicLogoAvatar';
+import { ClinicHoverCard } from '../../clinicSummary/components/ClinicHoverCard';
+import { useClinicSummaryModal } from '../../clinicSummary/components/ClinicSummaryModal';
+
 import { ChevronDown, ChevronRight } from '../../../core/ui/icons';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
-import { MobileTableRowX, MobileTableInitialX, useMobileTableText } from '../../../core/ui/MobileTableX';
+import { MobileTableRowX, useMobileTableText } from '../../../core/ui/MobileTableX';
 import type { ClinicRow } from '../profitBreakdown';
 import { SliceAmount } from './ProfitBreakdownParts';
 
@@ -21,6 +25,9 @@ export function ProfitClinicTable({ rows }: { rows: ClinicRow[] }) {
     if (next.has(key)) next.delete(key); else next.add(key);
     return next;
   });
+  // Klinik logoları (diğer listelerle aynı: logo varsa logo, yoksa diş ikonu).
+  const logos = useClinicLogos(rows.map(r => (r.kind === 'clinic' ? r.key : null)));
+  const clinicModal = useClinicSummaryModal();
 
   return (
     <>
@@ -31,7 +38,14 @@ export function ProfitClinicTable({ rows }: { rows: ClinicRow[] }) {
         return (
           <View key={r.key}>
             <MobileTableRowX isLast={isLast && !isOpen} onPress={() => toggle(r.key)}>
-              <MobileTableInitialX name={r.name ?? autoT('Kliniksiz')} tone={U.chipTones.info} muted={r.kind === 'none'} />
+              <ClinicHoverCard
+                clinicId={r.kind === 'clinic' ? r.key : null}
+                clinicName={r.kind === 'clinic' ? r.name : null}
+                logoUrl={logos[r.key] ?? null}
+                onOpenSummary={r.kind === 'clinic' && clinicModal.enabled ? clinicModal.open : undefined}
+              >
+                <ClinicLogoAvatar uri={logos[r.key]} tone={r.kind === 'none' ? undefined : U.chipTones.info} />
+              </ClinicHoverCard>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={TT.title} numberOfLines={1}>{r.name ?? 'Kliniksiz'}</Text>
                 <Text style={TT.sub} numberOfLines={1}>{`${r.orderCount} ${autoT('sipariş')}`}</Text>
@@ -65,6 +79,8 @@ export function ProfitClinicTable({ rows }: { rows: ClinicRow[] }) {
           </View>
         );
       })}
+      {clinicModal.element}
     </>
   );
 }
+

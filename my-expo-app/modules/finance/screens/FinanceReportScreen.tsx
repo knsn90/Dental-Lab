@@ -77,14 +77,43 @@ const CHIP_TONES = {
  */
 const INCOME  = '#2D9A6B';
 const EXPENSE = '#D94B4B';
+/**
+ * Kesinleşmemiş gelir (taslak fatura) — gelirin AÇIK/kesikli tonu: aynı
+ * anlam ailesi (gelir), ama "henüz kesin değil". Amber yerine yeşilin açığı:
+ * amber uyarı demek, bu bir uyarı değil, beklenen bir ara durum.
+ */
+const UNBILLED = 'rgba(45,154,107,0.38)';
+const UNBILLED_TEXT = '#4E9C7A';
 
 // ── Types ───────────────────────────────────────────────────────────
 interface MonthlySummary {
   month: string;
   currency: string;
+  /** TOPLAM gelir = kesilen + kesinleşmemiş (normalizeRow sonrası). */
   income: number;
   expense: number;
+  /** income − expense (toplam gelir üzerinden). */
   profit: number;
+  /** Kesilmiş fatura geliri (KDV hariç) — Karlılık'la aynı tanım. */
+  issued?: number;
+  /** Kesinleşmemiş: teslim edilmiş işin taslak faturası (KDV hariç, tahmini). */
+  unbilled?: number;
+}
+
+type BaseRow = { month?: string; income: number; expense: number; profit: number; issued?: number; unbilled?: number };
+
+/**
+ * View satırını ekran modeline çevirir. View'da `income` = kesilen, `income_unbilled`
+ * = kesinleşmemiş. Ekran "anlık gelir" sorusunu cevaplar → gelir ikisinin TOPLAMI,
+ * kırılım issued/unbilled alanlarında görünür kalır. Tahakkuk esası: teslim edilen
+ * iş kazanılmış gelirdir; üretimdeki iş sayılmaz.
+ */
+function normalizeRow<T extends { income: any; expense: any; income_unbilled?: any }>(r: T) {
+  const issued   = Number(r.income) || 0;
+  const unbilled = Number(r.income_unbilled) || 0;
+  const expense  = Number(r.expense) || 0;
+  const { income_unbilled: _u, ...rest } = r as any;
+  return { ...rest, issued, unbilled, income: issued + unbilled, expense, profit: issued + unbilled - expense };
 }
 
 interface UpcomingDue {
@@ -128,14 +157,15 @@ export function FinanceReportScreen() {
   const isDesktop = width >= 1024;
   const insets = useSafeAreaInsets();
   const T = useMobileTokens();
-  useBaseCurrency();
+  const baseCcy = useBaseCurrency();
 
   const [tab, setTab] = useState<'rapor' | 'hatirlatma'>('rapor');
   const [range, setRange] = useState<RangeKey>('last_12_months');
 
   // v3: tek tanım (2026-10-26) — birleşik toplam saklı kurla, yaklaşan vadelerde taslak yok.
-  const cacheKey = `finance_report_v3:${range}`;
-  type ReportCache = { summary: MonthlySummary[]; baseSummary?: { month?: string; income: number; expense: number; profit: number }[]; upcoming: UpcomingDue[] };
+  // v4 (2026-11-24): gelir KDV hariç (Karlılık ile aynı) — eski KDV dahil önbellek okunmasın.
+  const cacheKey = `finance_report_v5:${range}`;  // v5: kesinleşmemiş gelir (issued/unbilled)
+  type ReportCache = { summary: MonthlySummary[]; baseSummary?: BaseRow[]; upcoming: UpcomingDue[] };
   const loadCached = (): ReportCache | null => {
     if (typeof window === 'undefined' || !window.localStorage) return null;
     try { const r = window.localStorage.getItem(cacheKey); return r ? JSON.parse(r) : null; } catch { return null; }
@@ -147,14 +177,25 @@ export function FinanceReportScreen() {
   const cached = loadCached();
 
   const [summary, setSummary] = useState<MonthlySummary[]>(cached?.summary ?? []);
-  const [baseSummary, setBaseSummary] = useState<{ month?: string; income: number; expense: number; profit: number }[]>(cached?.baseSummary ?? []);
+  const [baseSummary, setBaseSummary] = useState<BaseRow[]>(cached?.baseSummary ?? []);
   const [upcoming, setUpcoming] = useState<UpcomingDue[]>(cached?.upcoming ?? []);
   const [loading, setLoading] = useState(cached === null);
 
   useEffect(() => {
+    // Dönem değişince önceki dönemin rakamları yeni etiketin altında kalmasın:
+    // önce bu dönemin önbelleğiyle tohumla, yoksa yükleyiciyi göster.
+    // Geç dönen eski istek yeni dönemin üstüne yazmasın (stale guard).
+    let cancelled = false;
     const load = async () => {
       const cachedNow = loadCached();
-      if (cachedNow === null) setLoading(true);
+      if (cachedNow === null) {
+        setLoading(true);
+      } else {
+        setSummary(cachedNow.summary ?? []);
+        setBaseSummary(cachedNow.baseSummary ?? []);
+        setUpcoming(cachedNow.upcoming ?? []);
+        setLoading(false);
+      }
       const { from, to } = getRangeBounds(range);
       // Katı per-currency view; yoksa (migration uygulanmadıysa) eski view'a düş (TRY etiketle)
       const ccyQuery = () => {
@@ -174,21 +215,27 @@ export function FinanceReportScreen() {
         baseQuery(),   // konsolide baz toplam (amount_base → lab baz para birimi)
         supabase.from('v_upcoming_due_invoices').select('*').limit(20),
       ]);
+      if (cancelled) return;
       let sumRows: MonthlySummary[];
       if (!s1.error) {
-        sumRows = (s1.data ?? []) as MonthlySummary[];
+        sumRows = ((s1.data ?? []) as any[]).map(normalizeRow) as MonthlySummary[];
       } else {
-        sumRows = ((sBase.data ?? []) as any[]).map(r => ({ ...r, currency: 'TRY' })) as MonthlySummary[];
+        // Döviz kırılımı yoksa baz özet lab'ın ANA para birimindedir (sabit TRY değil).
+        sumRows = ((sBase.data ?? []) as any[]).map(r => ({ ...normalizeRow(r), currency: getBaseCurrency() })) as MonthlySummary[];
       }
-      const baseRows = (sBase.data ?? []) as { month?: string; income: number; expense: number; profit: number }[];
+      const baseRows = ((sBase.data ?? []) as any[]).map(normalizeRow) as BaseRow[];
       const upRows  = (s2.data ?? []) as UpcomingDue[];
       setSummary(sumRows);
       setBaseSummary(baseRows);
       setUpcoming(upRows);
-      saveCached({ summary: sumRows, baseSummary: baseRows, upcoming: upRows });
+      // Hatalı yanıtı önbelleğe yazma — boş sonuç sonraki açılışta "hareket yok" gibi görünür.
+      if (!sBase.error && !s2.error) {
+        saveCached({ summary: sumRows, baseSummary: baseRows, upcoming: upRows });
+      }
       setLoading(false);
     };
     load();
+    return () => { cancelled = true; };
   }, [range]);
 
   /**
@@ -197,8 +244,11 @@ export function FinanceReportScreen() {
    */
   const byCurrency = useMemo(() => {
     const set = new Set(summary.map(m => m.currency));
+    // Sıra: ana para birimi önce, sonra CCY_ORDER, listede olmayanlar en sonda
+    // (indexOf -1 eskiden bilinmeyen dövizi en BAŞA alıyordu).
+    const rank = (c: string) => (c === baseCcy ? -1 : (CCY_ORDER.indexOf(c) === -1 ? 99 : CCY_ORDER.indexOf(c)));
     return Array.from(set)
-      .sort((a, b) => CCY_ORDER.indexOf(a) - CCY_ORDER.indexOf(b))
+      .sort((a, b) => rank(a) - rank(b))
       .map(ccy => {
         const rows = summary.filter(m => m.currency === ccy);
         return {
@@ -206,9 +256,11 @@ export function FinanceReportScreen() {
           income:  rows.reduce((s, r) => s + Number(r.income),  0),
           expense: rows.reduce((s, r) => s + Number(r.expense), 0),
           profit:  rows.reduce((s, r) => s + Number(r.profit),  0),
+          issued:  rows.reduce((s, r) => s + Number(r.issued ?? r.income), 0),
+          unbilled: rows.reduce((s, r) => s + Number(r.unbilled ?? 0), 0),
         };
       });
-  }, [summary]);
+  }, [summary, baseCcy]);
 
   /**
    * Aylık barların ORTAK ölçeği (para birimi başına dönem maksimumu).
@@ -223,10 +275,13 @@ export function FinanceReportScreen() {
     return m;
   }, [summary]);
 
-  // Konsolide baz toplam (lab baz para biriminde; farklı para birimleri güncel kurla ≈ çevrilir)
-  const baseTotals = baseSummary.reduce(
-    (acc, m) => ({ income: acc.income + Number(m.income), expense: acc.expense + Number(m.expense), profit: acc.profit + Number(m.profit) }),
-    { income: 0, expense: 0, profit: 0 },
+  // Konsolide baz toplam (lab ana para biriminde; gelir saklı kurla, gider gider gününün kuruyla)
+  const baseTotals = baseSummary.reduce<{ income: number; expense: number; profit: number; issued: number; unbilled: number }>(
+    (acc, m) => ({
+      income: acc.income + Number(m.income), expense: acc.expense + Number(m.expense), profit: acc.profit + Number(m.profit),
+      issued: acc.issued + Number(m.issued ?? m.income), unbilled: acc.unbilled + Number(m.unbilled ?? 0),
+    }),
+    { income: 0, expense: 0, profit: 0, issued: 0, unbilled: 0 },
   );
   // Birden fazla para birimi varsa konsolide toplam anlamlı (tek para varsa per-currency = baz).
   const showBaseTotal = new Set(summary.map(m => m.currency)).size > 1;
@@ -242,9 +297,21 @@ export function FinanceReportScreen() {
 
   const periodLabel = RANGE_OPTIONS.find(o => o.key === range)?.label ?? 'Tümü';
 
-  // Beyaz hero başlığı: para birimleri TOPLANMAZ → başlık ilk dövizin netini
-  // gösterir, tam kırılım altındaki ResultCard'larda kalır.
-  const repLead = byCurrency[0] ?? null;
+  // Beyaz hero başlığı. Tek döviz → o dövizin neti. Birden çok döviz →
+  // ANA para biriminde konsolide net (≈, saklı/işlem günü kuruyla).
+  // Eskiden "ilk döviz" gösteriliyordu: EUR ana paralı bir lab'da gelir EUR,
+  // gider TRY olunca başlık TRY satırını alıp −₺1,7M "zarar" yazıyordu —
+  // döviz başına kâr anlamsız, cevap konsolide rakamdır. Döviz kırılımı
+  // altındaki ResultCard'larda olduğu gibi kalır.
+  const heroIsConsolidated = byCurrency.length > 1;
+  const repLead: { currency: Currency; income: number; expense: number; profit: number; issued: number; unbilled: number } | null =
+    byCurrency.length === 0 ? null
+    : heroIsConsolidated ? { currency: baseCcy as Currency, ...baseTotals }
+    : byCurrency[0];
+  // ≈ : kur çevrimi (çok döviz) ya da gelirin bir kısmı tahmini (kesinleşmemiş taslak).
+  const hasUnbilled = !!repLead && Math.abs(repLead.unbilled) > 0.005;
+  const approx = heroIsConsolidated ? '≈ ' : '';
+  const approxNet = heroIsConsolidated || hasUnbilled ? '≈ ' : '';
   const repMargin = repLead && repLead.income > 0
     ? Math.round((repLead.profit / repLead.income) * 100)
     : null;
@@ -294,13 +361,19 @@ export function FinanceReportScreen() {
     let prevFrom: string | null = null;
     let prevTo:   string | null = null;
     if (from && to) {
-      const fDate = new Date(from);
-      const tDate = new Date(to);
-      const lenMs = tDate.getTime() - fDate.getTime();
-      const pTo   = new Date(fDate.getTime() - 1);
-      const pFrom = new Date(pTo.getTime() - lenMs);
-      prevFrom = pFrom.toISOString().slice(0, 10);
-      prevTo   = pTo.toISOString().slice(0, 10);
+      // Aylık özetin `month` sütunu hep ayın 1'i. Önceki dönemi milisaniyeyle
+      // kaydırmak ayın ortasına düşüyordu → "Bu Ay"/"Geçen Ay"da hiçbir satır
+      // eşleşmiyor, "Son 12 Ay"da bir ay eksik kalıyordu. Tam ay sayısıyla kaydır.
+      const [fy, fm] = from.split('-').map(Number);
+      const [ty, tm] = to.split('-').map(Number);
+      const months = (ty - fy) * 12 + (tm - fm) + 1;          // dönemdeki ay sayısı
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const ym = (y: number, m0: number) => {                // m0: 0 tabanlı, taşmalı olabilir
+        const d = new Date(Date.UTC(y, m0, 1));
+        return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`;
+      };
+      prevFrom = `${ym(fy, fm - 1 - months)}-01`;
+      prevTo   = `${ym(fy, fm - 2)}-01`;                       // önceki dönemin son ayı (ay başı)
     }
 
     // Paralel sorgular
@@ -313,7 +386,7 @@ export function FinanceReportScreen() {
         .lte('expense_date', to   || '2999-12-31'),
       // Önceki dönem
       prevFrom && prevTo
-        ? supabase.from('v_monthly_finance_summary').select('income, expense').gte('month', prevFrom).lte('month', prevTo)
+        ? supabase.from('v_monthly_finance_summary').select('income, expense, income_unbilled').gte('month', prevFrom).lte('month', prevTo)
         : Promise.resolve({ data: [] as any[] }),
       // Tahsilat performansı
       supabase
@@ -353,7 +426,8 @@ export function FinanceReportScreen() {
     }));
 
     // Previous period totals
-    const prevRows = (prevRes.data ?? []) as { income: number; expense: number }[];
+    // Aynıyla kıyasla: önceki dönem de TOPLAM gelir (kesilen + kesinleşmemiş).
+    const prevRows = ((prevRes.data ?? []) as any[]).map(normalizeRow) as { income: number; expense: number }[];
     const previousPeriod = prevRows.length > 0
       ? {
           income:  prevRows.reduce((s, r) => s + Number(r.income),  0),
@@ -386,17 +460,23 @@ export function FinanceReportScreen() {
       amount: Number(e.amount_base ?? e.amount ?? 0),
     }));
 
-    const singleCcy = byCurrency.length <= 1;
-    const pdfCurrency = singleCcy ? (byCurrency[0]?.currency ?? getBaseCurrency()) : getBaseCurrency();
+    // Döviz satırları yalnız TEK döviz ANA para birimiyle aynıysa kullanılır;
+    // aksi halde önceki dönem / kategori / en yüksek gider / tahsilat (hepsi ana
+    // parada) ile aynı tabloda farklı döviz karışırdı → konsolide ana para özeti.
+    const singleCcy = byCurrency.length === 0
+      || (byCurrency.length === 1 && byCurrency[0].currency === getBaseCurrency());
+    const pdfCurrency = getBaseCurrency();
     const pdfRows = singleCcy
       ? byMonth.map(mm => ({
           month: mm.month,
           income:  mm.rows.reduce((s, r) => s + Number(r.income), 0),
           expense: mm.rows.reduce((s, r) => s + Number(r.expense), 0),
           profit:  mm.rows.reduce((s, r) => s + Number(r.profit), 0),
+          unbilled: mm.rows.reduce((s, r) => s + Number(r.unbilled ?? 0), 0),
         }))
       : baseSummary.filter(b => !!b.month).map(b => ({
           month: String(b.month), income: Number(b.income) || 0, expense: Number(b.expense) || 0, profit: Number(b.profit) || 0,
+          unbilled: Number(b.unbilled ?? 0),
         }));
 
     const html = buildFinanceReportHtml({
@@ -406,6 +486,7 @@ export function FinanceReportScreen() {
       // ana para birimine SAKLI kurla çevrilmiş aylık özet (v_monthly_finance_summary).
       rows: pdfRows,
       currency: pdfCurrency,
+      unbilledTotal: pdfRows.reduce((s, r: any) => s + Number(r.unbilled ?? 0), 0),
       previousPeriod,
       categoryBreakdown,
       methodBreakdown,
@@ -504,28 +585,34 @@ export function FinanceReportScreen() {
               Prim Motoru hiyerarşisi: kicker (dönem) → 44px net sonuç →
               bağlam cümlesi → sağda 40px stat'lar. Kâr/zarar sinyali zemini
               değil RAKAMI boyar; kart nötr kalır.
-              Para birimleri TOPLANMAZ: başlık ilk dövizin netini gösterir,
-              her dövizin tam kırılımı altındaki ResultCard'larda durur. */}
+              Tek döviz → o dövizin neti; birden çok döviz → ana para
+              biriminde konsolide net (≈). Döviz kırılımı ResultCard'larda. */}
           {byCurrency.length > 0 && (
             <WhiteHero
-              kicker={`Gelir / Gider Raporu · ${periodLabel}`}
+              kicker={`${autoT('Gelir / Gider Raporu')} · ${autoT(periodLabel)}`}
               accent={theme.primary}
               title={
-                <>Net sonuç{' '}
+                <>{autoT('Net sonuç')}{' '}
                   <Text style={{ color: repLead!.profit >= 0 ? CHIP_TONES.success.text : CHIP_TONES.danger.text }}>
-                    {repLead!.profit >= 0 ? '+' : '−'}{formatMoney(Math.abs(repLead!.profit), repLead!.currency, { fractionDigits: 0 })}
+                    {approxNet}{repLead!.profit >= 0 ? '+' : '−'}{formatMoney(Math.abs(repLead!.profit), repLead!.currency, { fractionDigits: 0 })}
                   </Text>
                 </>
               }
               description={
-                `${periodLabel} · gelir ${formatMoney(repLead!.income, repLead!.currency, { fractionDigits: 0 })}` +
-                ` · gider ${formatMoney(repLead!.expense, repLead!.currency, { fractionDigits: 0 })}` +
-                (byCurrency.length > 1 ? ` · ${byCurrency.length} para birimi ayrı raporlanır` : '') +
-                (byMonth.length ? ` · ${byMonth.length} ay` : '')
+                `${autoT(periodLabel)} · ${autoT('gelir')} ${approx}${formatMoney(repLead!.income, repLead!.currency, { fractionDigits: 0 })}` +
+                (hasUnbilled
+                  ? ` (${autoT('kesilen')} ${formatMoney(repLead!.issued, repLead!.currency, { fractionDigits: 0 })}` +
+                    ` + ${autoT('kesinleşmemiş')} ${formatMoney(repLead!.unbilled, repLead!.currency, { fractionDigits: 0 })})`
+                  : '') +
+                ` · ${autoT('gider')} ${approx}${formatMoney(repLead!.expense, repLead!.currency, { fractionDigits: 0 })}` +
+                (heroIsConsolidated ? ` · ${byCurrency.length} ${autoT('para birimi ana para birimine çevrildi; döviz kırılımı aşağıda')}` : '') +
+                (byMonth.length ? ` · ${byMonth.length} ${autoT('ay')}` : '') +
+                ` · ${autoT('gelir KDV hariç')}`
               }
               stats={[
-                { value: formatMoney(repLead!.income,  repLead!.currency, { fractionDigits: 0 }), label: 'Gelir' },
-                { value: formatMoney(repLead!.expense, repLead!.currency, { fractionDigits: 0 }), label: 'Gider' },
+                { value: approx + formatMoney(repLead!.income,  repLead!.currency, { fractionDigits: 0 }), label: 'Gelir' },
+                ...(hasUnbilled ? [{ value: approx + formatMoney(repLead!.unbilled, repLead!.currency, { fractionDigits: 0 }), label: 'Kesinleşmemiş gelir', color: UNBILLED_TEXT }] : []),
+                { value: approx + formatMoney(repLead!.expense, repLead!.currency, { fractionDigits: 0 }), label: 'Gider' },
                 ...(repMargin !== null ? [{ value: `%${repMargin}`, label: 'Marj' }] : []),
               ]}
             />
@@ -633,12 +720,15 @@ function EmptyCard({ icon: Icon, text, tone }: { icon: React.ComponentType<any>;
  * görülür.
  */
 function ResultCard({ data, periodLabel, accent }: {
-  data: { currency: Currency; income: number; expense: number; profit: number };
+  data: { currency: Currency; income: number; expense: number; profit: number; issued?: number; unbilled?: number };
   periodLabel: string;
   accent: string;
 }) {
   const T = useMobileTokens();
   const { currency, income, expense, profit } = data;
+  const unbilled = Number(data.unbilled ?? 0);
+  const issued = Number(data.issued ?? income);
+  const hasUnbilled = Math.abs(unbilled) > 0.005;
   const f = (n: number) => formatMoney(n, currency, { fractionDigits: 0 });
   const sym = CURRENCY_META[currency]?.symbol ?? currency;
 
@@ -654,6 +744,8 @@ function ResultCard({ data, periodLabel, accent }: {
   const span = income + expense;
   const incomeShare  = span > 0 ? (income  / span) * 100 : 0;
   const expenseShare = span > 0 ? (expense / span) * 100 : 0;
+  // Gelir şeridi içinde kesilen (dolu) / kesinleşmemiş (açık) payı
+  const issuedShare   = income > 0 ? Math.max(0, Math.min(100, (issued / income) * 100)) : 100;
 
   return (
     <View style={{ ...cardSolid, backgroundColor: T.card, flex: 1, minWidth: 0, gap: 16 }}>
@@ -682,7 +774,7 @@ function ResultCard({ data, periodLabel, accent }: {
           {autoT('Net Kâr')} · {periodLabel}
         </Text>
         <Text numberOfLines={1} style={{ ...DISPLAY, fontSize: 40, letterSpacing: -1.4, lineHeight: 46, color: netColor }}>
-          {profit > 0 ? '+' : ''}{f(profit)}
+          {hasUnbilled ? '≈ ' : ''}{profit > 0 ? '+' : ''}{f(profit)}
         </Text>
       </View>
 
@@ -690,7 +782,9 @@ function ResultCard({ data, periodLabel, accent }: {
       <View style={{ gap: 10 }}>
         <View style={{ flexDirection: 'row', height: 8, borderRadius: 9999, overflow: 'hidden', backgroundColor: T.hairline, gap: 2 }}>
           {incomeShare > 0 ? (
-            <View style={{ width: `${incomeShare}%` as any, backgroundColor: INCOME, borderRadius: 9999 }} />
+            <View style={{ width: `${incomeShare}%` as any, flexDirection: 'row', borderRadius: 9999, overflow: 'hidden', backgroundColor: UNBILLED }}>
+              <View style={{ width: `${issuedShare}%` as any, backgroundColor: INCOME }} />
+            </View>
           ) : null}
           {expenseShare > 0 ? (
             <View style={{ width: `${expenseShare}%` as any, backgroundColor: EXPENSE, borderRadius: 9999 }} />
@@ -701,6 +795,14 @@ function ResultCard({ data, periodLabel, accent }: {
           <LegendItem color={INCOME}  icon={TrendingUp}   label="Gelir" value={f(income)} />
           <LegendItem color={EXPENSE} icon={TrendingDown} label="Gider" value={f(expense)} />
         </View>
+
+        {/* Gelirin kırılımı — kesinleşmemiş kısım toplamda sayılır ama ayrı yazılır */}
+        {hasUnbilled && (
+          <Text style={{ fontSize: 11, lineHeight: 17, color: T.ink3 }}>
+            {autoT('Kesilen fatura')} {f(issued)} · <Text style={{ color: UNBILLED_TEXT, fontWeight: '600' }}>{autoT('Kesinleşmemiş gelir')} {f(unbilled)}</Text>
+            {' '}{autoT('(teslim edilmiş, faturası kesilmemiş iş — tahmini)')}
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -730,7 +832,7 @@ function LegendItem({ color, icon: Icon, label, value }: {
  * Yaklaşıklık rakamın YANINDA durur (`≈`), açıklamanın dibinde değil.
  * Nitelik veriyle birlikte okunmalı — küçük puntoya gömülmemeli.
  */
-function ConsolidatedStrip({ totals }: { totals: { income: number; expense: number; profit: number } }) {
+function ConsolidatedStrip({ totals }: { totals: { income: number; expense: number; profit: number; unbilled?: number } }) {
   const T = useMobileTokens();
   const loss = totals.profit < 0;
   return (
@@ -755,8 +857,10 @@ function ConsolidatedStrip({ totals }: { totals: { income: number; expense: numb
       <Text style={{ fontSize: 11, color: T.ink3, lineHeight: 17 }}>
         {/* Tutarlar cümleyi parçalara bölüyordu → parçalar ayrı ayrı aranıp
             yarısı Türkçe kalıyordu. Statik kısımlar autoT'den geçer. */}
-        {autoT('Gelir')} {fmtMoney(totals.income)} · {autoT('Gider')} {fmtMoney(totals.expense)}.
-        {' '}{autoT('Farklı para birimleri güncel kurla baz para birimine çevrildi — kur değiştikçe bu rakam da değişir.')}
+        {autoT('Gelir')} {fmtMoney(totals.income)}
+        {Math.abs(Number(totals.unbilled ?? 0)) > 0.005 ? <> ({autoT('kesinleşmemiş')} {fmtMoney(Number(totals.unbilled))})</> : null}
+        {' · '}{autoT('Gider')} {fmtMoney(totals.expense)}.
+        {' '}{autoT('Farklı para birimleri ana para birimine çevrildi: gelir faturanın saklı kuruyla, gider gider gününün kuruyla.')}
       </Text>
     </View>
   );
@@ -815,7 +919,11 @@ function MonthRow({ data, scaleByCcy, isLast, isDesktop }: {
 
             {/* Gelir / Gider barları — anlam renkleriyle, ortak ölçekte */}
             <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 20 : 10 }}>
-              <MiniBar label="Gelir" value={f(income)} pct={incomeW}  color={INCOME} />
+              <MiniBar
+                label="Gelir" value={f(income)} pct={incomeW} color={INCOME}
+                solidShare={income > 0 ? Math.max(0, Math.min(100, (Number(m.issued ?? income) / income) * 100)) : 100}
+                note={Math.abs(Number(m.unbilled ?? 0)) > 0.005 ? `${autoT('Kesinleşmemiş gelir')} ${f(Number(m.unbilled))}` : undefined}
+              />
               <MiniBar label="Gider" value={f(expense)} pct={expenseW} color={EXPENSE} />
             </View>
           </View>
@@ -825,7 +933,12 @@ function MonthRow({ data, scaleByCcy, isLast, isDesktop }: {
   );
 }
 
-function MiniBar({ label, value, pct, color }: { label: string; value: string; pct: number; color: string }) {
+function MiniBar({ label, value, pct, color, solidShare = 100, note }: {
+  label: string; value: string; pct: number; color: string;
+  /** Barın dolu (kesin) payı %; kalanı açık tonla (kesinleşmemiş) çizilir. */
+  solidShare?: number;
+  note?: string;
+}) {
   const T = useMobileTokens();
   return (
     <View style={{ flex: 1, gap: 5 }}>
@@ -835,9 +948,15 @@ function MiniBar({ label, value, pct, color }: { label: string; value: string; p
       </View>
       <View style={{ height: 6, borderRadius: 9999, backgroundColor: T.hairline, overflow: 'hidden' }}>
         {pct > 0 ? (
-          <View style={{ height: 6, borderRadius: 9999, backgroundColor: color, width: `${Math.max(pct, 1.5)}%` as any }} />
+          <View style={{
+            height: 6, borderRadius: 9999, flexDirection: 'row', overflow: 'hidden',
+            backgroundColor: solidShare < 100 ? UNBILLED : color, width: `${Math.max(pct, 1.5)}%` as any,
+          }}>
+            {solidShare < 100 && <View style={{ width: `${solidShare}%` as any, backgroundColor: color }} />}
+          </View>
         ) : null}
       </View>
+      {note ? <Text style={{ fontSize: 10.5, color: UNBILLED_TEXT }}>{note}</Text> : null}
     </View>
   );
 }

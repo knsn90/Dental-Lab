@@ -14,9 +14,12 @@ import { htmlAttrs, printLocale } from '../../core/i18n/printLocale';/**
 
 export interface FinanceMonthRow {
   month: string;       // YYYY-MM-DD (1st of month)
+  /** TOPLAM gelir (kesilen + kesinleşmemiş), KDV hariç */
   income: number;
   expense: number;
   profit: number;
+  /** Bunun kesinleşmemiş (taslak fatura) kısmı */
+  unbilled?: number;
 }
 
 export interface CategoryBreakdown {
@@ -73,6 +76,8 @@ export interface FinanceReportInput {
   topExpenses?: TopExpense[];
   /** Tahsilat performansı */
   collection?: CollectionStats;
+  /** Gelirin kesinleşmemiş (teslim edilmiş, faturası kesilmemiş) kısmı — toplamda zaten var */
+  unbilledTotal?: number;
 }
 
 function esc(v: unknown): string {
@@ -497,9 +502,12 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
   <div class="kpi-hero">
     <div class="kpi-card">
       <div class="kpi-icon-circle green">↗</div>
-      <div class="kpi-label">Toplam Gelir ${prev ? renderTrend(totalIncome, prev.income) : ''}</div>
+      <div class="kpi-label">${autoT('Toplam Gelir (KDV hariç)')} ${prev ? renderTrend(totalIncome, prev.income) : ''}</div>
       <div class="kpi-value green">${fmtMoney(totalIncome, currency)}</div>
-      <div class="kpi-sub">${rows.length} aylık dönem${prev ? ` · önceki: ${fmtMoney(prev.income, currency)}` : ''}</div>
+      <div class="kpi-sub">${rows.length} aylık dönem${prev ? ` · önceki: ${fmtMoney(prev.income, currency)}` : ''}${
+        Math.abs(Number(input.unbilledTotal ?? 0)) > 0.005
+          ? `<br/>${autoT('Kesilen fatura')} ${fmtMoney(totalIncome - Number(input.unbilledTotal), currency)} · ${autoT('Kesinleşmemiş gelir')} ${fmtMoney(Number(input.unbilledTotal), currency)} ${autoT('(teslim edilmiş, faturası kesilmemiş iş — tahmini)')}`
+          : ''}</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-icon-circle red">↘</div>
@@ -624,7 +632,7 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
       </div>
       <div class="collection-grid">
         <div class="collection-card">
-          <div class="collection-label">${autoT('Kesilen Fatura')}</div>
+          <div class="collection-label">${autoT('Kesilen Fatura (KDV dahil)')}</div>
           <div class="collection-value">${fmtMoney(c.totalBilled, currency)}</div>
           <div class="collection-sub">${c.invoiceCount} adet</div>
         </div>
