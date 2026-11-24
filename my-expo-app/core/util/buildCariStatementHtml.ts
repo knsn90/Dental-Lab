@@ -14,10 +14,11 @@
 import { autoT } from '../i18n/autoTranslate';
 import { htmlAttrs, printLocale } from '../i18n/printLocale';
 import { cariDiscountTh, cariDiscountTd, cariDiscountSummaryRow } from './cariDiscountColumn';
+import { buildAppleStatementHtml } from './buildAppleStatementHtml';
 
 export interface CariLine {
   /** Ayrıntılı PDF: satırın iş kalemleri (açıklama · adet × fiyat; alt: hasta · sipariş). Tutar sütunları değişmez. */
-  items?: { text: string; sub?: string | null }[] | null;
+  items?: CariItem[] | null;
   /** Belge no / referans (T_ID) */
   refNo?: string | null;
   /** Açıklama / not (Reference altında) */
@@ -46,6 +47,18 @@ export interface CariLine {
   discountText?: string;
   /** 'discount' = ekstre indirimi satırı: tutar yalnız İndirim sütununda, toplam alacağa girmez */
   kind?: 'discount';
+  /** Borç satırının fatura indirimi (tutar, layout 'apple' hesap satırı için) */
+  discountAmount?: number | null;
+}
+
+/** İş kalemi. qty/unitPrice/amount verilirse 'apple' düzeni adet × fiyat ve kalem tutarını ayrı sütunda çizer. */
+export interface CariItem {
+  text: string;
+  sub?: string | null;
+  qty?: number | null;
+  unitPrice?: number | null;
+  /** Kalemin indirimsiz, KDV hariç tutarı */
+  amount?: number | null;
 }
 
 export interface CariStatementInput {
@@ -149,6 +162,11 @@ export interface CariStatementInput {
    * "Fatura Özeti" olur; periodFrom = periodTo ise dönem tek gün yazılır. Verilmezse belge değişmez.
    */
   workBreakdown?: boolean;
+  /**
+   * 'apple' = kompakt, sade düzen (buildAppleStatementHtml): fatura başına tek satır, kalemler satır
+   * içinde, toplamın altında "tutar − indirim + KDV" hesabı. Verilmezse klasik belge bit bit aynı kalır.
+   */
+  layout?: 'classic' | 'apple';
 }
 
 /** Bir hex rengin üzerine beyaz mı siyah mı metin geleceğini luminance ile seçer. */
@@ -229,6 +247,7 @@ const APPROVE_CSS = `
 `;
 
 export function buildCariStatementHtml(input: CariStatementInput): string {
+  if (input.layout === 'apple') return buildAppleStatementHtml(input);
   const docTitle = input.documentTitle ?? 'Cari Hesap Ekstresi';
   const opening = input.openingBalance ?? 0;
   const closing = input.closingBalance;

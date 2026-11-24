@@ -46,15 +46,16 @@ const money = (n: number): string =>
  * Ayrıntılıda üst satır iş (açıklama · adet × fiyat) olsun diye hasta alt satıra taşınır;
  * hekim her iki biçimde alt satırdadır. Yalnız görünüm — tutarlar ve bakiye değişmez.
  */
-function displayLine(l: StatementLine, mode: 'ozet' | 'ayrintili'): StatementLine {
+function displayLine(l: StatementLine, mode: 'ozet' | 'ayrintili', hideDoctor = false): StatementLine {
+  const doctor = hideDoctor ? null : l.doctorName;
   if (mode === 'ayrintili') {
-    return { ...l, patientName: null, orderNo: [l.patientName, l.orderNo, l.doctorName].filter(Boolean).join(' · ') || null };
+    return { ...l, patientName: null, orderNo: [l.patientName, l.orderNo, doctor].filter(Boolean).join(' · ') || null };
   }
   // Özet: çok kalemli faturada listeler kısaltılır ("S-1, S-2, S-3 +47") — satır uzamasın
   return {
     ...l,
     patientName: compact(l.patientName, 4),
-    orderNo: [compact(l.orderNo, 3), compact(l.doctorName, 2)].filter(Boolean).join(' · ') || null,
+    orderNo: [compact(l.orderNo, 3), compact(doctor, 2)].filter(Boolean).join(' · ') || null,
   };
 }
 
@@ -71,8 +72,12 @@ function build(
   workBreakdown?: { documentTitle: string },
 ): string {
   const r = preStatementLines(input.data, input.currency, mode, { money });
+  // Tüm satırlar tek hekimse hekim adı her satırda tekrarlanmaz; Cari Bilgileri kartına bir kez yazılır.
+  const doctors = new Set(r.lines.map((l) => (l.doctorName ?? '').trim()));
+  const soleDoctor = doctors.size === 1 && r.lines.length > 1 ? [...doctors][0] : '';
+  const singleDoctor = !!soleDoctor && !soleDoctor.includes(', ');
   const lines = r.lines.map((l) => {
-    const d = displayLine(l, mode);
+    const d = displayLine(l, mode, singleDoctor);
     // İş dökümü kesinleşmiş faturadır: satır etiketi "Taslak" değil "Fatura" (şablon durumsuz satırda
     // çevrilmemiş 'Fatura' yazar; çevrili etiket durum yerine geçirilir — INVOICE_STATUS_LABELS'te karşılığı yok).
     return workBreakdown ? { ...d, status: autoT('Fatura') } : d;
@@ -111,6 +116,7 @@ function build(
         }),
       ...(r.hideOpening ? { hideOpening: true } : {}),
       paper: input.paper !== false,
+      ...(singleDoctor ? { holderLines: [`${autoT('Hekim')} · ${soleDoctor}`] } : {}),
     },
   );
 }

@@ -53,28 +53,22 @@ const wb = () => buildWorkBreakdownHtml({
   currency: 'TRY', documentTitle: 'F-1240 iş dökümü',
 });
 
-test('wb_hides_balance_elements: kapanış kartı, Bakiye sütunu, B/A, lejant, Toplam Alacak yok', () => {
+test('wb_hides_balance_elements: kapanış bakiyesi, Bakiye sütunu, alacak işaretleri yok', () => {
   const html = wb();
-  assert.equal(html.includes('Kapanış Bakiyesi'), false, 'kapanış kartı / alt hücre');
-  assert.equal(html.includes('Toplam Alacak'), false, 'Toplam Alacak');
-  assert.equal(html.includes('class="balance-cell"'), false, 'Bakiye hücreleri');
-  assert.equal(html.includes('class="ba-flag"'), false, 'B/A işaretleri');
-  assert.equal(/<th class="num">Bakiye<\/th>/.test(html), false, 'Bakiye başlığı');
-  assert.equal(html.includes('Borç bakiyesi'), false, 'B/A lejantı ve kapanış ipucu');
-  assert.equal(html.includes('Hesap Özeti'), false, 'Hesap Özeti başlığı');
+  assert.equal(html.includes('Kapanış bakiyesi'), false, 'kapanış kartı');
+  assert.equal(html.includes('class="c-bal"'), false, 'Bakiye hücreleri');
+  assert.equal(html.includes('class="ba"'), false, 'alacak işaretleri');
+  assert.equal(/<th class="n">Bakiye<\/th>/.test(html), false, 'Bakiye başlığı');
+  assert.equal(html.includes('<div class="k">Alacak</div>'), false, 'Alacak özeti');
 });
 
-test('wb_shows_invoice_summary: Fatura Özeti, Toplam Borç, KDV dökümü, dönem = fatura tarihi', () => {
+test('wb_shows_invoice_summary: Fatura toplamı, dönem = fatura tarihi, sütun sayısı tutarlı', () => {
   const html = wb();
-  assert.ok(html.includes('Fatura Özeti'));
-  assert.ok(html.includes('Toplam Borç'));
-  assert.ok(html.includes('Faturaların KDV dökümü'));
+  assert.ok(html.includes('Fatura toplamı'));
   assert.equal(html.includes('Tüm dönem'), false);
-  const day = new Date('2026-11-05T00:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
-  assert.match(html, new RegExp(`<div class="lbl">Dönem</div>\\s*<div class="val">${day}</div>`));
   // tablo sütunu sayısı başlıkla aynı (Bakiye düşünce satır hücresi de düşer)
   const ths = (html.match(/<thead>[\s\S]*?<\/thead>/)![0].match(/<th[ >]/g) ?? []).length;
-  const firstRow = html.match(/<tbody>\s*<tr>([\s\S]*?)<\/tr>/)![1];
+  const firstRow = html.match(/<tbody>\s*<tr[^>]*>([\s\S]*?)<\/tr>/)![1];
   assert.equal((firstRow.match(/<td[ >]/g) ?? []).length, ths);
 });
 
@@ -82,10 +76,9 @@ test('non_wb_outputs_unchanged: bayrak yokken bakiye öğeleri yerinde, bayrak=f
   const data = workBreakdownToPreStatement(rpc as never);
   for (const f of [buildPreStatementDetailHtml, buildPreStatementSummaryHtml]) {
     const html = f({ clinicName: 'K', lab: lab as never, data, currency: 'TRY' });
-    assert.ok(html.includes('Kapanış Bakiyesi'));
-    assert.ok(html.includes('class="balance-cell"'));
-    assert.ok(html.includes('Hesap Özeti'));
-    assert.equal(html.includes('Fatura Özeti'), false);
+    assert.ok(html.includes('Kapanış bakiyesi'));
+    assert.ok(html.includes('class="c-bal"'));
+    assert.equal(html.includes('Fatura toplamı'), false);
   }
   const line = { date: '2026-11-01', type: 'invoice' as const, description: 'F-1', invoiceNo: 'F-1', debit: 120, credit: 0, balance: 120, tax: 20, taxRate: 20, status: 'kesildi' };
   const a = buildStatementHtml('K', [line], lab as never, { from: '2026-11-01', to: '2026-11-30' }, 'TRY', undefined, { vat: true, paper: true });

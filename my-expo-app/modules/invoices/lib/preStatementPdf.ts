@@ -150,14 +150,28 @@ export function preStatementLines(
         debit: r2(num(inv.total)),
         tax: r2(num(inv.tax)),
         ...(disc > 0.004 ? { discount: disc, discountBase: r2(gross) } : {}),
-        // İşin kalemleri faturanın altında (ekstre "Ayrıntılı" ile aynı alt liste) — tutar/bakiye değişmez
-        items: items.map((it) => ({
-          text: (it.description ?? '').trim() || (inv.invoice_number ?? ''),
-          sub: [
-            `${num(it.quantity)} × ${money(num(it.unit_price))}`,
-            patientLabel(it), it.order_no, (it.doctor_name ?? '').trim() || null,
-          ].filter(Boolean).join(' · ') || null,
-        })),
+        // İşin kalemleri faturanın altında (ekstre "Ayrıntılı" ile aynı alt liste) — tutar/bakiye değişmez.
+        // Hasta / sipariş no / hekim fatura satırında zaten yazar; kalemde yalnız faturada birden çok
+        // farklı değeri olan alan tekrar edilir (kullanıcı: "tekrarlanan hekim isimleri").
+        items: (() => {
+          const varies = (f: (it: typeof items[number]) => string | null | undefined) =>
+            uniq(items.map(f)).length > 1;
+          const vPatient = varies((it) => patientLabel(it));
+          const vOrder = varies((it) => it.order_no);
+          const vDoctor = varies((it) => it.doctor_name);
+          return items.map((it) => ({
+            text: (it.description ?? '').trim() || (inv.invoice_number ?? ''),
+            qty: num(it.quantity),
+            unitPrice: num(it.unit_price),
+            amount: r2(num(it.gross_total ?? it.total)),
+            sub: [
+              `${num(it.quantity)} × ${money(num(it.unit_price))}`,
+              vPatient ? patientLabel(it) : null,
+              vOrder ? it.order_no : null,
+              vDoctor ? (it.doctor_name ?? '').trim() || null : null,
+            ].filter(Boolean).join(' · ') || null,
+          }));
+        })(),
       });
     } else {
       const shares = itemShares(inv);

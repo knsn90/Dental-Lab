@@ -1486,6 +1486,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
           item={{ id: dzItem.id, description: dzItem.description, net_total: Number(dzItem.net_total ?? dzItem.total) || 0 }}
           priorOnItem={priorOn(dzItem.id)}
           cap={correctionCapFor(dzItem)}
+          grossRatio={sumItemNet > 0 ? (Number(invoice.total) || 0) / sumItemNet : 1}
         />
       ) : null}
 

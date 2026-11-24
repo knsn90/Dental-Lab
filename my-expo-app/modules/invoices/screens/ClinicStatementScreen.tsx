@@ -783,13 +783,16 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
       if (detail) {
         const ids = shown.filter(l => l.type === 'invoice' && l.id).map(l => l.id as string);
         const det = ids.length ? await fetchInvoiceItemDetails(ids) : [];
-        const byInv = new Map<string, { text: string; sub?: string | null }[]>();
+        const byInv = new Map<string, { text: string; sub?: string | null; qty?: number; unitPrice?: number; amount?: number }[]>();
         for (const it of det) {
           const wo = it.order_item?.work_order;
           const arr = byInv.get(it.invoice_id) ?? [];
           arr.push({
             text: it.description || autoT('Kalem'),
             sub: [`${Number(it.quantity) || 0} × ${fmtMoney(Number(it.unit_price) || 0, selectedCcy)}`, wo?.patient_name, wo?.order_number].filter(Boolean).join(' · '),
+            qty: Number(it.quantity) || 0,
+            unitPrice: Number(it.unit_price) || 0,
+            amount: Math.round((Number(it.quantity) || 0) * (Number(it.unit_price) || 0) * 100) / 100,
           });
           byInv.set(it.invoice_id, arr);
         }

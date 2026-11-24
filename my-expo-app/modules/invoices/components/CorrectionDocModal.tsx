@@ -27,6 +27,7 @@ import type { Invoice } from '../types';
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const toNum = (v: string) => Number(String(v ?? '').replace(',', '.'));
+const round2 = (x: number) => Math.round((Number(x) || 0) * 100 + Number.EPSILON) / 100;
 
 function newIdemKey(): string {
   try {
@@ -43,11 +44,14 @@ export interface CorrectionDocModalProps {
   invoice: Pick<Invoice, 'id' | 'invoice_number' | 'currency' | 'total' | 'paid_amount' | 'efatura_uuid' | 'efatura_status'>;
   item: { id: string; description: string; net_total: number };
   priorOnItem: number;
-  /** Hazır tavan (kalem payı ve fatura kalanı; correctionMaxAmount). Yoksa kalem net − önceki DZ. */
+  /** Hazır tavan (kalem payı ve fatura kalanı; correctionMaxAmount). Yoksa kalem net − önceki DZ. KDV dahil. */
   cap?: number;
+  /** Fatura toplamı / Σ kalem net (KDV ve fatura altı indirim oranı). Kullanıcı KDV hariç tutar girer;
+   *  belgeye yazılan tutar = round(net × oran). Yoksa 1 (girilen tutar aynen). */
+  grossRatio?: number;
 }
 
-export function CorrectionDocModal({ visible, onClose, onSaved, invoice, item, priorOnItem, cap: capProp }: CorrectionDocModalProps) {
+export function CorrectionDocModal({ visible, onClose, onSaved, invoice, item, priorOnItem, cap: capProp, grossRatio }: CorrectionDocModalProps) {
   const U = useInkUI();
   const theme = usePanelTheme();
   const insets = useSafeAreaInsets();
@@ -75,7 +79,15 @@ export function CorrectionDocModal({ visible, onClose, onSaved, invoice, item, p
   const cap = capProp != null && Number.isFinite(Number(capProp))
     ? Math.max(0, Number(capProp))
     : correctionCap(Number(item.net_total) || 0, Number(priorOnItem) || 0);
-  const v = toNum(amount);
+  // Girilen tutar KDV hariçtir (kalem birim fiyatıyla aynı dil); belgeye KDV dahil karşılığı yazılır.
+  const ratio = grossRatio != null && Number.isFinite(Number(grossRatio)) && Number(grossRatio) > 0 ? Number(grossRatio) : 1;
+  const hasTax = Math.abs(ratio - 1) > 1e-9;
+  const capNet = round2(cap / ratio);
+  const vNet = toNum(amount);
+  // Net tavanı girildiyse yuvarlama kuruşu tavanı aşmasın — tam tavan yazılır.
+  const v = Number.isFinite(vNet) && vNet > 0
+    ? (round2(vNet) === capNet ? cap : round2(vNet * ratio))
+    : vNet;
   const split = Number.isFinite(v) && v > 0
     ? correctionSplit({ invoiceTotal: Number(invoice.total) || 0, paidAmount: Number(invoice.paid_amount) || 0, amount: v })
     : null;
@@ -145,12 +157,20 @@ export function CorrectionDocModal({ visible, onClose, onSaved, invoice, item, p
                 <TextInput value={amount} onChangeText={t => { setAmount(t); setErr(null); }} keyboardType="decimal-pad"
                   style={input} placeholder={currency} placeholderTextColor={U.ink[400]} accessibilityLabel={autoT('Tutar')} />
                 <Text style={{ marginTop: 6, fontSize: 12, color: U.ink[500] }}>
-                  {autoT('Kalan tutar')}{': '}{fmt(cap)}
+                  {hasTax ? autoT('KDV hariç girin') + ' · ' : ''}{autoT('Kalan tutar')}{': '}{fmt(hasTax ? capNet : cap)}
                 </Text>
               </View>
 
               {/* Önizleme — faturaya / alacağa */}
               <View style={{ borderRadius: 14, backgroundColor: U.surfaceSoft, borderWidth: 1, borderColor: U.hairline, padding: 14, gap: 8 }}>
+                {hasTax ? (
+                  <>
+                    <Row k={autoT('KDV hariç')} val={Number.isFinite(vNet) && vNet > 0 ? fmt(vNet) : '—'} />
+                    <Row k={autoT('KDV')} val={Number.isFinite(v) && v > 0 ? fmt(round2(v - vNet)) : '—'} />
+                    <Row k={autoT('KDV dahil düşülecek')} val={Number.isFinite(v) && v > 0 ? fmt(v) : '—'} strong />
+                    <View style={{ height: 1, backgroundColor: U.hairline }} />
+                  </>
+                ) : null}
                 <Row k={autoT('Bu hizmet bedeline')} val={split ? `−${fmt(split.toInvoice)}` : '—'} />
                 <Row k={autoT('Alacağa')} val={split ? fmt(split.toCredit) : '—'} />
               </View>

@@ -6,7 +6,7 @@
 import type { Invoice } from './types';
 import { INVOICE_STATUS_LABELS, PAYMENT_METHOD_LABELS } from './types';
 import type { LabLetterhead } from '../receipt/buildReceiptHtml';
-import { buildCariStatementHtml, type CariLine, type CariStatementInput } from '../../core/util/buildCariStatementHtml';
+import { buildCariStatementHtml, type CariLine, type CariItem, type CariStatementInput } from '../../core/util/buildCariStatementHtml';
 import { baseSymbol } from '../../core/money/baseCurrency';
 
 import { autoT } from '../../core/i18n/autoTranslate';
@@ -50,7 +50,7 @@ function fmtMoney(amount: number | string | null | undefined): string {
 // ── Statement line builder ───────────────────────────────────────────
 export interface StatementLine {
   /** Ayrıntılı PDF: faturanın iş kalemleri (yalnız görünüm; tutarlar fatura satırında kalır) */
-  items?: { text: string; sub?: string | null }[] | null;
+  items?: CariItem[] | null;
   /** Stabil React key için opsiyonel id (örn. fatura/ödeme uuid'si) */
   id?: string;
   date: string;
@@ -223,6 +223,8 @@ export function buildStatementHtml(
     paper?: boolean;
     /** İş dökümü PDF'i: bakiye öğeleri yok, "Fatura Özeti" (buildCariStatementHtml.workBreakdown). */
     workBreakdown?: boolean;
+    /** Cari Bilgileri kartında klinik adının altına yazılan satırlar (ör. tek hekim: "Hekim · Dt. X") */
+    holderLines?: string[];
   } = {},
 ): string {
   const vat = statementVatSummary(lines);
@@ -300,6 +302,8 @@ export function buildStatementHtml(
     taxRate: l.type === 'invoice' ? (l.taxRate ?? null) : null,
     ...(showDiscount ? { discountText: discText(l) } : {}),
     ...(l.type === 'invoice' && l.items?.length ? { items: l.items } : {}),
+    // 'apple' düzeninde toplamın altındaki "tutar − indirim + KDV" hesabı için
+    ...(l.type === 'invoice' && Number(l.discount) > 0 ? { discountAmount: Number(l.discount) } : {}),
   }));
 
   return buildCariStatementHtml({
@@ -316,7 +320,7 @@ export function buildStatementHtml(
     },
     holder: {
       name: clinicName,
-      addressLines: [],
+      addressLines: opts.holderLines ?? [],
     },
     openingBalance: totals?.opening ?? 0,
     closingBalance: totals?.closing ?? lines.reduce((s, l) => s + lineDelta(l), 0),
@@ -329,6 +333,9 @@ export function buildStatementHtml(
     ...(showDiscount ? { showDiscount: true, discountTotal: discountTotal(lines) } : {}),
     // Bu sütunda hasta + sipariş no ya da tahsilat yöntemi yazar; karşı taraf zaten klinik.
     labels: { party: autoT('Açıklama') },
+    // Klinik ekstresi, ön ekstre ve iş dökümü kompakt düzende (2026-11-24 kullanıcı onayı "B: Apple style");
+    // tedarikçi/personel/makbuz klasik şablonda kalır.
+    layout: 'apple',
     // Ön ekstre seçenekleri: yalnız verilince alan eklenir
     ...(opts.notice ? { notice: opts.notice } : {}),
     ...(opts.approve ? { approve: opts.approve } : {}),
