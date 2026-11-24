@@ -23,8 +23,12 @@ function esc(v: unknown): string {
 const num = (n: unknown): number => Number(n) || 0;
 const r2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
 
+const SYMBOLS: Record<string, string> = { TRY: '₺', EUR: '€', USD: '$', GBP: '£' };
+/** Belge para birimi simgesi — üretici başında ayarlanır (üretici eşzamanlı, tek seferde çalışır). */
+let SYM = '';
+
 function money(n: number): string {
-  return Math.abs(num(n)).toLocaleString(printLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return SYM + Math.abs(num(n)).toLocaleString(printLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function fmtDate(iso: string): string {
@@ -69,6 +73,7 @@ function itemsHtml(l: CariLine): string {
 export function buildAppleStatementHtml(input: CariStatementInput): string {
   const docTitle = input.documentTitle ?? autoT('Cari Hesap Ekstresi');
   const currency = input.currency || 'TRY';
+  SYM = SYMBOLS[currency.toUpperCase()] ?? `${currency} `;
   const wb = input.workBreakdown === true;
   const paper = input.paper === true;
   const L = input.labels ?? {};
@@ -271,7 +276,7 @@ ${paper ? '' : `<div class="toolbar">
   <div class="sub">${esc(subLine)}</div>
 
   <div class="hero">
-    <div><div class="k">${esc(closingLbl)}</div><div class="big ${wb ? '' : toneOf(closingVal)}">${esc(money(closingVal))}<span class="u">${esc(currency)}${closingHint ? ' ' + esc(closingHint) : ''}</span></div></div>
+    <div><div class="k">${esc(closingLbl)}</div><div class="big ${wb ? '' : toneOf(closingVal)}">${esc(money(closingVal))}${closingHint ? `<span class="u">${esc(closingHint)}</span>` : ''}</div></div>
     <div class="grow"></div>
     ${wb || hideOpening ? '' : stat(L.opening ?? autoT('Açılış'), opening)}
     ${wb ? '' : stat(L.debit ?? autoT('Borç'), totalDebit)}
