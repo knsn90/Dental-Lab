@@ -11225,5 +11225,10 @@
   "hesap eşit": "settled",
   "indirim": "discount",
   "ve sonrası": "and after",
-  "ve öncesi": "and before"
+  "ve öncesi": "and before",
+  "Ara toplam (KDV hariç)": "Subtotal (excl. VAT)",
+  "KDV hariç toplam": "Total excl. VAT",
+  "Genel toplam (KDV dahil)": "Grand total (incl. VAT)",
+  "Açılış bakiyesi": "Opening balance",
+  "Tahsilat ve alacaklar": "Payments and credits"
 }

@@ -11225,5 +11225,10 @@
   "hesap eşit": "تسویه",
   "indirim": "تخفیف",
   "ve sonrası": "و پس از آن",
-  "ve öncesi": "و پیش از آن"
+  "ve öncesi": "و پیش از آن",
+  "Ara toplam (KDV hariç)": "جمع جزء (بدون مالیات)",
+  "KDV hariç toplam": "جمع بدون مالیات",
+  "Genel toplam (KDV dahil)": "جمع کل (با مالیات)",
+  "Açılış bakiyesi": "مانده اول دوره",
+  "Tahsilat ve alacaklar": "دریافتی‌ها و بستانکاری‌ها"
 }

@@ -137,11 +137,27 @@ ${wb ? '' : `      <td class="c-bal"><div class="bal">${esc(money(l.balance))}${
   // Toplam satırı hesabı: KDV dökümü varsa onunla (ekran ve PDF aynı tanım)
   const net = showVat ? num(input.vatSummary!.net) : r2(sumNet);
   const tax = showVat ? num(input.vatSummary!.tax) : 0;
-  const totCalc = [
-    sumDisc > 0.004 || tax > 0.004 ? money(net + sumDisc) : null,
-    sumDisc > 0.004 ? `− ${money(sumDisc)} ${autoT('indirim')}` : null,
-    tax > 0.004 ? `+ ${money(tax)} ${autoT('KDV')}` : null,
-  ].filter(Boolean).join(' ');
+  // Toplamlar bloğu: KDV hariç → indirim → KDV → KDV dahil; sonra tahsilat/indirim → kapanış
+  type SumRow = { k: string; v: string; cls?: string };
+  const sumRows: SumRow[] = [];
+  const neg = (v: number) => `− ${money(v)}`;
+  if (sumDisc > 0.004) {
+    sumRows.push({ k: autoT('Ara toplam (KDV hariç)'), v: money(net + sumDisc) });
+    sumRows.push({ k: autoT('İndirim'), v: neg(sumDisc), cls: 'credit' });
+  }
+  if (showVat) {
+    sumRows.push({ k: autoT('KDV hariç toplam'), v: money(net), cls: sumDisc > 0.004 ? 'sub' : '' });
+    sumRows.push({ k: autoT('KDV'), v: money(tax) });
+  }
+  sumRows.push({ k: showVat ? autoT('Genel toplam (KDV dahil)') : autoT('Genel toplam'), v: money(totalDebit), cls: 'strong' });
+  if (!wb) {
+    const hasMoves = totalCredit > 0.004 || discSum > 0.004 || (!hideOpening && Math.abs(opening) > 0.004);
+    if (!hideOpening && Math.abs(opening) > 0.004) sumRows.push({ k: L.opening ?? autoT('Açılış bakiyesi'), v: money(opening) });
+    if (totalCredit > 0.004) sumRows.push({ k: L.credit ?? autoT('Tahsilat ve alacaklar'), v: neg(totalCredit), cls: 'credit' });
+    if (discSum > 0.004) sumRows.push({ k: autoT('Ekstre indirimleri'), v: neg(discSum), cls: 'credit' });
+    if (hasMoves) sumRows.push({ k: L.closing ?? autoT('Kapanış bakiyesi'), v: money(closing) + balanceTag(closing).replace(/<[^>]+>/g, ''), cls: `strong ${toneOf(closing)}` });
+  }
+  const sumsHtml = `  <div class="sums">${sumRows.map((r) => `<div class="sum ${r.cls ?? ''}"><span class="sk">${esc(r.k)}</span><span class="sv">${esc(r.v)}</span></div>`).join('')}</div>`;
 
   const closingLbl = wb ? autoT('Fatura toplamı') : (L.closing ?? autoT('Kapanış bakiyesi'));
   const closingVal = wb ? totalDebit : closing;
@@ -226,10 +242,14 @@ ${wb ? '' : `      <td class="c-bal"><div class="bal">${esc(money(l.balance))}${
   .ba { font-size: 8px; color: var(--credit); font-weight: 600; }
   tr.cr .p { font-weight: 500; }
   td.empty { text-align: center; color: var(--ter); padding: 32px 0; font-style: italic; }
-  tfoot td { padding: 9px 4px 0; vertical-align: top; }
-  tfoot .k { font-size: 8.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--sec); }
-  tfoot .tot { font-size: 12px; }
-  tfoot .bal { font-size: 12px; font-weight: 700; }
+  .sums { margin-top: 12px; margin-inline-start: auto; width: 290px; }
+  .sum { display: flex; justify-content: space-between; gap: 12px; padding: 3px 4px; font-size: 10px; color: var(--sec); line-height: 1.4; }
+  .sum .sv { color: var(--label); white-space: nowrap; }
+  .sum.credit .sv { color: var(--credit); }
+  .sum.sub { border-top: .75px solid var(--sep); padding-top: 5px; margin-top: 2px; }
+  .sum.strong { border-top: .75px solid var(--sep); padding-top: 6px; margin-top: 3px; font-weight: 600; color: var(--label); font-size: 11px; }
+  .sum.strong .sv { font-size: 12px; }
+  .sum.strong.debit .sv { color: var(--debit); } .sum.strong.credit .sv { color: var(--credit); }
   .legend { margin-top: 20px; padding-bottom: 14px; line-height: 1.5; font-size: 8.5px; color: var(--ter); display: flex; justify-content: space-between; gap: 12px; }
 </style>
 </head>
@@ -269,13 +289,9 @@ ${notice ? `  <div class="note"><b>${esc(notice.title)}.</b>${notice.text ? ' ' 
 ${wb ? '' : `      <th class="n">${esc(autoT('Bakiye'))}</th>
 `}    </tr></thead>
     <tbody>${rows || empty}</tbody>
-    <tfoot><tr>
-      <td colspan="2"><div class="k">${esc(autoT('Toplam'))}</div></td>
-      <td class="c-tot"><div class="tot">${esc(money(totalDebit))}</div>${totCalc ? `<div class="calc">${esc(totCalc)}</div>` : ''}${totalCredit > 0.004 ? `<div class="calc credit">− ${esc(money(totalCredit))} ${esc(autoT('alacak'))}</div>` : ''}${!wb && discSum > 0.004 ? `<div class="calc credit">− ${esc(money(discSum))} ${esc(autoT('indirim'))}</div>` : ''}</td>
-${wb ? '' : `      <td class="c-bal"><div class="bal ${toneOf(closing)}">${esc(money(closing))}${balanceTag(closing)}</div></td>
-`}    </tr></tfoot>
   </table>
 
+${sumsHtml}
   <!-- Footer -->
   <div class="legend foot"><span>${esc(autoT('Tutarlar'))} ${esc(currency)}${showVat ? ' · ' + esc(autoT('Toplam = tutar − indirim + KDV')) : ''}</span><span>${input.copyright ?? `© ${esc(input.lab.name)} ${new Date().getFullYear()}`}</span></div>
 </div>

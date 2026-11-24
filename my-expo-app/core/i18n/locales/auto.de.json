@@ -11225,5 +11225,10 @@
   "hesap eşit": "ausgeglichen",
   "indirim": "Rabatt",
   "ve sonrası": "und danach",
-  "ve öncesi": "und davor"
+  "ve öncesi": "und davor",
+  "Ara toplam (KDV hariç)": "Zwischensumme (exkl. MwSt.)",
+  "KDV hariç toplam": "Summe exkl. MwSt.",
+  "Genel toplam (KDV dahil)": "Gesamtsumme (inkl. MwSt.)",
+  "Açılış bakiyesi": "Anfangssaldo",
+  "Tahsilat ve alacaklar": "Zahlungen und Gutschriften"
 }
