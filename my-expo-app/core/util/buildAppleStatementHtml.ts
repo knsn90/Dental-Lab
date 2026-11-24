@@ -104,9 +104,9 @@ export function buildAppleStatementHtml(input: CariStatementInput): string {
     if (disc > 0.004) parts.push(`− ${money(disc)} ${autoT('indirim')}`);
     if (showVat) {
       if (tax > 0.004) parts.push(`+ ${money(tax)} ${autoT('KDV')}${num(l.taxRate) > 0 ? ` %${esc(l.taxRate)}` : ''}`);
-      else parts.push(autoT('KDV yok'));
+      else parts.push(parts.length ? `· ${autoT('KDV yok')}` : autoT('KDV yok'));
     }
-    return parts.join('  ');
+    return parts.join(' ');
   };
 
   // Tüm satırlarda aynı olan durum (ör. ön ekstrede hep "Taslak") bilgi taşımaz → gizle
@@ -141,7 +141,7 @@ ${wb ? '' : `      <td class="c-bal"><div class="bal">${esc(money(l.balance))}${
     sumDisc > 0.004 || tax > 0.004 ? money(net + sumDisc) : null,
     sumDisc > 0.004 ? `− ${money(sumDisc)} ${autoT('indirim')}` : null,
     tax > 0.004 ? `+ ${money(tax)} ${autoT('KDV')}` : null,
-  ].filter(Boolean).join('  ');
+  ].filter(Boolean).join(' ');
 
   const closingLbl = wb ? autoT('Fatura toplamı') : (L.closing ?? autoT('Kapanış bakiyesi'));
   const closingVal = wb ? totalDebit : closing;
@@ -169,7 +169,7 @@ ${wb ? '' : `      <td class="c-bal"><div class="bal">${esc(money(l.balance))}${
   html { -webkit-text-size-adjust: 100%; }
   body { font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; color: var(--label);
          font-size: 10.5px; line-height: 1.35; background: ${paper ? '#FFFFFF' : '#ECECEF'};
-         font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+         -webkit-font-smoothing: antialiased; }
   .page { background: #FFFFFF; ${paper ? '' : 'max-width: 860px; margin: 24px auto; padding: 36px 40px; border-radius: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08);'} }
   .toolbar { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; align-items: center;
              padding: 10px 20px; background: rgba(29,29,31,.92); color: #fff; }
@@ -182,15 +182,14 @@ ${wb ? '' : `      <td class="c-bal"><div class="bal">${esc(money(l.balance))}${
   .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
   .brand img { max-height: 34px; max-width: 160px; object-fit: contain; display: block; }
   .brand .name { font-size: 14px; font-weight: 700; letter-spacing: .04em; color: var(--navy); }
-  .brand .vkn { font-size: 8.5px; color: var(--sec); margin-top: 3px; }
   .meta { text-align: end; font-size: 9px; color: var(--sec); line-height: 1.5; }
   .eyebrow { margin-top: 18px; font-size: 8.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: ${notice ? 'var(--orange)' : 'var(--sec)'}; }
-  h1 { font-size: 21px; font-weight: 600; letter-spacing: -.022em; line-height: 1.12; margin-top: 3px; }
-  .sub { font-size: 10px; color: var(--sec); margin-top: 3px; }
+  h1 { font-size: 21px; font-weight: 600; letter-spacing: -.015em; line-height: 1.3; margin-top: 2px; }
+  .sub { font-size: 10px; color: var(--sec); margin-top: 2px; line-height: 1.4; }
 
   .hero { display: flex; gap: 22px; align-items: center; margin-top: 14px; padding: 13px 16px; background: var(--fill); border-radius: 12px; }
   .hero .k { font-size: 8px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--sec); }
-  .hero .big { font-size: 25px; font-weight: 600; letter-spacing: -.025em; line-height: 1; margin-top: 4px; white-space: nowrap; }
+  .hero .big { font-size: 25px; font-weight: 600; letter-spacing: -.01em; line-height: 1.2; margin-top: 2px; white-space: nowrap; }
   .hero .big .u { font-size: 11.5px; font-weight: 500; letter-spacing: 0; color: var(--sec); margin-inline-start: 4px; }
   .hero .grow { flex: 1; }
   .hero .st .v { font-size: 11.5px; font-weight: 500; margin-top: 4px; white-space: nowrap; }
@@ -231,7 +230,7 @@ ${wb ? '' : `      <td class="c-bal"><div class="bal">${esc(money(l.balance))}${
   tfoot .k { font-size: 8.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--sec); }
   tfoot .tot { font-size: 12px; }
   tfoot .bal { font-size: 12px; font-weight: 700; }
-  .legend { margin-top: 20px; font-size: 8.5px; color: var(--ter); display: flex; justify-content: space-between; gap: 12px; }
+  .legend { margin-top: 20px; padding-bottom: 14px; line-height: 1.5; font-size: 8.5px; color: var(--ter); display: flex; justify-content: space-between; gap: 12px; }
 </style>
 </head>
 <body>
@@ -244,7 +243,7 @@ ${paper ? '' : `<div class="toolbar">
   <div class="top">
     <div class="brand">${input.lab.logoUrl
       ? `<img src="${esc(input.lab.logoUrl)}" alt="${esc(input.lab.name)}" />`
-      : `<div class="name">${esc(input.lab.name)}</div>`}${input.lab.taxNo ? `<div class="vkn">VKN ${esc(input.lab.taxNo)}</div>` : ''}</div>
+      : `<div class="name">${esc(input.lab.name)}</div>`}</div>
     <div class="meta">${esc(autoT('Düzenlenme'))} ${esc(new Date().toLocaleDateString(printLocale(), { day: '2-digit', month: 'long', year: 'numeric' }))}<br>${esc(period)} · ${esc(currency)}</div>
   </div>
   <div class="eyebrow">${esc(docTitle)}${notice ? ` · ${esc(autoT('Onay bekliyor'))}` : ''}</div>
@@ -278,7 +277,7 @@ ${wb ? '' : `      <td class="c-bal"><div class="bal ${toneOf(closing)}">${esc(m
   </table>
 
   <!-- Footer -->
-  <div class="legend"><span>${esc(autoT('Tutarlar'))} ${esc(currency)}${showVat ? ' · ' + esc(autoT('Toplam = tutar − indirim + KDV')) : ''}</span><span>${input.copyright ?? `© ${esc(input.lab.name)} ${new Date().getFullYear()}`}</span></div>
+  <div class="legend foot"><span>${esc(autoT('Tutarlar'))} ${esc(currency)}${showVat ? ' · ' + esc(autoT('Toplam = tutar − indirim + KDV')) : ''}</span><span>${input.copyright ?? `© ${esc(input.lab.name)} ${new Date().getFullYear()}`}</span></div>
 </div>
 </body>
 </html>`;
