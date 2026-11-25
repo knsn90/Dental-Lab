@@ -114,3 +114,14 @@ export function labPartyAddress(lab: { street?: string | null; district?: string
   const composed = [s(lab.street), place].filter(Boolean).join(', ');
   return composed || s(lab.address);
 }
+
+/**
+ * Prova hareketinde amaç etiketi türle birlikte basılır: "Geçici prova gidiş",
+ * "Daimi prova dönüş". Tür yoksa ya da prova hareketi değilse temel etiket kalır.
+ */
+export function provaPurposeLabel(purpose: string | null | undefined, base: string, kind: 'gecici' | 'daimi' | null | undefined): string {
+  if (purpose !== 'prova_gidis' && purpose !== 'prova_donus') return base;
+  if (kind !== 'gecici' && kind !== 'daimi') return base;
+  const k = kind === 'gecici' ? 'Geçici' : 'Daimi';
+  return `${k} prova ${purpose === 'prova_gidis' ? 'gidiş' : 'dönüş'}`;
+}

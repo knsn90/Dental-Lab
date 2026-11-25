@@ -18,7 +18,8 @@ import { DELIVERY_PURPOSE_LABELS, type DeliveryPurpose } from '../api';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { htmlAttrs, printLocale } from '../../../core/i18n/printLocale';
 import { isRTL } from '../../../core/i18n';
-import { resolveShipParties, isFinalLeg, labPartyAddress, adHocLeg } from './shipLabel';
+import { resolveShipParties, isFinalLeg, labPartyAddress, adHocLeg, provaPurposeLabel } from './shipLabel';
+import { slipProvaKind, type ProvaSnapshot } from '../prova/provaModel';
 import { localQrSvg } from './qrSvg';
 import { formatAddress } from '../../../core/util/formatAddress';
 import { patientInitials } from './workLabel';
@@ -68,6 +69,13 @@ export async function buildShipLabelDoc(
   ]);
   const leg = legRes.data as any;
   if (!leg) throw new Error(legRes.error?.message || 'Kurye hareketi bulunamadı');
+
+  // Prova hareketinde tür (geçici / daimi) etikete eklenir; okunamazsa genel etiket kalır.
+  let provaKind: 'gecici' | 'daimi' | null = null;
+  if (leg.purpose === 'prova_gidis' || leg.purpose === 'prova_donus') {
+    const { data } = await supabase.rpc('order_prova_snapshot', { p_order: order.id });
+    provaKind = slipProvaKind((data ?? null) as ProvaSnapshot | null);
+  }
   const lab = (labRes.data ?? {}) as any;
 
   const parties = resolveShipParties({
@@ -90,7 +98,7 @@ export async function buildShipLabelDoc(
     orderNumber: order.order_number,
     date: leg.created_at,
     final: isFinalLeg(leg.purpose),
-    purposeLabel: DELIVERY_PURPOSE_LABELS[(leg.purpose ?? 'teslimat') as DeliveryPurpose] ?? 'Diğer',
+    purposeLabel: provaPurposeLabel(leg.purpose, DELIVERY_PURPOSE_LABELS[(leg.purpose ?? 'teslimat') as DeliveryPurpose] ?? 'Diğer', provaKind),
     note: leg.notes,
     // Hasta yalnız baş harfleriyle (KVKK) — tam ad fişe basılmaz.
     patientInitials: patientInitials(order.patient_name) || null,

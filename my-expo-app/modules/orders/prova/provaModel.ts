@@ -7,6 +7,7 @@
  */
 
 export type ProvaStatus = 'planlandı' | 'gönderildi' | 'onay_bekliyor' | 'döndü' | 'tamamlandı';
+export type ProvaKind = 'gecici' | 'daimi';
 export type RiskLevel = 'yetismiyor' | 'yaklasiyor' | 'yetisir';
 type T = (s: string) => string;
 const id: T = (s) => s;
@@ -15,6 +16,8 @@ export interface ProvaRow {
   id: string;
   number: number;
   type?: string | null;
+  /** Geçici / daimi prova — gönderirken seçilir; eski provalarda yok. */
+  kind?: ProvaKind | null;
   item_name?: string | null;
   status: ProvaStatus;
   sent_date?: string | null;
@@ -134,9 +137,33 @@ function nextAppt(s: ProvaSnapshot, kind: 'prova' | 'takma'): ApptRow | null {
   return a[0] ?? null;
 }
 
-function provaName(p: ProvaRow, t: T): string {
+/** "Geçici prova" / "Daimi prova"; tür yoksa "Prova". */
+export function provaKindLabel(kind: ProvaKind | null | undefined, t: T = id): string {
+  return t(kind === 'gecici' ? 'Geçici prova' : kind === 'daimi' ? 'Daimi prova' : 'Prova');
+}
+
+export function provaName(p: ProvaRow, t: T = id): string {
+  if (p.kind === 'gecici' || p.kind === 'daimi') return `${p.number}. ${provaKindLabel(p.kind, t)}`;
   const typ = p.type ? (PROVA_TYPE_LABEL[p.type] ?? p.type) : 'Prova';
   return `${p.number}. ${t(typ)}`;
+}
+
+/**
+ * Gönderim popup'ında hazır seçili gelecek tür: bu provada seçilmişse o, yoksa
+ * siparişte en son türü seçilmiş prova; hiç yoksa geçici (ilk prova çoğunlukla geçicidir).
+ */
+export function defaultSendKind(s: ProvaSnapshot | null | undefined, p?: ProvaRow | null): ProvaKind {
+  if (p?.kind === 'gecici' || p?.kind === 'daimi') return p.kind;
+  const last = [...(s?.provas ?? [])].filter((x) => x.kind === 'gecici' || x.kind === 'daimi')
+    .sort((a, b) => b.number - a.number)[0];
+  return (last?.kind as ProvaKind | undefined) ?? 'gecici';
+}
+
+/** Prova fişinde / kurye fişinde kullanılacak tür: klinikteki ya da planlanan provanın türü. */
+export function slipProvaKind(s: ProvaSnapshot | null | undefined): ProvaKind | null {
+  if (!s) return null;
+  const k = activeProva(s)?.kind;
+  return k === 'gecici' || k === 'daimi' ? k : null;
 }
 
 // ── "Şu an" kartı ─────────────────────────────────────────────────────────────────────────────
@@ -343,10 +370,11 @@ export function takmaBeforeDelivery(deliveryISO: string | null | undefined, appt
  * Prova fişinde basılan başlık: klinikteki / planlanan prova ("2. Metal prova");
  * yoksa sıradaki numara ("3. Prova"). Fiş prova gönderilmeden önce de basılır.
  */
-export function slipProvaLabel(s: ProvaSnapshot | null | undefined, t: T): string {
-  if (!s) return t('Prova');
+export function slipProvaLabel(s: ProvaSnapshot | null | undefined, t: T, kind?: ProvaKind | null): string {
+  if (!s) return provaKindLabel(kind, t);
   const a = activeProva(s);
-  if (a) return provaName(a, t);
+  // kind verilmediyse (undefined) provanın kayıtlı türü; null → türsüz genel ad.
+  if (a) return provaName(kind !== undefined ? { ...a, kind } : a, t);
   const next = s.provas.reduce((m, p) => Math.max(m, p.number), 0) + 1;
-  return `${next}. ${t('Prova')}`;
+  return `${next}. ${provaKindLabel(kind, t)}`;
 }

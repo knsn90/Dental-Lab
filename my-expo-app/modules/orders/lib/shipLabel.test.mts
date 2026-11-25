@@ -1,7 +1,7 @@
 // node --test my-expo-app/modules/orders/lib/shipLabel.test.mts   (.mts → tsc kapsamı dışında)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveShipParties, isFinalLeg, labPartyAddress, adHocLeg, type ShipParty } from './shipLabel.ts';
+import { provaPurposeLabel, resolveShipParties, isFinalLeg, labPartyAddress, adHocLeg, type ShipParty } from './shipLabel.ts';
 
 const lab: ShipParty = { name: 'Nexadent', address: 'Vatan Cad. No: 21, Ataşehir / İstanbul', phone: '0216 000 00 00' };
 const clinic: ShipParty = { name: 'Gülüş Diş Kliniği', person: 'Dt. Ayşe Kaya', address: 'Bağdat Cad. 5, Kadıköy / İstanbul', phone: '0216 111 11 11' };
@@ -90,4 +90,11 @@ test('kurye kaydı olmayan fiş: yön amaçtan, adresler klinik/lab kaydından',
   assert.equal(back.to.address, lab.address);
 
   assert.equal(adHocLeg('bilinmeyen').direction, 'lab_to_clinic');
+});
+
+test('prova hareketinde amaç etiketi türü taşır', () => {
+  assert.equal(provaPurposeLabel('prova_gidis', 'Prova gidiş', 'gecici'), 'Geçici prova gidiş');
+  assert.equal(provaPurposeLabel('prova_donus', 'Prova dönüş', 'daimi'), 'Daimi prova dönüş');
+  assert.equal(provaPurposeLabel('prova_gidis', 'Prova gidiş', null), 'Prova gidiş');
+  assert.equal(provaPurposeLabel('teslimat', 'Teslimat', 'daimi'), 'Teslimat');
 });

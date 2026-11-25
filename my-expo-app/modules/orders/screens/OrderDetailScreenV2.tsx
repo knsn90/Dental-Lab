@@ -135,7 +135,7 @@ import { DeliveryUndoModal } from '../components/DeliveryUndoModal';
 import { ProvaModal, type OriginRect } from '../prova/ProvaModal';
 import { ProvaSlipModal } from '../prova/ProvaSlipModal';
 import { ShipLabelTypeModal } from '../components/ShipLabelTypeModal';
-import { slipProvaLabel, activeProva } from '../prova/provaModel';
+import { slipProvaLabel, slipProvaKind, activeProva } from '../prova/provaModel';
 import { useProvaSnapshot } from '../prova/useProvaSnapshot';
 import { flagFromSnapshot, heroLabel } from '../prova/provaModel';
 import { provaHeroIcon } from '../prova/ProvaHeroIcon';
@@ -1506,6 +1506,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         qrUrl={qrUrl}
         provaId={provaSnap.data ? activeProva(provaSnap.data)?.id ?? null : null}
         initialNote={provaSnap.data ? activeProva(provaSnap.data)?.lab_notes ?? null : null}
+        initialKind={slipProvaKind(provaSnap.data)}
+        labelForKind={(k) => slipProvaLabel(provaSnap.data, autoT, k)}
         onSaved={() => { void provaSnap.refetch(); }}
       />
       {/* Çıktılar → Gönderi fişi: tür sorulur, kurye kaydı gerekmez (Lojistik kartıyla aynı belge) */}

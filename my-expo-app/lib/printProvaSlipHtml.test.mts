@@ -31,3 +31,17 @@ test('lab notu boşsa çizgili boş kutu; hekim kutusu ve imza her zaman var', (
 test('A5 sayfa ölçüsü', () => {
   assert.match(buildProvaSlipHtml(base), /@page\{size:148mm 210mm/);
 });
+
+test('geçici / daimi tür: rozet, biçim ve hekim seçenekleri', () => {
+  const g = buildProvaSlipHtml({ ...base, kind: 'gecici', provaLabel: '1. Geçici prova' });
+  assert.match(g, /class="pill out">Geçici prova fişi</);
+  assert.match(g, /Uygun, daimiye geçilsin/);
+  assert.match(g, /Yeniden geçici prova/);
+  assert.match(g, /<title>Geçici prova fişi/);
+  const d = buildProvaSlipHtml({ ...base, kind: 'daimi', provaLabel: '2. Daimi prova' });
+  assert.match(d, /class="pill">Daimi prova fişi</);
+  assert.match(d, /Uygun, bitime geçilsin/);
+  const n = buildProvaSlipHtml({ ...base });
+  assert.match(n, /class="pill">Prova fişi</);
+  assert.match(n, /Uygun, devam edilsin/);
+});

@@ -4,7 +4,7 @@
  * provas / order_appointments tablolarına doğrudan yazmaz.
  */
 import { supabase } from '../../../core/api/supabase';
-import type { ProvaSnapshot, ProvaFlag } from './provaModel';
+import type { ProvaSnapshot, ProvaFlag, ProvaKind } from './provaModel';
 
 export type ProvaResult<T = void> = { ok: boolean; error?: string; data?: T };
 
@@ -32,9 +32,14 @@ export function provaCreate(orderId: string, opts: { itemId?: string | null; ite
   });
 }
 
-/** `day` YYYY-MM-DD; boşsa bugün (lab saat dilimi). */
-export function provaMarkSent(provaId: string, day?: string | null) {
-  return call('prova_mark_sent', { p_prova: provaId, p_day: day ?? null });
+/** `day` YYYY-MM-DD; boşsa bugün (lab saat dilimi). `kind` verilirse provanın türü de yazılır. */
+export function provaMarkSent(provaId: string, day?: string | null, kind?: ProvaKind | null) {
+  return call('prova_mark_sent', { p_prova: provaId, p_day: day ?? null, p_kind: kind ?? null });
+}
+
+/** Geçici / daimi prova türü (null siler). */
+export function provaSetKind(provaId: string, kind: ProvaKind | null) {
+  return call('prova_set_kind', { p_prova: provaId, p_kind: kind });
 }
 
 export function provaMarkReturned(provaId: string, day?: string | null, note?: string | null) {

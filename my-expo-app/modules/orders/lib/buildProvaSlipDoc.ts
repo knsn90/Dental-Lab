@@ -20,6 +20,8 @@ export interface ProvaSlipDocOptions {
   provaLabel: string;
   labNote?: string | null;
   screenBg?: string;
+  /** Geçici / daimi — rozet ve hekim seçenekleri buna göre basılır. */
+  kind?: 'gecici' | 'daimi' | null;
 }
 
 export async function buildProvaSlipDoc(order: WorkOrder, opts: ProvaSlipDocOptions): Promise<string> {
@@ -51,5 +53,6 @@ export async function buildProvaSlipDoc(order: WorkOrder, opts: ProvaSlipDocOpti
     htmlAttrs: htmlAttrs(),
     rtl: isRTL(),
     screenBg: opts.screenBg,
+    kind: opts.kind ?? null,
   });
 }

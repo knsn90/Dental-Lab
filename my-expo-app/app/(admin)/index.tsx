@@ -10,6 +10,7 @@
  * Theme: DS.exec (kobalt #002A5C)
  * Patterns NativeWind — NO StyleSheet.create().
  */
+import { StageProgressBar, statusProgress } from '../../modules/dashboard/components/StageProgressBar';
 import { LogoImage, DefaultLogo } from '../../core/ui/LogoImage';
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { HatchFill } from '../../core/ui/HatchFill';
@@ -1553,6 +1554,18 @@ export default function AdminDashboard() {
         });
       }
     }
+    // İlerleme sütunu: tamamlanan / toplam aşama (atlananlar sayılmaz — sipariş detayıyla aynı).
+    const stageDone: Record<string, number> = {};
+    const stageTotal: Record<string, number> = {};
+    const orderIds = rows.map((r: any) => r.id);
+    if (orderIds.length) {
+      const { data: st } = await supabase.from('order_stages').select('work_order_id, status').in('work_order_id', orderIds);
+      (st ?? []).forEach((x: any) => {
+        if (x.status === 'skipped') return;
+        stageTotal[x.work_order_id] = (stageTotal[x.work_order_id] ?? 0) + 1;
+        if (x.status === 'onaylandi' || x.status === 'tamamlandi') stageDone[x.work_order_id] = (stageDone[x.work_order_id] ?? 0) + 1;
+      });
+    }
     // revision_of_id + revision_no + hold_status BURADA DA TAŞINMALI: sorgu
     // çekse bile bu map onları düşürürse vaka gruplaması kurulamaz ve revizyon
     // satırı ebeveyninin altına girintili girmez (köksüz, düz satır görünür).
@@ -1571,6 +1584,8 @@ export default function AdminDashboard() {
       doctor_id: o.doctor_id ?? null,
       clinic_id: clinicOf[o.doctor_id] ?? null,
       clinic_name: clinicNameOf[clinicOf[o.doctor_id] ?? ''] ?? null,
+      stage_done: stageDone[o.id] ?? 0,
+      stage_total: stageTotal[o.id] ?? 0,
     })));
   }, []);
 
@@ -2351,8 +2366,10 @@ export default function AdminDashboard() {
             >
               <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.no')}</Text>
               <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.doctor')}</Text>
-              {isDesktop && <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.workType')}</Text>}
+              {isDesktop && <Text style={{ flex: 1.6, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>{autoT('Klinik')}</Text>}
+              {isDesktop && <Text style={{ flex: 1.8, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.workType')}</Text>}
               <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.status')}</Text>
+              {isDesktop && <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>{autoT('İlerleme')}</Text>}
               {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'end' as any }}>{t('admin.table.delivery')}</Text>}
             </View>
 
@@ -2429,13 +2446,31 @@ export default function AdminDashboard() {
                         </View>
                       </View>
                       {isDesktop && (
-                        <Text style={{ flex: 2, fontSize: 11, color: T.ink3 }} numberOfLines={1}>{(order as any).__revChild && (
+                        <Text style={{ flex: 1.6, fontSize: 12, fontWeight: '500', color: (order as any).clinic_name ? T.ink2 : T.ink3 }} numberOfLines={1}>
+                          {(order as any).clinic_name || '—'}
+                        </Text>
+                      )}
+                      {isDesktop && (
+                        <Text style={{ flex: 1.8, fontSize: 11, color: T.ink3 }} numberOfLines={1}>{(order as any).__revChild && (
                       <Text style={{ fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E' }}>{`${(order as any).__continuation ? autoT('Devam') : autoT('Revizyon')} - `}</Text>
                     )}{order.work_type || '--'}</Text>
                       )}
                       <View style={{ flex: 1.4 }}>
                         <StatusBadge status={order.status} />
                       </View>
+                      {isDesktop && (() => {
+                        // Aşama varsa tamamlanan/toplam; yoksa durumdan kaba oran. Teslim = tam.
+                        const tot = Number((order as any).stage_total) || 0;
+                        const dn = Number((order as any).stage_done) || 0;
+                        const delivered = order.status === 'teslim_edildi';
+                        const pct = delivered ? 1 : tot > 0 ? dn / tot : statusProgress(order.status);
+                        const color = delivered ? '#2D9A6B' : overdue ? '#D94B4B' : PB;
+                        return (
+                          <View style={{ flex: 1.4, paddingEnd: 12 }}>
+                            <StageProgressBar pct={pct} done={tot > 0 ? (delivered ? tot : dn) : null} total={tot > 0 ? tot : null} color={color} delayIndex={idx} />
+                          </View>
+                        );
+                      })()}
                       {isDesktop && (
                         <Text style={{
                           flex: 1, fontSize: 11, fontWeight: overdue ? '700' : '500', textAlign: 'end' as any,

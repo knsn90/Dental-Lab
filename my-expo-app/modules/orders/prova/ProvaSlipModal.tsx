@@ -15,12 +15,13 @@ import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { Printer, X } from '../../../core/ui/icons';
 import type { WorkOrder } from '../types';
 import { buildProvaSlipDoc } from '../lib/buildProvaSlipDoc';
-import { provaCreate, provaSetLabNote } from './api';
+import { provaCreate, provaSetLabNote, provaSetKind } from './api';
+import type { ProvaKind } from './provaModel';
 
 const FRAME_ID = 'prova-slip-iframe';
 
 export function ProvaSlipModal({
-  visible, onClose, order, provaLabel, qrUrl, provaId, initialNote, onSaved,
+  visible, onClose, order, provaLabel, qrUrl, provaId, initialNote, onSaved, initialKind, labelForKind,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -33,6 +34,10 @@ export function ProvaSlipModal({
   initialNote?: string | null;
   /** Not kaydedildikten sonra (prova verisini yenilemek için). */
   onSaved?: () => void;
+  /** Provada kayıtlı tür (geçici / daimi); yoksa genel fiş. */
+  initialKind?: ProvaKind | null;
+  /** Seçilen türe göre fiş başlığı ("2. Geçici prova"). Verilmezse provaLabel. */
+  labelForKind?: (k: ProvaKind | null) => string;
 }) {
   const U = useInkUI();
   const T = useMobileTokens();
@@ -45,9 +50,15 @@ export function ProvaSlipModal({
   const [saving, setSaving] = useState(false);
   const req = useRef(0);
   const savedNote = useRef('');
+  const [kind, setKind] = useState<ProvaKind | null>(null);
+  const savedKind = useRef<ProvaKind | null>(null);
+  const label = labelForKind ? labelForKind(kind) : provaLabel;
 
   useEffect(() => {
-    if (visible) { const n = (initialNote ?? '').trim(); setNote(n); savedNote.current = n; }
+    if (visible) {
+      const n = (initialNote ?? '').trim(); setNote(n); savedNote.current = n;
+      setKind(initialKind ?? null); savedKind.current = initialKind ?? null;
+    }
     else { setNote(''); setHtml(null); setErr(null); setSaveErr(null); req.current++; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -58,7 +69,7 @@ export function ProvaSlipModal({
     const r = ++req.current;
     const h = setTimeout(() => {
       setErr(null);
-      buildProvaSlipDoc(order, { qrUrl, provaLabel, labNote: note, screenBg: isDark ? '#141312' : '#EEF0F3' })
+      buildProvaSlipDoc(order, { qrUrl, provaLabel: label, labNote: note, kind, screenBg: isDark ? '#141312' : '#EEF0F3' })
         .then((out) => { if (r === req.current) setHtml(out); })
         .catch((e) => {
           console.error('prova slip build failed', e);
@@ -67,24 +78,33 @@ export function ProvaSlipModal({
     }, html ? 350 : 0);
     return () => clearTimeout(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, note, provaLabel, isDark]);
+  }, [visible, note, label, kind, isDark]);
 
   // Not değiştiyse provaya yazar. Hata yazdırmayı engellemez; düğmenin yanında görünür.
   const saveNote = async () => {
     const n = note.trim();
-    if (n === savedNote.current) return;
+    const noteChanged = n !== savedNote.current;
+    const kindChanged = kind !== savedKind.current;
+    if (!noteChanged && !kindChanged) return;
     setSaving(true); setSaveErr(null);
     let id = provaId;
     if (!id) {
-      if (!n) { setSaving(false); return; }
+      if (!n && !kind) { setSaving(false); return; }
       const c = await provaCreate(order.id);
       if (!c.ok || !c.data) { setSaving(false); setSaveErr(c.error ?? autoT('Not provaya kaydedilemedi')); return; }
       id = c.data;
     }
-    const r = await provaSetLabNote(id, n);
+    if (kindChanged) {
+      const k = await provaSetKind(id, kind);
+      if (!k.ok) { setSaving(false); setSaveErr(k.error ?? autoT('Prova türü kaydedilemedi')); return; }
+      savedKind.current = kind;
+    }
+    if (noteChanged) {
+      const r = await provaSetLabNote(id, n);
+      if (!r.ok) { setSaving(false); setSaveErr(r.error ?? autoT('Not provaya kaydedilemedi')); onSaved?.(); return; }
+      savedNote.current = n;
+    }
     setSaving(false);
-    if (!r.ok) { setSaveErr(r.error ?? autoT('Not provaya kaydedilemedi')); return; }
-    savedNote.current = n;
     onSaved?.();
   };
 
@@ -118,7 +138,7 @@ export function ProvaSlipModal({
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>{autoT('Prova fişi')}</Text>
               <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 1 }} numberOfLines={1}>
-                {`#${order.order_number} · ${provaLabel}`}
+                {`#${order.order_number} · ${label}`}
               </Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -157,6 +177,29 @@ export function ProvaSlipModal({
           </View>
 
           <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12, gap: 6, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+            <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 1.1, color: U.ink[500], textTransform: 'uppercase' }}>{autoT('Prova türü')}</Text>
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
+              {([['gecici', 'Geçici prova'], ['daimi', 'Daimi prova']] as const).map(([k, l]) => {
+                const on = kind === k;
+                return (
+                  <GlassTooltip key={k} title={autoT(l)} text={autoT('Fiş başlığını ve hekim seçeneklerini bu türe göre basar; yazdırınca provaya kaydedilir')} placement="bottom">
+                    <Pressable
+                      onPress={() => setKind(on ? null : k)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: on }}
+                      accessibilityLabel={autoT(l)}
+                      style={({ hovered }: any) => ({
+                        paddingHorizontal: on ? 18 : 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1,
+                        borderColor: on ? U.ink[900] : U.plainBtn.border,
+                        backgroundColor: on ? U.ink[900] : hovered ? U.plainBtn.hoverBg : U.plainBtn.bg, cursor: 'pointer',
+                      } as any)}
+                    >
+                      <Text style={{ fontSize: 12.5, fontWeight: '600', color: on ? U.onDarkPill : U.plainBtn.fg }}>{autoT(l)}</Text>
+                    </Pressable>
+                  </GlassTooltip>
+                );
+              })}
+            </View>
             <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 1.1, color: U.ink[500], textTransform: 'uppercase' }}>{autoT('Lab notu')}</Text>
             <TextInput
               value={note}
@@ -170,7 +213,7 @@ export function ProvaSlipModal({
               } as any}
             />
             <Text style={{ fontSize: 11.5, color: U.ink[400] }}>
-              {autoT('Not yazdırınca provaya kaydedilir. Boş bırakırsanız fişte elle yazılacak çizgili alan kalır; hekim notu kutusu hekimin kalemle doldurması için boştur.')}
+              {autoT('Tür ve not yazdırınca provaya kaydedilir. Boş bırakırsanız fişte elle yazılacak çizgili alan kalır; hekim notu kutusu hekimin kalemle doldurması için boştur.')}
             </Text>
           </View>
 

@@ -27,8 +27,8 @@ import {
   X, CalendarClock, Calendar, PauseCircle, PlayCircle, Bell, Truck, Plus, ChevronDown, ChevronUp, Trash2, Printer,
 } from '../../../core/ui/icons';
 import {
-  nowCard, activeProva, riskChip, apptLine, fmtDayMonth,
-  type ProvaSnapshot, type ProvaRow, type ApptRow, type NowCard, type NowTone,
+  nowCard, activeProva, riskChip, apptLine, fmtDayMonth, provaName, defaultSendKind,
+  type ProvaKind, type ProvaSnapshot, type ProvaRow, type ApptRow, type NowCard, type NowTone,
 } from './provaModel';
 import {
   provaCreate, provaMarkSent, provaMarkReturned, provaClientReturned, provaUndo, provaSetNote,
@@ -116,6 +116,101 @@ function PlainBtn({ label, hint, onPress, icon: Icon, disabled }: { label: strin
         <Text style={{ fontSize: 13, fontWeight: '600', color: U.plainBtn.fg }}>{label}</Text>
       </Pressable>
     </GlassTooltip>
+  );
+}
+
+/**
+ * "Hangi prova gidiyor?" — gönderimden önce geçici / daimi seçimi. Prova kartının
+ * üstünde, bulanık zeminli ortalanmış sayfa olarak açılır (iç içe Modal yok).
+ */
+function KindAskSheet({ kind, onKind, subtitle, dayLabel, busy, accent, onCancel, onConfirm }: {
+  kind: ProvaKind; onKind: (k: ProvaKind) => void; subtitle: string; dayLabel: string;
+  busy: boolean; accent: string; onCancel: () => void; onConfirm: () => void;
+}) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((st) => st.resolvedDark);
+  const opts: { k: ProvaKind; letter: string; title: string; desc: string }[] = [
+    { k: 'gecici', letter: 'G', title: autoT('Geçici prova'), desc: autoT('Geçici restorasyonun hasta ağzında denenmesi') },
+    { k: 'daimi', letter: 'D', title: autoT('Daimi prova'), desc: autoT('Kalıcı restorasyonun son kontrol provası') },
+  ];
+  const sel = isDark ? '#93C5FD' : '#16284A';
+  return (
+    <View style={{
+      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', padding: 16,
+      backgroundColor: U.scrim, borderRadius: 24,
+      ...(Platform.OS === 'web' ? { backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' } as any : null),
+    }}>
+      <Pressable onPress={onCancel} accessibilityLabel={autoT('Vazgeç')} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+      <View accessibilityRole={'dialog' as any} accessibilityLabel={autoT('Prova türü')} style={{
+        width: '100%', maxWidth: 420, borderRadius: 22, padding: 20, backgroundColor: T.card,
+        borderWidth: 1, borderColor: T.hairline,
+        ...(Platform.OS === 'web' ? { boxShadow: '0 24px 60px rgba(10,20,40,0.25), 0 2px 6px rgba(10,20,40,0.08)' } as any : null),
+      }}>
+        <Text style={{ fontSize: 18, fontWeight: '700', letterSpacing: -0.2, color: T.ink }}>{autoT('Hangi prova gidiyor?')}</Text>
+        <Text style={{ fontSize: 12.5, color: T.ink3, marginTop: 3, marginBottom: 16 }} numberOfLines={2}>{subtitle}</Text>
+        <View style={{ gap: 10 }}>
+          {opts.map((o) => {
+            const on = o.k === kind;
+            return (
+              <Pressable
+                key={o.k}
+                onPress={() => onKind(o.k)}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: on }}
+                accessibilityLabel={o.title}
+                style={({ pressed, hovered }: any) => ({
+                  flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: 16,
+                  borderWidth: 1.5, borderColor: on ? sel : T.hairline,
+                  backgroundColor: hovered && !on ? T.hairline2 : T.card,
+                  transform: [{ scale: pressed ? 0.985 : 1 }], ...WEB_PTR,
+                  ...(Platform.OS === 'web' && on ? { boxShadow: `0 0 0 4px ${isDark ? 'rgba(147,197,253,0.16)' : 'rgba(22,40,74,0.10)'}` } as any : null),
+                })}
+              >
+                {/* Fişteki rozetle aynı dil: geçici çerçeveli, daimi dolu */}
+                <View style={{
+                  width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: o.k === 'daimi' ? T.ink : 'transparent', borderWidth: o.k === 'gecici' ? 1.5 : 0, borderColor: T.ink,
+                }}>
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: o.k === 'daimi' ? T.card : T.ink }}>{o.letter}</Text>
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: T.ink }}>{o.title}</Text>
+                  <Text style={{ fontSize: 12.5, color: T.ink3, marginTop: 2 }}>{o.desc}</Text>
+                </View>
+                <View style={{
+                  width: 20, height: 20, borderRadius: 999, borderWidth: 1.5, borderColor: on ? sel : T.ink3,
+                  backgroundColor: on ? sel : 'transparent', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {on ? <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: T.card }} /> : null}
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16, paddingHorizontal: 2 }}>
+          <Text style={{ fontSize: 13, color: T.ink3 }}>{autoT('Gönderim günü')}</Text>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }}>{dayLabel}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <View style={{ flex: 1 }}>
+            <PlainBtn label={autoT('Vazgeç')} hint={autoT('Provayı göndermeden kapatır')} onPress={onCancel} />
+          </View>
+          <View style={{ flex: 1.4 }}>
+            <PrimaryBtn
+              label={autoT(kind === 'gecici' ? 'Geçici provayı gönder' : 'Daimi provayı gönder')}
+              hint={autoT('Provayı seçilen türle kliniğe gönderildi olarak işaretler; teslim sayacı durur')}
+              onPress={onConfirm}
+              busy={busy}
+              accent={accent}
+            />
+          </View>
+        </View>
+        <Text style={{ fontSize: 11.5, color: T.ink3, textAlign: 'center', marginTop: 10 }}>
+          {autoT('Seçim provaya kaydedilir; fişler ve kurye etiketi buna göre basılır.')}
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -225,11 +320,13 @@ export function ProvaModal({
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [undo, setUndo] = useState<{ provaId: string; text: string } | null>(null);
+  // Gönderim öncesi "Hangi prova gidiyor?" sorusu (geçici / daimi).
+  const [kindAsk, setKindAsk] = useState<{ action: 'send' | 'createSend'; kind: ProvaKind } | null>(null);
   const toastP = useRef(new Animated.Value(0)).current;
   const toastTimer = useRef<any>(null);
 
   useEffect(() => {
-    if (!visible) { setActErr(null); setPickDay(null); setDayOpen(false); setNoteOpen(false); setUndo(null); }
+    if (!visible) { setActErr(null); setPickDay(null); setDayOpen(false); setNoteOpen(false); setUndo(null); setKindAsk(null); }
   }, [visible]);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
 
@@ -268,7 +365,10 @@ export function ProvaModal({
     const day = pickDay ?? null;
     switch (card.primary.action) {
       case 'send':
-        if (active) void run(() => provaMarkSent(active.id, day), { provaId: active.id, text: autoT('Gönderildi olarak işaretlendi') });
+      case 'createSend':
+        // Önce türü sor; gönderim kindAsk onaylanınca yapılır.
+        setActErr(null);
+        setKindAsk({ action: card.primary.action, kind: defaultSendKind(s, card.primary.action === 'send' ? active : null) });
         break;
       case 'return':
       case 'confirm':
@@ -277,20 +377,6 @@ export function ProvaModal({
       case 'clientReturned':
         if (active) void run(() => provaClientReturned(active.id));
         break;
-      case 'createSend':
-        void (async () => {
-          if (busy) return;
-          setBusy(true); setActErr(null);
-          const c = await provaCreate(orderId);
-          if (!c.ok || !c.data) { setBusy(false); setActErr(c.error ?? autoT('İşlem yapılamadı')); return; }
-          const m = await provaMarkSent(c.data, day);
-          setBusy(false);
-          if (!m.ok) { setActErr(m.error ?? autoT('İşlem yapılamadı')); await after(); return; }
-          setPickDay(null); setDayOpen(false);
-          await after();
-          showToast(c.data, autoT('Gönderildi olarak işaretlendi'));
-        })();
-        break;
       case 'note': {
         const last = [...s.provas].filter((p) => p.status === 'döndü').sort((a, b) => (b.return_date ?? '').localeCompare(a.return_date ?? ''))[0];
         setNoteText(last?.doctor_notes ?? '');
@@ -298,6 +384,29 @@ export function ProvaModal({
         break;
       }
     }
+  };
+
+  // Tür seçildi → gönder. Mevcut provada türü yazar; prova yoksa açıp gönderir.
+  const confirmSend = async () => {
+    if (!kindAsk || busy) return;
+    const { action, kind } = kindAsk;
+    const day = pickDay ?? null;
+    if (action === 'send') {
+      if (!active) return;
+      setKindAsk(null);
+      await run(() => provaMarkSent(active.id, day, kind), { provaId: active.id, text: autoT('Gönderildi olarak işaretlendi') });
+      return;
+    }
+    setBusy(true); setActErr(null);
+    const c = await provaCreate(orderId);
+    if (!c.ok || !c.data) { setBusy(false); setKindAsk(null); setActErr(c.error ?? autoT('İşlem yapılamadı')); return; }
+    const m = await provaMarkSent(c.data, day, kind);
+    setBusy(false);
+    setKindAsk(null);
+    if (!m.ok) { setActErr(m.error ?? autoT('İşlem yapılamadı')); await after(); return; }
+    setPickDay(null); setDayOpen(false);
+    await after();
+    showToast(c.data, autoT('Gönderildi olarak işaretlendi'));
   };
 
   const saveNote = () => {
@@ -461,6 +570,19 @@ export function ProvaModal({
               </>
             ) : null}
           </ScrollView>
+
+          {kindAsk && s ? (
+            <KindAskSheet
+              kind={kindAsk.kind}
+              onKind={(k) => setKindAsk((v) => (v ? { ...v, kind: k } : v))}
+              subtitle={`${orderNumber ? `#${orderNumber} · ` : ''}${kindAsk.action === 'send' && active ? active.number : s.provas.reduce((m, p) => Math.max(m, p.number), 0) + 1}. ${autoT('prova kliniğe gönderilecek')}`}
+              dayLabel={pickDay ? fmtDayMonth(pickDay, loc) : `${autoT('Bugün')} · ${fmtDayMonth(s.today, loc)}`}
+              busy={busy}
+              accent={accent}
+              onCancel={() => setKindAsk(null)}
+              onConfirm={() => { void confirmSend(); }}
+            />
+          ) : null}
 
           {/* Geri al bildirimi */}
           {undo ? (
@@ -698,7 +820,7 @@ function PrevProvas({ s, active, doneShown, orderId, onChanged }: {
         const done = p.status === 'döndü' || p.status === 'tamamlandı';
         const tone = done ? U.chipTones.success : p.status === 'planlandı' ? U.chipTones.info : U.chipTones.warning;
         const label = done ? autoT('Döndü') : p.status === 'planlandı' ? autoT('Hazırlanıyor') : autoT('Klinikte');
-        const name = `${p.number}. ${autoT(p.type ? ({ bisküvi: 'Bisküvi prova', metal: 'Metal prova', seramik: 'Seramik prova', bitmek: 'Bitmek prova', teslim: 'Teslim' } as Record<string, string>)[p.type] ?? p.type : 'Prova')}`;
+        const name = provaName(p, autoT);
         const when = p.sent_date ? `${fmtDayMonth(p.sent_date, loc)}${p.return_date ? ` → ${fmtDayMonth(p.return_date, loc)}` : ''}` : '';
         const Chev = isOpen ? ChevronUp : ChevronDown;
         return (

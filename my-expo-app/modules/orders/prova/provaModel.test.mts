@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   activeProva, nowCard, heroLabel, flagFromSnapshot, riskChip, listBadge, apptLine,
   takmaBeforeDelivery, matchesProvaFilter, fmtShortDay,
+  provaName, provaKindLabel, defaultSendKind, slipProvaKind, slipProvaLabel,
   type ProvaSnapshot, type ProvaRow, type ProvaFlag,
 } from './provaModel.ts';
 
@@ -135,4 +136,25 @@ test('matchesProvaFilter', () => {
   assert.equal(matchesProvaFilter(flag({ risk_level: 'yetisir' }), 'risk'), false);
   assert.equal(matchesProvaFilter(flag({ risk_level: 'yaklasiyor' }), 'risk'), true);
   assert.equal(matchesProvaFilter(undefined, 'prova'), false);
+});
+
+test('prova türü: ad, varsayılan seçim, fiş başlığı', () => {
+  assert.equal(provaName(prova({ number: 1, kind: 'gecici' })), '1. Geçici prova');
+  assert.equal(provaName(prova({ number: 2, kind: 'daimi', type: 'metal' })), '2. Daimi prova');
+  assert.equal(provaName(prova({ number: 3, type: 'metal' })), '3. Metal prova');
+  assert.equal(provaKindLabel(null), 'Prova');
+  // Varsayılan: bu provanın türü > siparişteki son tür > geçici
+  assert.equal(defaultSendKind(snap(), null), 'gecici');
+  const s = snap({ provas: [prova({ number: 1, kind: 'daimi', status: 'döndü' }), prova({ number: 2 })] });
+  assert.equal(defaultSendKind(s, s.provas[1]), 'daimi');
+  assert.equal(defaultSendKind(s, prova({ number: 2, kind: 'gecici' })), 'gecici');
+  // Fiş: aktif provanın türü; seçilen tür başlığı ezer
+  assert.equal(slipProvaKind(snap({ provas: [prova({ number: 1, kind: 'daimi' })] })), 'daimi');
+  assert.equal(slipProvaKind(snap({ provas: [prova({ number: 1 })] })), null);
+  assert.equal(slipProvaLabel(snap({ provas: [prova({ number: 2 })] }), (x) => x, 'gecici'), '2. Geçici prova');
+  assert.equal(slipProvaLabel(snap(), (x) => x, 'daimi'), '1. Daimi prova');
+  assert.equal(slipProvaLabel(snap(), (x) => x), '1. Prova');
+  const sk = snap({ provas: [prova({ number: 1, kind: 'daimi' })] });
+  assert.equal(slipProvaLabel(sk, (x) => x), '1. Daimi prova');
+  assert.equal(slipProvaLabel(sk, (x) => x, null), '1. Prova');
 });

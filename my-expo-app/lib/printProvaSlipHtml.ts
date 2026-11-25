@@ -32,6 +32,20 @@ export interface ProvaSlipInput {
   rtl?: boolean;
   /** Önizlemede kağıdın arkasındaki zemin (yalnız ekranda). */
   screenBg?: string;
+  /** Geçici / daimi prova: rozet metni + biçimi (geçici çerçeveli, daimi dolu) ve hekim seçenekleri. Yoksa genel "Prova fişi". */
+  kind?: 'gecici' | 'daimi' | null;
+}
+
+/** Fiş rozeti (Türkçe kaynak; `t` ile çevrilir). */
+export function provaSlipTitle(kind?: 'gecici' | 'daimi' | null): string {
+  return kind === 'gecici' ? 'Geçici prova fişi' : kind === 'daimi' ? 'Daimi prova fişi' : 'Prova fişi';
+}
+
+/** Hekimin kalemle işaretleyeceği seçenekler (Türkçe kaynak). */
+export function provaSlipChecks(kind?: 'gecici' | 'daimi' | null): string[] {
+  if (kind === 'gecici') return ['Uygun, daimiye geçilsin', 'Düzeltme gerekli', 'Yeniden geçici prova'];
+  if (kind === 'daimi') return ['Uygun, bitime geçilsin', 'Düzeltme gerekli', 'Yeniden daimi prova'];
+  return ['Uygun, devam edilsin', 'Düzeltme gerekli', 'Yeniden prova istiyorum'];
 }
 
 const W = 148, H = 210, PAD = 9, QR = 26;
@@ -56,6 +70,7 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 [dir=rtl] .hl img{object-position:right center;align-self:flex-end}
 .hl .wordmark{font-size:calc(var(--u)*4.4);font-weight:800;letter-spacing:-.01em;line-height:1.1;overflow-wrap:anywhere}
 .kind{display:flex;flex-direction:column;align-items:flex-start;gap:calc(var(--u)*1.4)}
+.kind .pill.out{background:#fff;color:#0A0A0A;box-shadow:inset 0 0 0 1.5px #0A0A0A}
 .kind .pill{font-size:calc(var(--u)*2.5);font-weight:800;letter-spacing:.14em;text-transform:uppercase;border-radius:999px;padding:.2em .8em;white-space:nowrap;background:#0A0A0A;color:#fff}
 .kind .title{font-size:calc(var(--u)*6.4);font-weight:800;letter-spacing:-.02em;line-height:1.05;overflow-wrap:anywhere}
 .kind .date{font-size:calc(var(--u)*2.9);font-weight:600;color:#4B4B4B}
@@ -109,8 +124,9 @@ export function buildProvaSlipHtml(p: ProvaSlipInput): string {
     : `<b class="wordmark">${esc(p.lab.name)}</b>`;
   const noFont = Math.min(4, QR / (Math.max(p.orderNumber.length, 1) * 0.6));
 
+  const title = t(provaSlipTitle(p.kind));
   const head = `<div class="head"><div class="hl">${brand}`
-    + `<div class="kind"><span class="pill">${esc(t('Prova fişi'))}</span>`
+    + `<div class="kind"><span class="pill${p.kind === 'gecici' ? ' out' : ''}">${esc(title)}</span>`
     + `<span class="title">${esc(p.provaLabel)}</span>`
     + `<span class="date">${esc(formatLabelDate(p.date ?? new Date(), locale))}</span></div></div>`
     + `<div class="qrb"><div class="qr">${qr}</div>`
@@ -134,7 +150,7 @@ export function buildProvaSlipHtml(p: ProvaSlipInput): string {
     + (labNote ? `<div class="text">${esc(labNote)}</div>` : `<div class="ruled"></div>`)
     + `</div>`;
 
-  const checks = ['Uygun, devam edilsin', 'Düzeltme gerekli', 'Yeniden prova istiyorum']
+  const checks = provaSlipChecks(p.kind)
     .map((c) => `<span><i></i>${esc(t(c))}</span>`).join('');
   const docBox = `<div class="box doc"><span class="lbl">${esc(t('Hekim notu'))}</span>`
     + `<div class="checks">${checks}</div><div class="ruled"></div>`
@@ -147,7 +163,7 @@ export function buildProvaSlipHtml(p: ProvaSlipInput): string {
   const stage = p.screenBg ? `<style>:root{--stage:${esc(p.screenBg)}}</style>` : '';
   return `<!DOCTYPE html><html ${p.htmlAttrs ?? 'lang="tr" dir="ltr"'}><head><meta charset="utf-8">`
     + `<meta name="viewport" content="width=device-width,initial-scale=1">`
-    + `<title>${esc(t('Prova fişi'))} · ${esc(p.orderNumber)}</title>`
+    + `<title>${esc(title)} · ${esc(p.orderNumber)}</title>`
     + `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`
     + `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?${fontFamilies}&display=swap">`
     // Chrome `size: A5` anahtar sözcüğünü tanımıyor (Letter'a düşer) → mm.

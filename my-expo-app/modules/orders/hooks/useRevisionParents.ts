@@ -64,6 +64,8 @@ export function useRevisionParents<T extends RevisionGroupable>(rows: T[]): any[
           doctor: child.doctor,
           doctor_name: child.doctor_name,
           clinic_logo_url: child.clinic_logo_url,
+          // Son Siparişler 'Klinik' sütunu — ebeveyn sorgusu klinik adı taşımıyor.
+          clinic_name: child.clinic_name,
           ...p,
         };
       });
