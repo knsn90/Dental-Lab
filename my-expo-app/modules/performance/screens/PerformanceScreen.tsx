@@ -36,6 +36,7 @@ import { HubContext } from '../../../core/ui/HubContext';
 import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
+import { usePermissionStore } from '../../../core/store/permissionStore';
 
 // ── Patterns design tokens ──────────────────────────────────────────
 const DISPLAY = {
@@ -61,6 +62,10 @@ interface PerfRow {
   labor_cost:          number;
   orders_worked:       number;
   profit_contribution: number;
+  /** Sunucu hesaplar (0–100): dönemin en yüksek pozitif katkısı = 100. Pozitif yoksa null.
+   *  Para alanları yetkisiz kullanıcıda sunucudan NULL gelir → çekimde 0'a normalize edilir
+   *  (o hücreler zaten canProfit/canCost ile gizli). */
+  contribution_score:  number | null;
   // v_technician_performance_detail
   quality_pct?:        number | null;
   on_time_pct?:        number | null;
@@ -131,6 +136,28 @@ function profitTone(U: InkUI, p: number) {
   return U.chipTones.neutral;
 }
 
+/** 0–100 puan rengi (Skor / Katkı puanı / Ekip skoru — tek eşik seti). */
+function scoreTone(U: InkUI, s: number | null) {
+  if (s === null) return U.chipTones.neutral;
+  if (s >= 75) return U.chipTones.success;
+  if (s >= 50) return U.chipTones.warning;
+  return U.chipTones.danger;
+}
+
+/** Sunucudan gelen satırı normalize et: maskeli (NULL) para alanları → 0. */
+function normalizeRow(r: any): PerfRow {
+  const n = (v: any) => Number(v) || 0;
+  return {
+    ...r,
+    hourly_rate: n(r.hourly_rate), used_qty: n(r.used_qty), used_cost: n(r.used_cost),
+    waste_qty: n(r.waste_qty), waste_cost: n(r.waste_cost),
+    labor_minutes: n(r.labor_minutes), labor_hours: n(r.labor_hours), labor_cost: n(r.labor_cost),
+    orders_worked: n(r.orders_worked), profit_contribution: n(r.profit_contribution),
+    efficiency_pct: r.efficiency_pct == null ? null : Number(r.efficiency_pct),
+    contribution_score: r.contribution_score == null ? null : Number(r.contribution_score),
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // MAIN
 // ═══════════════════════════════════════════════════════════════════════
@@ -148,10 +175,14 @@ export function PerformanceScreen() {
   const heroInk = useWhiteHeroInk(accentColor);
   const headInk = onAccentInk(accentColor);
   useBaseCurrency();
+  // Finans yetkisi: lab yöneticisi (lab_manager) performansı görür ama kâr/maliyet
+  // tutarını görmez → para yerine puan. Sahip/admin yetkiliyse euro aynen kalır.
+  const canProfit = usePermissionStore(s => s.can('view_profit'));
+  const canCost   = usePermissionStore(s => s.can('view_cost'));
 
   const [range, setRange]       = useState<Range>('thisMonth');
   const [matType, setMatType]   = useState('all');
-  const [sortKey, setSortKey]   = useState<SortKey>('profit');
+  const [sortKey, setSortKey]   = useState<SortKey>(canProfit ? 'profit' : 'composite');
   const [sortDir, setSortDir]   = useState<SortDir>('desc');
   const [rows, setRows]         = useState<PerfRow[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -177,7 +208,7 @@ export function PerformanceScreen() {
       supabase.rpc('report_technician_ratings', { p_lab_id: labId, p_from: from, p_to: to }),
     ]).then(async ([rpcRes, perfRes, ratingRes]) => {
       if (cancelled) return;
-      const rpcRows = (rpcRes.data ?? []) as PerfRow[];
+      const rpcRows = ((rpcRes.data ?? []) as any[]).map(normalizeRow);
       const perfRows = (perfRes.data ?? []) as any[];
       const ratingRows = (ratingRes.data ?? []) as any[];
       const ratingMap = new Map<string, any>();
@@ -208,7 +239,7 @@ export function PerformanceScreen() {
           user_id: id, user_name: nameMap.get(id) ?? '—',
           hourly_rate: 0, used_qty: 0, used_cost: 0, waste_qty: 0, waste_cost: 0,
           efficiency_pct: null, labor_minutes: 0, labor_hours: 0, labor_cost: 0,
-          orders_worked: 0, profit_contribution: 0,
+          orders_worked: 0, profit_contribution: 0, contribution_score: null,
         };
       });
 
@@ -321,6 +352,8 @@ export function PerformanceScreen() {
     const t = {
       totalProfit:  rows.reduce((s, r) => s + r.profit_contribution, 0),
       totalWaste:   rows.reduce((s, r) => s + r.waste_cost, 0),
+      totalWasteQty: rows.reduce((s, r) => s + r.waste_qty, 0),
+      avgComposite: Math.round(rows.reduce((s, r) => s + (r.composite_score ?? 0), 0) / rows.length),
       totalLabor:   rows.reduce((s, r) => s + r.labor_hours, 0),
       totalOrders:  rows.reduce((s, r) => s + r.orders_worked, 0),
       avgEfficiency: rows.filter(r => r.efficiency_pct !== null).length > 0
@@ -432,9 +465,12 @@ export function PerformanceScreen() {
         <WhiteHero
           kicker={autoT('Performans')}
           accent={accentColor}
-          title={<>{autoT('Kar katkısı')} <Text style={{
-            color: totals.totalProfit > 0 ? heroInk.accentInk : totals.totalProfit < 0 ? U.chipTones.danger.fg : heroInk.inkSoft,
-          }}>{fmtCur(totals.totalProfit)}</Text></>}
+          title={canProfit
+            ? <>{autoT('Kar katkısı')} <Text style={{
+                color: totals.totalProfit > 0 ? heroInk.accentInk : totals.totalProfit < 0 ? U.chipTones.danger.fg : heroInk.inkSoft,
+              }}>{fmtCur(totals.totalProfit)}</Text></>
+            : <>{autoT('Ekip skoru')} <Text style={{ color: scoreTone(U, totals.avgComposite).fg }}>
+                {totals.avgComposite}</Text><Text style={{ color: heroInk.inkSoft }}>/100</Text></>}
           description={`${totals.techCount} ${autoT('teknisyen')} · ${fmt(totals.totalOrders)} ${autoT('sipariş')} · ${fmt1(totals.totalLabor)} ${autoT('sa toplam süre')}`}
           stats={[
             { value: String(totals.techCount), label: autoT('Teknisyen') },
@@ -446,9 +482,12 @@ export function PerformanceScreen() {
               { label: autoT('Sipariş'), value: fmt(totals.totalOrders), icon: ClipboardList, color: heroInk.ink },
               {
                 label: autoT('Fire'),
-                value: totals.totalWaste > 0 ? `−${fmt(totals.totalWaste)} ${baseSymbol()}` : '—',
+                // Maliyet yetkisi yoksa fire tutar değil miktar olarak gösterilir.
+                value: canCost
+                  ? (totals.totalWaste > 0 ? `−${fmt(totals.totalWaste)} ${baseSymbol()}` : '—')
+                  : (totals.totalWasteQty > 0 ? fmt1(totals.totalWasteQty) : '—'),
                 icon: Flame,
-                color: totals.totalWaste > 0 ? U.chipTones.danger.fg : heroInk.inkSoft,
+                color: (canCost ? totals.totalWaste : totals.totalWasteQty) > 0 ? U.chipTones.danger.fg : heroInk.inkSoft,
               },
               {
                 label: autoT('Verim'),
@@ -535,13 +574,16 @@ export function PerformanceScreen() {
               <SortableHeader ink={headInk} label="FİRE" flex={1.1} sortKey="waste" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
               <SortableHeader ink={headInk} label="VERİM" flex={1} sortKey="efficiency" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="center" />
               <SortableHeader ink={headInk} label="SÜRE" flex={1} sortKey="labor" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
-              <SortableHeader ink={headInk} label="KAR KATKISI" flex={1.3} sortKey="profit" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
+              <SortableHeader ink={headInk} label={canProfit ? 'KAR KATKISI' : 'KATKI PUANI'} flex={1.3} sortKey="profit" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
               <SortableHeader ink={headInk} label="SKOR" flex={1} sortKey="composite" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="center" />
             </View>
           )}
 
           {sorted.map((row, i) => (
-            <RowView key={row.user_id} row={row} isLast={i === sorted.length - 1} isWide={isWide} />
+            <RowView
+              key={row.user_id} row={row} isLast={i === sorted.length - 1} isWide={isWide}
+              canProfit={canProfit} canCost={canCost}
+            />
           ))}
 
           {/* Totals row — desktop only */}
@@ -562,7 +604,7 @@ export function PerformanceScreen() {
               <View style={{ flex: 1 }} />
               <View style={{ flex: 1.1, alignItems: 'flex-end', paddingEnd: 8 }}>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: U.chipTones.danger.fg }}>
-                  −{fmt(totals.totalWaste)} {baseSymbol()}
+                  {canCost ? `−${fmt(totals.totalWaste)} ${baseSymbol()}` : fmt1(totals.totalWasteQty)}
                 </Text>
               </View>
               <View style={{ flex: 1, alignItems: 'center' }}>
@@ -576,14 +618,22 @@ export function PerformanceScreen() {
                 <Text style={{ fontSize: 12, fontWeight: '700', color: U.ink[700] }}>{fmt1(totals.totalLabor)} sa</Text>
               </View>
               <View style={{ flex: 1.3, alignItems: 'flex-end' }}>
-                <Text style={{
-                  fontSize: 13, fontWeight: '700',
-                  color: totals.totalProfit >= 0 ? U.chipTones.success.fg : U.chipTones.danger.fg,
-                }}>
-                  {totals.totalProfit >= 0 ? '+' : '−'}{fmt(Math.abs(totals.totalProfit))} {baseSymbol()}
-                </Text>
+                {canProfit && (
+                  <Text style={{
+                    fontSize: 13, fontWeight: '700',
+                    color: totals.totalProfit >= 0 ? U.chipTones.success.fg : U.chipTones.danger.fg,
+                  }}>
+                    {totals.totalProfit >= 0 ? '+' : '−'}{fmt(Math.abs(totals.totalProfit))} {baseSymbol()}
+                  </Text>
+                )}
               </View>
-              <View style={{ flex: 1 }} />
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                {!canProfit && (
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: scoreTone(U, totals.avgComposite).fg }}>
+                    {totals.avgComposite}
+                  </Text>
+                )}
+              </View>
             </View>
           )}
         </View>
@@ -669,8 +719,17 @@ function SortableHeader({ label, flex, sortKey, currentSort, currentDir, onPress
 // ═══════════════════════════════════════════════════════════════════════
 // ROW
 // ═══════════════════════════════════════════════════════════════════════
-function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWide: boolean }) {
+function RowView({ row, isLast, isWide, canProfit, canCost }: {
+  row: PerfRow; isLast: boolean; isWide: boolean;
+  /** false → kâr tutarı yerine 0–100 katkı puanı */
+  canProfit: boolean;
+  /** false → saatlik ücret / işçilik ve fire tutarı gizlenir */
+  canCost: boolean;
+}) {
   const U = useInkUI();
+  const contrib = canProfit ? null : row.contribution_score;
+  const contribTone = scoreTone(U, contrib);
+  const rateText = canCost && row.hourly_rate > 0 ? `${fmt(row.hourly_rate)} ${baseSymbol()}/sa` : null;
   const eff  = row.efficiency_pct;
   const chip = effTone(U, eff);
   const initials = (row.user_name ?? '??').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
@@ -697,9 +756,11 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
               {row.user_name ?? '—'}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 }}>
-              <Text style={{ fontSize: 11, color: U.ink[400] }} numberOfLines={1}>
-                {row.hourly_rate > 0 ? `${fmt(row.hourly_rate)} ${baseSymbol()}/sa` : '—'}
-              </Text>
+              {(canCost || row.customer_rating == null) && (
+                <Text style={{ fontSize: 11, color: U.ink[400] }} numberOfLines={1}>
+                  {rateText ?? '—'}
+                </Text>
+              )}
               {row.customer_rating != null && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
                   <Star size={11} color="#E89B2A" strokeWidth={1.8} fill="#E89B2A" />
@@ -763,7 +824,7 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
           }}>
             {fmt1(row.waste_qty)}
           </Text>
-          {row.waste_cost > 0 && (
+          {canCost && row.waste_cost > 0 && (
             <Text style={{ fontSize: 11, color: U.chipTones.danger.fg, marginTop: 1 }}>
               −{fmt(row.waste_cost)} {baseSymbol()}
             </Text>
@@ -790,19 +851,33 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
           <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>
             {fmt1(row.labor_hours)}<Text style={{ fontSize: 10, color: U.ink[400], fontWeight: '500' }}> sa</Text>
           </Text>
-          {row.labor_cost > 0 && (
+          {canCost && row.labor_cost > 0 && (
             <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }}>{fmt(row.labor_cost)} {baseSymbol()}</Text>
           )}
         </View>
 
         {/* Kar Katkısı */}
         <View style={{ flex: 1.3, alignItems: 'flex-end' }}>
-          <Text style={{
-            fontSize: 14, fontWeight: '600',
-            color: row.profit_contribution >= 0 ? U.chipTones.success.fg : U.chipTones.danger.fg,
-          }}>
-            {row.profit_contribution >= 0 ? '+' : '−'}{fmt(Math.abs(row.profit_contribution))} {baseSymbol()}
-          </Text>
+          {canProfit ? (
+            <Text style={{
+              fontSize: 14, fontWeight: '600',
+              color: row.profit_contribution >= 0 ? U.chipTones.success.fg : U.chipTones.danger.fg,
+            }}>
+              {row.profit_contribution >= 0 ? '+' : '−'}{fmt(Math.abs(row.profit_contribution))} {baseSymbol()}
+            </Text>
+          ) : contrib !== null ? (
+            /* Katkı puanı: ince ilerleme çubuğu + sayı — en iyi teknisyene göre 0–100 */
+            <View style={{ alignItems: 'flex-end', gap: 4 }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: contribTone.fg }}>
+                {contrib}<Text style={{ fontSize: 10, color: U.ink[400], fontWeight: '500' }}>/100</Text>
+              </Text>
+              <View style={{ width: 64, height: 4, borderRadius: 999, backgroundColor: U.ink[100], overflow: 'hidden' }}>
+                <View style={{ width: `${contrib}%`, height: 4, borderRadius: 999, backgroundColor: contribTone.fg }} />
+              </View>
+            </View>
+          ) : (
+            <Text style={{ fontSize: 11, color: U.ink[400] }}>—</Text>
+          )}
         </View>
 
         {/* Skor (kompozit) */}
@@ -850,7 +925,7 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
             {row.user_name ?? '—'}
           </Text>
           <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }}>
-            {row.orders_worked} sipariş · {row.hourly_rate > 0 ? `${fmt(row.hourly_rate)} ${baseSymbol()}/sa` : '—'}
+            {row.orders_worked} {autoT('sipariş')}{canCost ? ` · ${rateText ?? '—'}` : ''}
           </Text>
         </View>
         {eff !== null ? (
@@ -864,15 +939,27 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
       </View>
 
       {/* Bottom — metric strip */}
-      <View style={{ flexDirection: 'row', gap: 12, paddingStart: 44 }}>
+      {/* flexWrap: dar ekranda 5–6 metrik taşmasın, alt satıra insin */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 8, paddingStart: 44 }}>
         <MiniStat label="Kullanım" value={fmt1(row.used_qty)} />
         <MiniStat label="Fire" value={fmt1(row.waste_qty)} color={wasteHigh ? U.chipTones.danger.fg : undefined} />
-        <MiniStat label="Süre" value={`${fmt1(row.labor_hours)} sa`} />
-        <MiniStat
-          label="Kar"
-          value={`${row.profit_contribution >= 0 ? '+' : '−'}${fmt(Math.abs(row.profit_contribution))}`}
-          color={row.profit_contribution >= 0 ? U.chipTones.success.fg : U.chipTones.danger.fg}
-        />
+        <MiniStat label="Süre" value={`${fmt1(row.labor_hours)} ${autoT('sa')}`} />
+        {canProfit ? (
+          <MiniStat
+            label="Kar"
+            value={`${row.profit_contribution >= 0 ? '+' : '−'}${fmt(Math.abs(row.profit_contribution))}`}
+            color={row.profit_contribution >= 0 ? U.chipTones.success.fg : U.chipTones.danger.fg}
+          />
+        ) : (
+          <MiniStat
+            label="Katkı"
+            value={contrib !== null ? String(contrib) : '—'}
+            color={contrib !== null ? contribTone.fg : undefined}
+          />
+        )}
+        {!canProfit && row.composite_score != null && (
+          <MiniStat label="Skor" value={String(row.composite_score)} color={scoreTone(U, row.composite_score).fg} />
+        )}
         {row.customer_rating != null && (
           <MiniStat label="Puan" value={`★ ${row.customer_rating.toFixed(1)}`} color="#E89B2A" />
         )}
