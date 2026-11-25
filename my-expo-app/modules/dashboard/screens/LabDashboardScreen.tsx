@@ -65,6 +65,7 @@ import { useNeonNavy } from '../../../core/ui/HeroGlow';
 import { LiveProductionCard } from '../../admin/components/AdminMobileDashboard';
 import { FaceScanQuickAction } from '../../orders/components/FaceScanQuickAction';
 import { resolveOrderStatus, richOrderFields } from '../components/RecentOrdersMobile';
+import { StageProgressBar, statusProgress } from '../components/StageProgressBar';
 import { mapRevisionCases, flattenRevisionCases } from '../../orders/revisionGroups';
 import { useRevisionParents } from '../../orders/hooks/useRevisionParents';
 import { ScanCalendarCard, useScanCardVisible } from '../../scans/components/ScanCalendarCard';
@@ -890,8 +891,22 @@ export function LabDashboardScreen() {
           });
         }
       }
+      // İlerleme sütunu (Admin Özet ile aynı): tamamlanan / toplam aşama, atlananlar sayılmaz.
+      const stageDone  = new Map<string, number>();
+      const stageTotal = new Map<string, number>();
+      const recentIds = data.slice(0, 5).map((o: any) => o.id).filter(Boolean);
+      if (recentIds.length) {
+        const { data: st } = await supabase.from('order_stages').select('work_order_id, status').in('work_order_id', recentIds);
+        (st ?? []).forEach((x: any) => {
+          if (x.status === 'skipped') return;
+          stageTotal.set(x.work_order_id, (stageTotal.get(x.work_order_id) ?? 0) + 1);
+          if (x.status === 'onaylandi' || x.status === 'tamamlandi') stageDone.set(x.work_order_id, (stageDone.get(x.work_order_id) ?? 0) + 1);
+        });
+      }
       const recent5 = data.slice(0, 5).map((o: any) => ({
         ...o,
+        stage_done: stageDone.get(o.id) ?? 0,
+        stage_total: stageTotal.get(o.id) ?? 0,
         doctor: o.doctor_id && doctorNameMap.has(o.doctor_id)
           ? { full_name: doctorNameMap.get(o.doctor_id)! }
           : null,
@@ -1738,8 +1753,10 @@ export function LabDashboardScreen() {
         >
           <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>No</Text>
           <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>Hekim</Text>
-          {isDesktop && <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>İş Tipi</Text>}
+          {isDesktop && <Text style={{ flex: 1.6, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>Klinik</Text>}
+          {isDesktop && <Text style={{ flex: 1.8, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>İş Tipi</Text>}
           <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>Durum</Text>
+          {isDesktop && <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>İlerleme</Text>}
           {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'end' as any }}>Teslim</Text>}
         </View>
 
@@ -1821,13 +1838,31 @@ export function LabDashboardScreen() {
                     </View>
                   </View>
                   {isDesktop && (
-                    <Text style={{ flex: 2, fontSize: 11, color: T.ink3 }} numberOfLines={1}>{(order as any).__revChild && (
+                    <Text style={{ flex: 1.6, fontSize: 12, fontWeight: '500', color: (order as any).clinic_name ? T.ink2 : T.ink3 }} numberOfLines={1}>
+                      {(order as any).clinic_name || '—'}
+                    </Text>
+                  )}
+                  {isDesktop && (
+                    <Text style={{ flex: 1.8, fontSize: 11, color: T.ink3 }} numberOfLines={1}>{(order as any).__revChild && (
                       <Text style={{ fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E' }}>{`${(order as any).__continuation ? autoT('Devam') : autoT('Revizyon')} - `}</Text>
                     )}{order.work_type || '--'}</Text>
                   )}
                   <View style={{ flex: 1.4 }}>
                     <StatusBadge status={order.status} holdStatus={(order as any).hold_status} holdCategory={(order as any).hold_category} />
                   </View>
+                  {isDesktop && (() => {
+                    // Admin Özet ile aynı: aşama varsa tamamlanan/toplam, yoksa durumdan kaba oran; teslim = tam.
+                    const tot = Number((order as any).stage_total) || 0;
+                    const dn  = Number((order as any).stage_done) || 0;
+                    const delivered = order.status === 'teslim_edildi';
+                    const pct = delivered ? 1 : tot > 0 ? dn / tot : statusProgress(order.status);
+                    const color = delivered ? '#2D9A6B' : overdue ? '#D94B4B' : P;
+                    return (
+                      <View style={{ flex: 1.4, paddingEnd: 12 }}>
+                        <StageProgressBar pct={pct} done={tot > 0 ? (delivered ? tot : dn) : null} total={tot > 0 ? tot : null} color={color} delayIndex={idx} />
+                      </View>
+                    );
+                  })()}
                   {isDesktop && (
                     <Text style={{
                       flex: 1, fontSize: 11, fontWeight: overdue ? '700' : '500', textAlign: 'end' as any,
