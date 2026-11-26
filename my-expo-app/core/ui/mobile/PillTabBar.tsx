@@ -17,6 +17,7 @@ import {
   View, Text, Pressable, StyleSheet, Platform, Animated, TextInput, Keyboard, Easing,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import Reanimated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 import {
   LiquidGlassView,
   LiquidGlassContainerView,
@@ -304,6 +305,14 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
     // kuyruk yine •••'nin tam altına düşsün.
     if (isMenuAnchor(item)) publishMoreAnchor();
     if (item.onPress) { item.onPress(); return; }
+    // Gösterge dokunuş anında hedef sekmeye kayar (UI iş parçacığı) — yeni
+    // ekranın JS'te çizilmesini beklemez. Gezinme gerçekleşmezse (yönlendirme
+    // reddi vb.) JS boşalınca gösterge gerçek aktif sekmeye geri döner.
+    const targetIdx = items.indexOf(item);
+    if (targetIdx >= 0) {
+      moveIndicatorTo(targetIdx);
+      setTimeout(() => moveIndicatorTo(activeIdxRef.current), 1200);
+    }
     if (item.routeName === 'index') router.push(baseRoute as any);
     else router.push(`${baseRoute}/${item.routeName}` as any);
   };
@@ -333,31 +342,42 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
   const [cellRects, setCellRects] = React.useState<Array<{ x: number; w: number } | null>>(
     () => items.map(() => null),
   );
-  const indicatorX = useRef(new Animated.Value(0)).current;
-  const indicatorW = useRef(new Animated.Value(0)).current;
-  const indicatorOpacity = useRef(new Animated.Value(0)).current;
+  // Perf (2026-11-26 iOS profili): gösterge eskiden RN Animated + JS sürücüsüyle
+  // (left/width native driver'da yok) kayıyordu → her kare JS iş parçacığından
+  // setNativeProps; JS yeni ekranı çizerken gösterge 2+ sn donuyordu. Artık
+  // Reanimated paylaşılan değerleri UI iş parçacığında yürür ve kayma dokunuş
+  // anında başlar (handle → moveIndicatorTo), ekranın çizilmesini beklemez.
+  const indicatorX = useSharedValue(0);
+  const indicatorW = useSharedValue(0);
+  const indicatorOpacity = useSharedValue(0);
+  const cellRectsRef = useRef(cellRects);
+  cellRectsRef.current = cellRects;
+  const activeIdxRef = useRef(activeIdx);
+  activeIdxRef.current = activeIdx;
 
-  useEffect(() => {
-    const rect = cellRects[activeIdx];
+  const moveIndicatorTo = React.useCallback((idx: number) => {
+    const rect = cellRectsRef.current[idx];
     if (!rect) return;
     // Gösterge hücrenin MERKEZİNE çapalanır. Eskiden sol kenardan başlayıp
     // stilde minWidth ile genişletiliyordu; etiketsiz "•••" hücresi 38pt
     // olduğu için daire 8pt sağa taşıyor ve noktalar merkezden kayıyordu.
     const w = Math.max(rect.w, INDICATOR_MIN);
-    Animated.parallel([
-      Animated.spring(indicatorX, {
-        toValue: rect.x + rect.w / 2 - w / 2, damping: 18, stiffness: 220, mass: 0.9,
-        useNativeDriver: false,
-      }),
-      Animated.spring(indicatorW, {
-        toValue: w, damping: 18, stiffness: 220, mass: 0.9,
-        useNativeDriver: false,
-      }),
-      Animated.timing(indicatorOpacity, {
-        toValue: 1, duration: 160, useNativeDriver: false,
-      }),
-    ]).start();
-  }, [activeIdx, cellRects, indicatorX, indicatorW, indicatorOpacity]);
+    const x = rect.x + rect.w / 2 - w / 2;
+    const spring = { damping: 18, stiffness: 220, mass: 0.9 };
+    indicatorX.value = withSpring(x, spring);
+    indicatorW.value = withSpring(w, spring);
+    indicatorOpacity.value = withTiming(1, { duration: 160 });
+  }, [indicatorX, indicatorW, indicatorOpacity]);
+
+  useEffect(() => {
+    moveIndicatorTo(activeIdx);
+  }, [activeIdx, cellRects, moveIndicatorTo]);
+
+  const indicatorAnimStyle = useAnimatedStyle(() => ({
+    left: indicatorX.value,
+    width: indicatorW.value,
+    opacity: indicatorOpacity.value,
+  }));
 
   /**
    * Hücre DOM/host düğümleri — mercek konumunu ölçmek için.
@@ -427,23 +447,21 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
   // düşüyor ve her katman ayrıca GPU yakıyor. Cam işini BAR yapar; seçili öğe
   // yalnız "burada duruyorsun" der.
   const slidingIndicator = (
-    <Animated.View
+    <Reanimated.View
       pointerEvents="none"
-      style={{
+      style={[{
         position: 'absolute',
         // Etiketli düzende gösterge ikon + etiketi birlikte sarar (daha yüksek)
         top: labeled ? 4 : 7, bottom: labeled ? 4 : 7,
-        left: indicatorX,
-        // Genişlik + konum effect'te birlikte hesaplanıyor (hücre merkezine
-        // hizalı, en az 46 → etiketsiz hücrede tam daire). Burada minWidth
-        // VERİLMEZ: verilirse konum hesabıyla çelişip ikonu kaydırır.
-        width: indicatorW,
-        opacity: indicatorOpacity,
+        // left / width / opacity → indicatorAnimStyle (UI iş parçacığı).
+        // Genişlik + konum birlikte hesaplanıyor (hücre merkezine hizalı, en az
+        // 46 → etiketsiz hücrede tam daire). Burada minWidth VERİLMEZ: verilirse
+        // konum hesabıyla çelişip ikonu kaydırır.
         borderRadius: labeled ? 22 : NAV.radius,
         backgroundColor: ind.fill,
         borderWidth: 1,
         borderColor: ind.border,
-      }}
+      }, indicatorAnimStyle]}
     />
   );
 

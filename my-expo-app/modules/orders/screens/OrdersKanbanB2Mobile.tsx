@@ -9,7 +9,7 @@ import { localeTag } from '../../../core/i18n';
  * iki görünüm hiçbir zaman farklı sayı göstermez. `orders` zaten süzülmüş ve
  * sıralanmış gelir.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
   RefreshControl, StyleSheet, Modal, Image, Platform,
@@ -470,6 +470,34 @@ function ListView({
     return { anchors: anchors as WorkOrder[], revChildren: children, numById };
   }, [orders]);
 
+  // ── Perf (2026-11-26 iOS profili) ───────────────────────────────────
+  // Ebeveyn her render'da yeni onOpenOrder/rowActionsFor fonksiyonu ve yeni
+  // `actions` dizisi veriyordu → 100+ kartın hepsi her seferinde (gizli sekmede,
+  // başka ekrana geçerken bile) yeniden çiziliyordu. Kartlara SABİT kimlikli
+  // sarmalayıcılar verilir; her çağrı en güncel ebeveyn fonksiyonunu ref'ten okur
+  // (bayat closure yok). Kart React.memo ile yalnız kendi verisi değişince çizilir.
+  const latest = useRef({ onOpenOrder, laneOf, rowActionsFor });
+  latest.current = { onOpenOrder, laneOf, rowActionsFor };
+  const stableOpen = useCallback((o: WorkOrder) => latest.current.onOpenOrder(o), []);
+  const stableLaneOf = useCallback((o: WorkOrder) => latest.current.laneOf(o), []);
+  const stableActions = useCallback(
+    (o: WorkOrder) => latest.current.rowActionsFor?.(o) ?? [],
+    [],
+  );
+  const hasActions = !!rowActionsFor;
+
+  // Kademeli çizim: ilk ekranı dolduran kartlar hemen, kalanlar küçük partiler
+  // hâlinde sonraki karelerde — dokunuşlar 100 kartlık tek blok yüzünden donmasın.
+  const FIRST_BATCH = 12;
+  const STEP = 10;
+  const [limit, setLimit] = useState(FIRST_BATCH);
+  useEffect(() => {
+    if (limit >= anchors.length) return;
+    const t = setTimeout(() => setLimit(l => l + STEP), 16);
+    return () => clearTimeout(t);
+  }, [limit, anchors.length]);
+  const visibleAnchors = limit >= anchors.length ? anchors : anchors.slice(0, limit);
+
   if (orders.length === 0) {
     return (
       <View style={{ paddingHorizontal: 24, paddingVertical: 48, alignItems: 'center' }}>
@@ -486,15 +514,15 @@ function ListView({
     <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 16 }}>
       {/* Sayı sekmedeki "Tümü N" ile aynı: revizyonlar ana satırın altında ama sayılır */}
       <MobileTableX title="Siparişler" count={orders.length} countLabel="sipariş">
-      {anchors.map(o => (
+      {visibleAnchors.map(o => (
         <OrderCard
           key={o.id}
           order={o}
-          laneOf={laneOf}
-          onOpenOrder={onOpenOrder}
+          laneOf={stableLaneOf}
+          onOpenOrder={stableOpen}
           history={revChildren.get(String(o.id)) as WorkOrder[] | undefined}
           parentNo={numById.get(String((o as any).continues_order_id ?? '')) ?? null}
-          actions={rowActionsFor?.(o)}
+          getActions={hasActions ? stableActions : undefined}
           useClinicLogo={useClinicLogoAvatar}
         />
       ))}
@@ -506,15 +534,19 @@ function ListView({
 // ═══════════════════════════════════════════════════════════════════
 // Sipariş kartı — avatar · hasta / no / iş / hekim · tarih + ••• + durum
 // ═══════════════════════════════════════════════════════════════════
-function OrderCard({ order: o, laneOf, onOpenOrder, history, parentNo, actions, useClinicLogo }: {
+const OrderCard = React.memo(OrderCardImpl);
+
+function OrderCardImpl({ order: o, laneOf, onOpenOrder, history, parentNo, getActions, useClinicLogo }: {
   order: WorkOrder;
   laneOf: (o: WorkOrder) => LaneDef | undefined;
   onOpenOrder: (o: WorkOrder) => void;
   history?: WorkOrder[];
   parentNo: string | null;
-  actions?: RowAction[];
+  /** Sabit kimlikli üretici — kart memo'lu kalsın diye dizi değil fonksiyon. */
+  getActions?: (o: WorkOrder) => RowAction[];
   useClinicLogo: boolean;
 }) {
+  const actions = useMemo(() => getActions?.(o), [getActions, o]);
   const T = useMobileTokens();
   const theme = useMobileTheme();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -542,9 +574,11 @@ function OrderCard({ order: o, laneOf, onOpenOrder, history, parentNo, actions, 
   const tone = onHold ? '#E89B2A' : (isDone ? '#2D9A6B' : laneColor);
   const badgeLabel = autoT(onHold ? holdBadgeText(o as any) : (getOrderStageLabel(o as any) || lane?.title || (isDone ? 'Teslim' : 'İşlemde')));
 
+  // Perf: toLocaleDateString her çağrıda yeni Intl biçimleyici kurar (Hermes'te pahalı,
+  // 100+ kartta saniyeler). Dile göre önbelleklenmiş tek biçimleyici kullanılır;
+  // yalnız teslim tarihi olmayan kartta gösterildiği için o durumda hesaplanır.
   const created = (o as any).created_at ? new Date((o as any).created_at) : null;
-  const dateStr = created ? created.toLocaleDateString(localeTag(), { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
-  const timeStr = created ? created.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' }) : '';
+  const dateStr = created ? cardDateFmt().format(created) : '—';
 
   const initials = String(patient).trim().split(/\s+/).slice(0, 2)
     .map((p: string) => p[0]?.toUpperCase() ?? '').join('') || '?';
@@ -723,6 +757,18 @@ function abbrevDoctor(name: string): string {
   const last = rest[rest.length - 1];
   const inits = rest.slice(0, -1).map(p => `${p[0]?.toLocaleUpperCase('tr')}.`).join(' ');
   return [title, inits, last].filter(Boolean).join(' ');
+}
+
+/** Dil başına tek Intl.DateTimeFormat (kart başına yeni biçimleyici kurmak yavaş). */
+const _dateFmtCache = new Map<string, Intl.DateTimeFormat>();
+function cardDateFmt(): Intl.DateTimeFormat {
+  const tag = localeTag();
+  let f = _dateFmtCache.get(tag);
+  if (!f) {
+    f = new Intl.DateTimeFormat(tag, { day: '2-digit', month: '2-digit', year: 'numeric' });
+    _dateFmtCache.set(tag, f);
+  }
+  return f;
 }
 
 function formatDue(d: string): string {

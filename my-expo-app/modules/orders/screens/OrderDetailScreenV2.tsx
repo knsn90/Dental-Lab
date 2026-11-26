@@ -741,14 +741,10 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const [triageAutoOpened, setTriageAutoOpened] = useState(false);
   const [replanOpen, setReplanOpen] = useState(false);
 
-  // Canlı zaman sayacı — siyah karttaki "TOPLAM SÜRE" ve "BU AŞAMA"
-  // değerlerinin saniye saniye akmasını sağlar. TOPLAM SÜRE her durumda
-  // (aktif aşama olmasa bile) firstStart'tan beri saymaya devam eder.
-  const [, setTimeTick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setTimeTick(x => x + 1), 1_000);
-    return () => clearInterval(t);
-  }, []);
+  // Canlı zaman sayacı: siyah karttaki "TOPLAM SÜRE" ve "BU AŞAMA" artık kendi
+  // saatini tutan <LiveElapsedText> ile akar. Eskiden burada 1 sn'lik setInterval
+  // bütün ekranı (4900+ satır) her saniye yeniden çiziyordu → iOS'ta boşta bile
+  // JS iş parçacığının ~%20-30'u yanıyor, dokunuşlar gecikiyordu (2026-11-26 profili).
 
   const isManager = profile?.role === 'manager' || profile?.user_type === 'admin';
   // Triaj yetkisi: admin + lab_manager (C seçildi)
@@ -3201,9 +3197,13 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                             <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#86EFAC' }} />
                           )}
                         </View>
-                        <Text style={{ fontSize: 18, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.3, marginTop: 2, fontVariant: ['tabular-nums'] }}>
-                          {fmtLive(totalElapsed)}
-                        </Text>
+                        <LiveElapsedText
+                          since={firstStart}
+                          until={lastCompleted}
+                          initialSec={totalElapsed}
+                          format={fmtLive}
+                          style={{ fontSize: 18, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.3, marginTop: 2, fontVariant: ['tabular-nums'] }}
+                        />
                         <Text style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.55)', marginTop: 1 }}>
                           Başladı · {fmtDateTime(firstStart)}
                           {allDone && lastCompleted ? ` → ${fmtDateTime(lastCompleted)}` : ''}
@@ -3215,9 +3215,13 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                         <Text style={{ fontSize: 9.5, fontWeight: '700', color: accentInk, letterSpacing: 0.8, textTransform: 'uppercase' }}>
                           Bu Aşama
                         </Text>
-                        <Text style={{ fontSize: 18, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.3, marginTop: 2, fontVariant: ['tabular-nums'] }}>
-                          {fmtLive(stageElapsed)}
-                        </Text>
+                        <LiveElapsedText
+                          since={stageStart}
+                          until={null}
+                          initialSec={stageElapsed}
+                          format={fmtLive}
+                          style={{ fontSize: 18, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.3, marginTop: 2, fontVariant: ['tabular-nums'] }}
+                        />
                         <Text style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.55)', marginTop: 1 }}>
                           {activeS?.station?.name ?? '—'} · {fmtDateTime(stageStart)}
                         </Text>
@@ -4952,4 +4956,32 @@ function PillBtn({ children, variant = 'primary', size = 'md', icon: Icon, onDar
       style={{ borderWidth: 1, backgroundColor: bgHex, borderColor: bdHex }}
     />
   );
+}
+
+/**
+ * Saniye saniye akan süre metni — saati KENDİ tutar, böylece yalnız bu <Text>
+ * yeniden çizilir (ekranın tamamı değil). `until` verilirse süre donar ve
+ * zamanlayıcı kurulmaz. İlk değer ebeveynin hesabıyla aynıdır (`initialSec`).
+ */
+function LiveElapsedText({ since, until, initialSec, format, style }: {
+  since: string | null;
+  until: string | null;
+  initialSec: number;
+  format: (sec: number) => string;
+  style: any;
+}) {
+  const calc = () => {
+    if (!since) return 0;
+    const end = until ? new Date(until).getTime() : Date.now();
+    return Math.max(0, Math.floor((end - new Date(since).getTime()) / 1000));
+  };
+  const [sec, setSec] = useState(initialSec);
+  useEffect(() => {
+    setSec(calc());
+    if (!since || until) return;
+    const t = setInterval(() => setSec(calc()), 1_000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [since, until]);
+  return <Text style={style}>{format(sec)}</Text>;
 }
