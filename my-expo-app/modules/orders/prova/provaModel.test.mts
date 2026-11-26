@@ -85,7 +85,7 @@ test('nowCard döndü: not düğmesi, bugün', () => {
 });
 
 test('heroLabel', () => {
-  assert.deepEqual(heroLabel(null), { text: 'Prova', dot: 'none' });
+  assert.deepEqual(heroLabel(null), { text: 'Prova ve Randevu', dot: 'none' });
   assert.deepEqual(heroLabel(flag({ prova_state: 'klinikte', prova_days: 2 })), { text: 'Prova · Klinikte 2. gün', dot: 'amber' });
   assert.deepEqual(heroLabel(flag({ prova_state: 'klinikte', prova_days: 4, prova_late_days: 1 })), { text: 'Prova · 1 gün gecikti', dot: 'red' });
   assert.deepEqual(heroLabel(flag({ prova_state: 'döndü' })), { text: 'Prova · Döndü', dot: 'green' });

@@ -11276,5 +11276,6 @@
   "Randevu penceresini kapatır": "Closes the appointment window",
   "Hastaya verdiğiniz prova ya da takma randevusunu girin; lab teslimi buna göre planlar.": "Enter the try-in or fitting appointment you gave the patient; the lab plans delivery around it.",
   "Hastanın prova/takma randevusunu gösterir ve değiştirir": "Shows and changes the patient's try-in/fitting appointment",
-  "Hastaya verilen prova ya da takma randevusunu ekler": "Adds the try-in or fitting appointment given to the patient"
+  "Hastaya verilen prova ya da takma randevusunu ekler": "Adds the try-in or fitting appointment given to the patient",
+  "Prova ve Randevu": "Try-in & Appointment"
 }

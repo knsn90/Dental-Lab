@@ -297,7 +297,9 @@ export function flagFromSnapshot(s: ProvaSnapshot | null): ProvaFlag | null {
 
 export function heroLabel(f: ProvaFlag | null, t: T = id): { text: string; dot: 'none' | 'amber' | 'red' | 'green' } {
   const base = t('Prova');
-  if (!f) return { text: base, dot: 'none' };
+  // Durum yokken düğme hastanın randevularını da açtığını söylesin (pencerede Randevular bölümü var).
+  const idle = t('Prova ve Randevu');
+  if (!f) return { text: idle, dot: 'none' };
   const riskDot = f.risk_level === 'yetismiyor' ? 'red' : f.risk_level === 'yaklasiyor' ? 'amber' : null;
   const late = Number(f.prova_late_days) || 0;
   if ((f.prova_state === 'klinikte' || f.prova_state === 'onay_bekliyor') && late > 0) {
@@ -308,7 +310,7 @@ export function heroLabel(f: ProvaFlag | null, t: T = id): { text: string; dot: 
   }
   if (f.prova_state === 'onay_bekliyor') return { text: `${base} · ${t('Lab onayı bekliyor')}`, dot: riskDot === 'red' ? 'red' : 'amber' };
   if (f.prova_state === 'döndü') return { text: `${base} · ${t('Döndü')}`, dot: riskDot ?? 'green' };
-  return { text: base, dot: riskDot ?? 'none' };
+  return { text: idle, dot: riskDot ?? 'none' };
 }
 
 export function riskChip(r: ProvaRisk | null | undefined, t: T = id, locale = 'tr'): { label: string; tone: 'ok' | 'warn' | 'bad' } | null {

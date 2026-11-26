@@ -319,11 +319,11 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
           {props.onProva ? (() => {
             const DotIcon = provaHeroIcon(props.provaDot ?? 'none');
             return (
-              <GlassTooltip title={autoT('Prova')} text={autoT('Provalar ve hastanın prova/takma randevuları')} placement="bottom">
+              <GlassTooltip title={autoT('Prova ve Randevu')} text={autoT('Provalar ve hastanın prova/takma randevuları')} placement="bottom">
                 <Pressable
                   onPress={props.onProva}
                   accessibilityRole="button"
-                  accessibilityLabel={autoT('Prova')}
+                  accessibilityLabel={autoT('Prova ve Randevu')}
                   style={({ pressed }: any) => ({
                     width: 40, height: 40, borderRadius: 13,
                     backgroundColor: T.card,
