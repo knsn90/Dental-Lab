@@ -1830,8 +1830,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         onUndoDelivery={isManager && (order.status as string) === 'teslim_edildi' ? () => setUndoDeliveryOpen(true) : undefined}
         onProva={provaPanel && order.status !== 'iptal' ? () => { setProvaOrigin(null); setProvaOpen(true); } : undefined}
         provaDot={provaHero.dot}
-        apptNode={provaPanel && order.status !== 'iptal' && order.status !== 'teslim_edildi' ? (
-          <ApptHeroLine snapshot={provaSnap.data} onPress={() => setApptOpen(true)} color={T.ink2} mutedColor={T.ink3} />
+        apptNode={provaPanel && order.status !== 'iptal' ? (
+          <ApptHeroLine closed={order.status === 'teslim_edildi'} snapshot={provaSnap.data} onPress={() => setApptOpen(true)} color={T.ink2} mutedColor={T.ink3} />
         ) : undefined}
         doctorNote={(order as any).notes ?? null}
         onBack={goBackFromDetail}
@@ -2572,6 +2572,19 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                       mutedColor={heroPalette.dark ? 'rgba(255,255,255,0.62)' : '#6B6B6B'}
                     />
                   ) : null}
+                </View>
+              )}
+
+              {/* Teslim edilmiş iş: randevular + prova tarihleri (salt okunur özet) */}
+              {provaPanel && order.status === 'teslim_edildi' && (
+                <View className="items-end" style={{ flexShrink: 0, maxWidth: 280 }}>
+                  <ApptHeroLine
+                    closed
+                    snapshot={provaSnap.data}
+                    onPress={() => setApptOpen(true)}
+                    color={heroPalette.dark ? 'rgba(255,255,255,0.88)' : '#3C3C3C'}
+                    mutedColor={heroPalette.dark ? 'rgba(255,255,255,0.62)' : '#6B6B6B'}
+                  />
                 </View>
               )}
 

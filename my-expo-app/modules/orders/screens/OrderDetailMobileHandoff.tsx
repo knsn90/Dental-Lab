@@ -469,6 +469,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                   <Check size={22} color={T.ink} strokeWidth={1.8} />
                 </View>
               ) : null}
+              {props.closed.kind === 'delivered' ? props.apptNode : null}
             </View>
             ) : (
             <View style={{ alignItems: 'flex-end' }}>

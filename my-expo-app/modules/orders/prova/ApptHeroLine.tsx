@@ -11,7 +11,7 @@ import { autoT } from '../../../core/i18n/autoTranslate';
 import { localeTag } from '../../../core/i18n';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { CalendarClock, Plus } from '../../../core/ui/icons';
-import { fmtShortDay, type ProvaSnapshot, type ApptRow } from './provaModel';
+import { fmtShortDay, provaName, type ProvaSnapshot, type ApptRow } from './provaModel';
 
 /** Gösterilecek randevular: geçerli (silinmemiş) olanların hepsi, tarih sırasıyla (prova + takma). */
 export function heroAppts(s: ProvaSnapshot | null | undefined): ApptRow[] {
@@ -30,8 +30,10 @@ function apptLabel(a: ApptRow, loc: string): string {
     a.pending_action ? autoT('onay bekliyor') : null].filter(Boolean).join(' · ');
 }
 
-export function ApptHeroLine({ snapshot, onPress, color, mutedColor, align = 'flex-end' }: {
+export function ApptHeroLine({ snapshot, onPress, color, mutedColor, align = 'flex-end', closed = false }: {
   snapshot: ProvaSnapshot | null | undefined;
+  /** Teslim edilmiş iş: salt okunur özet — randevular + provaların gidiş → dönüş tarihleri; ekleme bağlantısı yok. */
+  closed?: boolean;
   onPress: () => void;
   color: string;
   mutedColor: string;
@@ -39,11 +41,17 @@ export function ApptHeroLine({ snapshot, onPress, color, mutedColor, align = 'fl
 }) {
   if (!snapshot) return null;
   const rows = heroAppts(snapshot);
-  const canEdit = snapshot.can_manage || snapshot.can_propose;
-  if (rows.length === 0 && !canEdit) return null;
   const loc = localeTag();
-  const labels = rows.length ? rows.map((a) => apptLabel(a, loc)) : [autoT('Hasta randevusu')];
-  const has = rows.length > 0;
+  // Kapalı işte provaların tarihleri de yazılır (gönderildiği gün → döndüğü gün).
+  const provaLabels = closed
+    ? [...snapshot.provas].filter((p) => p.sent_date).sort((a, b) => a.number - b.number).map((p) =>
+        `${provaName(p, autoT)} · ${fmtShortDay(p.sent_date!, loc)}${p.return_date ? ` → ${fmtShortDay(p.return_date, loc)}` : ''}`)
+    : [];
+  const canEdit = !closed && (snapshot.can_manage || snapshot.can_propose);
+  if (rows.length === 0 && provaLabels.length === 0 && !canEdit) return null;
+  const apptLabels = rows.map((a) => apptLabel(a, loc));
+  const has = rows.length + provaLabels.length > 0;
+  const labels = has ? [...provaLabels, ...apptLabels] : [autoT('Hasta randevusu')];
   const Icon = has ? CalendarClock : Plus;
   return (
     <GlassTooltip
