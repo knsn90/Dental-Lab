@@ -134,6 +134,7 @@ import { OrderHistoryModal } from '../history/OrderHistoryModal';
 import { DeliveryUndoModal } from '../components/DeliveryUndoModal';
 import { ProvaModal, type OriginRect } from '../prova/ProvaModal';
 import { ProvaSlipModal } from '../prova/ProvaSlipModal';
+import { ApptHeroLine } from '../prova/ApptHeroLine';
 import { ShipLabelTypeModal } from '../components/ShipLabelTypeModal';
 import { slipProvaLabel, slipProvaKind, activeProva } from '../prova/provaModel';
 import { useProvaSnapshot } from '../prova/useProvaSnapshot';
@@ -361,6 +362,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   // Prova popup'ı (2. dalga 4) — hero'daki "Prova" hapı; ?tab=prova (bildirimler) doğrudan açar.
   const [provaOpen, setProvaOpen] = useState(tabParam === 'prova');
   const [provaSlipOpen, setProvaSlipOpen] = useState(false);
+  // "Hasta randevusu" — ProvaModal yalnız-randevu modunda (teslim tarihinin altındaki satırdan açılır).
+  const [apptOpen, setApptOpen] = useState(false);
   // Çıktılar penceresindeki "Gönderi fişi" → teslimat türü sorusu
   const [shipTypeOpen, setShipTypeOpen] = useState(false);
   const [provaOrigin, setProvaOrigin] = useState<OriginRect | null>(null);
@@ -1493,6 +1496,20 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         onCallCourier={(purpose) => { setProvaOpen(false); setProvaCourier(purpose); }}
         onPrintSlip={Platform.OS === 'web' ? () => { setProvaOpen(false); setProvaSlipOpen(true); } : undefined}
       />
+      {/* Hasta randevusu — aynı pencere, yalnız randevular (klinik sonradan girer, lab onaylar) */}
+      <ProvaModal
+        visible={apptOpen}
+        mode="appts"
+        onClose={() => setApptOpen(false)}
+        orderId={order.id}
+        orderNumber={String((order as any).order_number ?? '')}
+        workTitle={(order as any).work_type ?? null}
+        snapshot={provaSnap.data}
+        loading={provaSnap.loading}
+        error={provaSnap.error}
+        refetch={provaSnap.refetch}
+        onChanged={refetch}
+      />
       {/* Prova fişi — lab notu + hekimin kalemle dolduracağı not kutusu (A5) */}
       <ProvaSlipModal
         visible={provaSlipOpen}
@@ -1813,6 +1830,9 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         onUndoDelivery={isManager && (order.status as string) === 'teslim_edildi' ? () => setUndoDeliveryOpen(true) : undefined}
         onProva={provaPanel && order.status !== 'iptal' ? () => { setProvaOrigin(null); setProvaOpen(true); } : undefined}
         provaDot={provaHero.dot}
+        apptNode={provaPanel && order.status !== 'iptal' && order.status !== 'teslim_edildi' ? (
+          <ApptHeroLine snapshot={provaSnap.data} onPress={() => setApptOpen(true)} color={T.ink2} mutedColor={T.ink3} />
+        ) : undefined}
         doctorNote={(order as any).notes ?? null}
         onBack={goBackFromDetail}
         onChat={() => setChatOpen(true)}
@@ -2506,6 +2526,25 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                       Teslim tarihi devam edince ötelenecek
                     </Text>
                   )}
+                  {provaPanel ? (
+                    <ApptHeroLine
+                      snapshot={provaSnap.data}
+                      onPress={() => setApptOpen(true)}
+                      color={heroPalette.dark ? 'rgba(255,255,255,0.88)' : '#3C3C3C'}
+                      mutedColor={heroPalette.dark ? 'rgba(255,255,255,0.62)' : '#6B6B6B'}
+                    />
+                  ) : null}
+                </View>
+              )}
+              {/* Prova beklemesinde sağ blok çizilmez; hastanın randevuları yine de görünsün. */}
+              {provaPanel && onHold && isProvaHold(order as any) && order.status !== 'iptal' && order.status !== 'teslim_edildi' && (
+                <View className="items-end" style={{ flexShrink: 0, maxWidth: 260 }}>
+                  <ApptHeroLine
+                    snapshot={provaSnap.data}
+                    onPress={() => setApptOpen(true)}
+                    color={heroPalette.dark ? 'rgba(255,255,255,0.88)' : '#3C3C3C'}
+                    mutedColor={heroPalette.dark ? 'rgba(255,255,255,0.62)' : '#6B6B6B'}
+                  />
                 </View>
               )}
               {/* Kalan gün — sağ üst, başlıkla hizalı (dar header'da bile sabit kalır) */}
@@ -2525,6 +2564,14 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                   <Text className="text-[12px] mt-1" style={{ color: heroPalette.dark ? 'rgba(255,255,255,0.80)' : '#3C3C3C' }}>
                     Teslim {fmtDate(order.delivery_date)}
                   </Text>
+                  {provaPanel ? (
+                    <ApptHeroLine
+                      snapshot={provaSnap.data}
+                      onPress={() => setApptOpen(true)}
+                      color={heroPalette.dark ? 'rgba(255,255,255,0.88)' : '#3C3C3C'}
+                      mutedColor={heroPalette.dark ? 'rgba(255,255,255,0.62)' : '#6B6B6B'}
+                    />
+                  ) : null}
                 </View>
               )}
 

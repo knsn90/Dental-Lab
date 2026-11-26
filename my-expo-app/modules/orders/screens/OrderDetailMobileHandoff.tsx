@@ -115,6 +115,8 @@ export interface OrderDetailMobileHandoffProps {
   onProva?: () => void;
   /** Prova durum noktası: klinikte (amber), gecikti/risk (kırmızı), döndü (yeşil). */
   provaDot?: ProvaDot;
+  /** "Hasta randevusu" satırı — teslim tarihinin altında gösterilir. */
+  apptNode?: React.ReactNode;
   /** Hekim notu — varsa "Hekim Notu" tab/section'da gösterilir, yoksa boş mesaj */
   doctorNote?: string | null;
   // Actions
@@ -487,6 +489,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
               <Text style={{ fontSize: 10, color: T.ink3, marginTop: 2 }}>
                 Teslim {props.deliveryDate}
               </Text>
+              {props.apptNode}
             </View>
             )}
           </View>

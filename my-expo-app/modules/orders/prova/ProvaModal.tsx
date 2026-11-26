@@ -260,8 +260,11 @@ function Track({ fill, color, reduce }: { fill: [number, number, number]; color:
 // ── Popup ─────────────────────────────────────────────────────────────────────────────────────
 export function ProvaModal({
   visible, onClose, orderId, orderNumber, workTitle, originRect, snapshot, loading, error, refetch, onChanged, onCallCourier, onPrintSlip,
+  mode = 'prova',
 }: {
   visible: boolean;
+  /** 'appts' → yalnız hastanın randevuları (sipariş detayındaki "Hasta randevusu" girişi). */
+  mode?: 'prova' | 'appts';
   onClose: () => void;
   orderId: string;
   orderNumber?: string | null;
@@ -453,12 +456,12 @@ export function ProvaModal({
               <CalendarClock size={17} color={U.ink[700]} strokeWidth={1.8} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[U.modalTitle, { letterSpacing: -0.2 }]} numberOfLines={1}>{autoT('Prova')}</Text>
+              <Text style={[U.modalTitle, { letterSpacing: -0.2 }]} numberOfLines={1}>{autoT(mode === 'appts' ? 'Hasta randevusu' : 'Prova')}</Text>
               <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 1, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
                 {orderNumber ? `#${orderNumber}` : ''}{orderNumber && workTitle ? ' · ' : ''}{workTitle ?? ''}
               </Text>
             </View>
-            <GlassTooltip title={autoT('Kapat')} text={autoT('Prova penceresini kapatır')} placement="bottom">
+            <GlassTooltip title={autoT('Kapat')} text={autoT(mode === 'appts' ? 'Randevu penceresini kapatır' : 'Prova penceresini kapatır')} placement="bottom">
               <Pressable
                 onPress={onClose}
                 hitSlop={8}
@@ -478,6 +481,8 @@ export function ProvaModal({
                   {error ? error : loading ? autoT('Yükleniyor…') : ''}
                 </Text>
               </View>
+            ) : mode === 'appts' ? (
+              <ApptSection s={s} orderId={orderId} accent={accent} onChanged={after} first />
             ) : card ? (
               <>
                 {/* Şu an */}
@@ -628,12 +633,17 @@ function primaryHint(a: NonNullable<NowCard['primary']>['action']): string {
 // ── Randevular ────────────────────────────────────────────────────────────────────────────────
 type Draft = { id: string | null; kind: 'prova' | 'takma'; date: string; time: string };
 
-function ApptSection({ s, orderId, accent, onChanged }: { s: ProvaSnapshot; orderId: string; accent: string; onChanged: () => Promise<void> }) {
+function ApptSection({ s, orderId, accent, onChanged, first }: {
+  s: ProvaSnapshot; orderId: string; accent: string; onChanged: () => Promise<void>;
+  /** Yalnız-randevu modunda pencerenin ilk bölümü: üst boşluk yok; randevu yoksa ekleme formu açık gelir. */
+  first?: boolean;
+}) {
   const U = useInkUI();
   const T = useMobileTokens();
   const loc = localeTag();
   const canEdit = s.can_manage || s.can_propose;
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(() =>
+    first && canEdit && !s.appointments.some((a) => !a.removed) ? { id: null, kind: 'takma', date: '', time: '' } : null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [rejectFor, setRejectFor] = useState<string | null>(null);
@@ -674,7 +684,7 @@ function ApptSection({ s, orderId, accent, onChanged }: { s: ProvaSnapshot; orde
   };
 
   return (
-    <View style={{ marginTop: 22 }}>
+    <View style={{ marginTop: first ? 4 : 22 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
         <Text style={{ flex: 1, fontSize: 10.5, fontWeight: '700', letterSpacing: 1.1, color: T.ink3, textTransform: 'uppercase' }}>{autoT('Randevular')}</Text>
         {canEdit && !draft ? (
@@ -682,6 +692,10 @@ function ApptSection({ s, orderId, accent, onChanged }: { s: ProvaSnapshot; orde
             onPress={() => { setInfo(null); setErr(null); setDraft({ id: null, kind: 'takma', date: '', time: '' }); }} />
         ) : null}
       </View>
+
+      {first && canEdit && s.can_propose && !s.can_manage ? (
+        <Text style={{ fontSize: 12, color: T.ink3, marginBottom: 6 }}>{autoT('Hastaya verdiğiniz prova ya da takma randevusunu girin; lab teslimi buna göre planlar.')}</Text>
+      ) : null}
 
       {rows.length === 0 && !draft ? (
         <Text style={{ fontSize: 12.5, color: T.ink3, paddingVertical: 8 }}>{autoT('Randevu girilmemiş')}</Text>
