@@ -13,6 +13,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   View, Text, ScrollView, Pressable, TextInput,
   RefreshControl, StyleSheet, Modal, Image, Platform,
+  type NativeSyntheticEvent, type NativeScrollEvent,
 } from 'react-native';
 import {
   Search, X, SlidersHorizontal, Hash, CalendarDays, Clock, CornerDownRight, CornerDownLeft,
@@ -119,6 +120,9 @@ interface Props {
   rowActionsFor?: (o: WorkOrder) => RowAction[];
 }
 
+const LIST_FIRST = 12;
+const LIST_STEP = 20;
+
 export function OrdersKanbanB2Mobile({
   orders, loading, refetch, onOpenOrder, onAddInLane,
   statusTabs, statusFilter, onStatusChange, search, onSearchChange,
@@ -152,6 +156,23 @@ export function OrdersKanbanB2Mobile({
     return m;
   }, [orders]);
 
+  // ── Perf: kaydırdıkça yükleme (2026-11-26 iOS profili) ───────────────
+  // İlk açılışta yalnız LIST_FIRST kart mount edilir; kullanıcı liste sonuna
+  // ~1.5 ekran yaklaşınca LIST_STEP kart daha eklenir. Kartlar MobileTableX'in tek
+  // çerçevesi içinde kaldığı için görünüm aynı; yalnız ekran dışı kartlar
+  // gerekene kadar kurulmaz. Süzgeç/arama değişince başa döner.
+  const [listLimit, setListLimit] = useState(LIST_FIRST);
+  useEffect(() => { setListLimit(LIST_FIRST); }, [statusFilter, search]);
+  const ordersLenRef = useRef(orders.length);
+  ordersLenRef.current = orders.length;
+  const onListScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+    const remaining = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+    if (remaining < layoutMeasurement.height * 1.5) {
+      setListLimit(l => (l >= ordersLenRef.current ? l : l + LIST_STEP));
+    }
+  }, []);
+
   // Filtre butonundaki nokta: varsayılandan sapma (sıralama ya da Kanban)
   const sheetDirty = viewMode !== 'list' || sort.by !== 'created_at' || sort.dir !== 'desc';
 
@@ -160,6 +181,8 @@ export function OrdersKanbanB2Mobile({
       style={{ flex: 1, backgroundColor: T.bg }}
       contentContainerStyle={{ paddingBottom: navBarMetrics(insets.bottom).clearance + 16 }}
       keyboardShouldPersistTaps="handled"
+      onScroll={viewMode === 'list' ? onListScroll : undefined}
+      scrollEventThrottle={100}
       refreshControl={refetch
         ? <RefreshControl refreshing={!!loading} onRefresh={refetch} tintColor={theme.accent} />
         : undefined}
@@ -267,7 +290,7 @@ export function OrdersKanbanB2Mobile({
 
       {/* ════ İçerik ════ */}
       {viewMode === 'list' ? (
-        <ListView orders={orders} onOpenOrder={onOpenOrder} laneOf={laneOf} rowActionsFor={rowActionsFor} />
+        <ListView orders={orders} onOpenOrder={onOpenOrder} laneOf={laneOf} rowActionsFor={rowActionsFor} limit={listLimit} />
       ) : LANES.every(lane => (grouped[lane.key]?.length ?? 0) === 0) ? (
         <View style={{ paddingHorizontal: 24, paddingVertical: 48, alignItems: 'center' }}>
           <Text style={{ fontSize: 13, color: T.ink3, fontFamily: MFONT.uiRegular, textAlign: 'center' }}>
@@ -447,11 +470,14 @@ function ListView({
   onOpenOrder,
   laneOf,
   rowActionsFor,
+  limit,
 }: {
   orders: WorkOrder[];
   onOpenOrder: (o: WorkOrder) => void;
   laneOf: (o: WorkOrder) => LaneDef | undefined;
   rowActionsFor?: (o: WorkOrder) => RowAction[];
+  /** Mount edilecek en fazla kart sayısı (kaydırdıkça artar) */
+  limit: number;
 }) {
   const T = useMobileTokens();
   // Lab/Admin panelinde avatar = klinik logosu (hangi klinikten geldiği bir bakışta belli).
@@ -486,16 +512,8 @@ function ListView({
   );
   const hasActions = !!rowActionsFor;
 
-  // Kademeli çizim: ilk ekranı dolduran kartlar hemen, kalanlar küçük partiler
-  // hâlinde sonraki karelerde — dokunuşlar 100 kartlık tek blok yüzünden donmasın.
-  const FIRST_BATCH = 12;
-  const STEP = 10;
-  const [limit, setLimit] = useState(FIRST_BATCH);
-  useEffect(() => {
-    if (limit >= anchors.length) return;
-    const t = setTimeout(() => setLimit(l => l + STEP), 16);
-    return () => clearTimeout(t);
-  }, [limit, anchors.length]);
+  // Kaydırdıkça yükleme: yalnız `limit` kadar kart mount edilir (ebeveyn, liste
+  // sonuna yaklaşıldıkça artırır) — 100+ kartın hepsi baştan kurulmaz.
   const visibleAnchors = limit >= anchors.length ? anchors : anchors.slice(0, limit);
 
   if (orders.length === 0) {
