@@ -30,6 +30,7 @@ import ArrowDownToLineIcon from '@hugeicons/core-free-icons/ArrowDownToLineIcon'
 import ArrowLeft01Icon from '@hugeicons/core-free-icons/ArrowLeft01Icon';
 import ArrowLeftRightIcon from '@hugeicons/core-free-icons/ArrowLeftRightIcon';
 import ArrowRight01Icon from '@hugeicons/core-free-icons/ArrowRight01Icon';
+import Route01Icon from '@hugeicons/core-free-icons/Route01Icon';
 import ArrowTurnBackwardIcon from '@hugeicons/core-free-icons/ArrowTurnBackwardIcon';
 import ArrowUp01Icon from '@hugeicons/core-free-icons/ArrowUp01Icon';
 import ArrowUpDownIcon from '@hugeicons/core-free-icons/ArrowUpDownIcon';
@@ -339,6 +340,7 @@ export const ArrowDownToLine = make(ArrowDownToLineIcon, 'ArrowDownToLine');
 export const ArrowLeft = make(ArrowLeft01Icon, 'ArrowLeft');
 export const ArrowLeftRight = make(ArrowLeftRightIcon, 'ArrowLeftRight');
 export const ArrowRight = make(ArrowRight01Icon, 'ArrowRight');
+export const Route = make(Route01Icon, 'Route');
 export const ArrowRightLeft = make(ArrowDataTransferHorizontalIcon, 'ArrowRightLeft');
 export const ArrowUp = make(ArrowUp01Icon, 'ArrowUp');
 export const ArrowUpCircle = make(CircleArrowUp01Icon, 'ArrowUpCircle');

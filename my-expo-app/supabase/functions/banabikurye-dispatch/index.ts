@@ -10,7 +10,9 @@
  *     • places_search → Google Places (lab maps anahtarı) ile ünvandan adres ara.
  *     • calculate     → POST /calculate-order (fiyat teklifi).
  *     • create        → POST /create-order (kurye çağır).
- *     • cancel        → POST /cancel-order.
+ *     • cancel        → POST /cancel-order. Çok noktalıda yalnız delivery_id'li (o nokta)
+ *                       ya da cancel_all:true ile (tüm sipariş).
+ *     • cancel_point  → çok noktalı siparişte TEK teslim noktasını /edit-order ile çıkarır.
  *     • track         → /courier + sipariş durumu → delivery_status'a maplenir.
  *
  *   Adres: teslim noktası varsayılan olarak work_order → klinik/hekim'den çözülür.
@@ -21,6 +23,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applyBbkProof, runInBackground } from '../_shared/bbkProofApply.ts';
+import { makePointRef, applyPointsFromOrder, hasPointRows } from '../_shared/bbkMultiDrop.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -38,7 +41,7 @@ const SRV_KEY      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY     = Deno.env.get('SUPABASE_ANON_KEY')!;
 
 interface ReqBody {
-  action:        'test' | 'places_search' | 'calculate' | 'create' | 'edit' | 'cancel' | 'track' | 'bank_cards';
+  action:        'test' | 'places_search' | 'calculate' | 'create' | 'edit' | 'cancel' | 'cancel_point' | 'track' | 'bank_cards';
   auth_token?:   string;                 // yalnız 'test'
   environment?:  'sandbox' | 'production';
   work_order_id?: string;
@@ -68,7 +71,30 @@ interface ReqBody {
   notify_recipient?: boolean;            // SMS ile alıcıyı bildir (varsayılan true)
   payment_method?: string;               // 'cash' (varsayılan) | 'bank_card'
   bank_card_id?:   number;               // bank_card seçilince zorunlu (/bank-cards'tan)
-  direction?:      string;               // 'lab_to_clinic' (alım lab) | 'clinic_to_lab' (alım klinik)
+  direction?:      string;               // 'lab_to_clinic' (alım lab) | 'clinic_to_lab' (alım klinik) | 'other_to_other' (A→B, lab yok)
+  // A→B (other_to_other): alım noktası — lab adresi yerine bu kullanılır. dest_* teslim noktasıdır.
+  origin_name?:    string;
+  origin_address?: string;
+  origin_phone?:   string;
+  origin_lat?:     string;
+  origin_lng?:     string;
+  // ── Çok noktalı teslimat (multi-drop): 1 alım (lab) + N teslim ──
+  // drops ≥ 2 verilirse calculate/create tek siparişte çok nokta kurar; create ayrıca
+  // her nokta için teslimat satırını AYNI istekte açar (create_multi_drop_deliveries).
+  drops?: Array<{
+    work_order_id?: string;
+    direction?: 'lab_to_clinic' | 'lab_to_other';
+    dest_name?: string;
+    dest_address?: string;
+    dest_lat?: string;
+    dest_lng?: string;
+    dest_phone?: string;
+    note?: string;                       // kuryeye nokta notu (point.note)
+    stage_snapshot?: string;
+  }>;
+  optimize_route?: boolean;              // is_route_optimizer_enabled
+  delivery_id?: string;                  // cancel/cancel_point/track: hangi nokta satırı
+  cancel_all?: boolean;                  // cancel: çok noktalı siparişin TAMAMI
 }
 
 serve(async (req) => {
@@ -157,11 +183,90 @@ serve(async (req) => {
   const cred  = prov.credentials as Record<string, string>;
 
   // ── cancel ──
-  if (body.action === 'cancel') {
+  if (body.action === 'cancel' || body.action === 'cancel_point') {
     if (!body.order_id) return json({ ok: false, message: 'order_id gerekli' });
+    const orderId = String(body.order_id);
+    // Çok noktalı siparişte düz iptal TÜM noktaları öldürür → yalnız açık niyetle.
+    const multi = await hasPointRows(userClient, orderId);
+    if (multi && body.delivery_id && !body.cancel_all) {
+      return await cancelPoint(orderId, String(body.delivery_id));
+    }
+    if (body.action === 'cancel_point') return json({ ok: false, message: 'delivery_id gerekli' });
+    if (multi && !body.cancel_all) {
+      return json({ ok: false, multi_drop: true, message: 'Bu gönderi çok noktalı — yalnız ilgili teslim noktasını iptal edin ya da tümünü iptali onaylayın.' });
+    }
     const r = await bbkPost(env, token, '/cancel-order', { order_id: body.order_id });
-    if (r.ok && r.data?.is_successful !== false) return json({ ok: true, order: r.data?.order ?? null });
+    if (r.ok && r.data?.is_successful !== false) {
+      if (multi) {
+        try { await admin.rpc('bbk_apply_delivery_status', { p_tracking_no: orderId, p_status: 'iptal', p_note: 'Tüm sipariş iptal edildi' }); } catch { /* callback de getirir */ }
+      }
+      return json({ ok: true, order: r.data?.order ?? null });
+    }
     return json({ ok: false, message: bbkErr(r) });
+  }
+
+  /**
+   * Çok noktalı siparişten TEK teslim noktasını çıkar. BBK'da nokta iptal ucu yok:
+   * /edit-order'a kalan noktalar yalnız {point_id} ile gönderilir, gönderilmeyen silinir.
+   * Kalan tek teslim noktasıysa sipariş /cancel-order ile iptal edilir. Kurye noktaya
+   * uğradıysa / teslim ettiyse reddedilir. Sonra ücret yeni toplamla yeniden bölünür.
+   */
+  async function cancelPoint(orderId: string, deliveryId: string): Promise<Response> {
+    const { data: row } = await userClient.from('deliveries')
+      .select('id, status, external_point_ref, external_tracking_no')
+      .eq('id', deliveryId).maybeSingle();
+    if (!row || String(row.external_tracking_no) !== orderId || !row.external_point_ref) {
+      return json({ ok: false, message: 'Teslim noktası bulunamadı.' });
+    }
+    if (['teslim_edildi', 'iade', 'iptal'].includes(String(row.status))) {
+      return json({ ok: false, message: 'Bu teslim noktası zaten kapanmış.' });
+    }
+    const found: any = (await fetchOrder(orderId));
+    if (!found) return json({ ok: false, message: 'Sipariş BanaBiKurye\'de bulunamadı.' });
+    const pts: any[] = Array.isArray(found.points) ? found.points : [];
+    const drops = pts.slice(1).filter((p: any) => p && p.is_return_point !== true);
+    const target = drops.find((p: any) => String(p.client_order_id ?? '') === row.external_point_ref);
+    if (!target) return json({ ok: false, message: 'Nokta siparişte bulunamadı (zaten çıkarılmış olabilir).' });
+    const tSt = String(target.delivery?.status ?? '').toLowerCase();
+    if (target.courier_visit_datetime || ['finished', 'courier_arrived', 'reattempt_finished'].includes(tSt)) {
+      return json({ ok: false, message: 'Kurye bu noktaya ulaştı — nokta artık iptal edilemez.' });
+    }
+    const others = drops.filter((p: any) => p !== target
+      && !['canceled', 'deleted'].includes(String(p.delivery?.status ?? '').toLowerCase()));
+
+    let newTotal: number | null = null;
+    if (others.length === 0) {
+      const c = await bbkPost(env, token, '/cancel-order', { order_id: orderId });
+      if (!c.ok || c.data?.is_successful === false) return json({ ok: false, message: bbkErr(c) });
+    } else {
+      const keep = [pts[0], ...drops.filter((p: any) => p !== target)]
+        .map((p: any) => ({ point_id: p.point_id }));
+      const e = await bbkPost(env, token, '/edit-order', { order_id: orderId, points: keep });
+      if (!e.ok || e.data?.is_successful === false) {
+        console.error('[bbk] cancel_point edit FAILED', JSON.stringify(e.data)?.slice(0, 600));
+        return json({ ok: false, message: bbkErr(e) });
+      }
+      const amt = Number(e.data?.order?.payment_amount);
+      newTotal = isFinite(amt) && amt > 0 ? amt : null;
+    }
+    await admin.rpc('bbk_apply_point_status', {
+      p_ref: row.external_point_ref, p_status: 'iptal', p_at: null,
+      p_point_id: null, p_delivery_id: null, p_tracking_url: null, p_note: 'Nokta iptal edildi',
+    });
+    if (newTotal != null) await admin.rpc('bbk_split_point_fee', { p_tracking_no: orderId, p_total: newTotal });
+    return json({ ok: true, multi_drop: true, cancelled_whole_order: others.length === 0, price: newTotal });
+  }
+
+  /** /orders'tan tek siparişi oku (önce order_id filtresi, sonra filtresiz). */
+  async function fetchOrder(orderId: string): Promise<any | null> {
+    const pick = (d: any) => {
+      const l = d?.orders ?? (Array.isArray(d) ? d : []);
+      return Array.isArray(l)
+        ? (l.find((x: any) => String(x?.order_id) === orderId || String(x?.order_name) === orderId) ?? null)
+        : null;
+    };
+    return pick((await bbkGet(env, token, `/orders?order_id=${encodeURIComponent(orderId)}`)).data)
+      ?? pick((await bbkGet(env, token, '/orders')).data);
   }
 
   // ── edit ── çağrılmış siparişin teslim adresini/notunu düzenle (/edit-order)
@@ -169,6 +274,10 @@ serve(async (req) => {
   // sadece teslim (son) noktanın adresini/konumunu/notunu değiştirir.
   if (body.action === 'edit') {
     if (!body.order_id) return json({ ok: false, message: 'order_id gerekli' });
+    // Çok noktalıda "son noktayı düzenle" yanlış noktayı değiştirir.
+    if (await hasPointRows(userClient, String(body.order_id))) {
+      return json({ ok: false, multi_drop: true, message: 'Çok noktalı gönderide adres düzenleme desteklenmiyor — noktayı iptal edip yeniden ekleyin.' });
+    }
     const o = await bbkGet(env, token, '/orders');
     const list = o.data?.orders ?? (Array.isArray(o.data) ? o.data : []);
     const found = Array.isArray(list)
@@ -225,6 +334,38 @@ serve(async (req) => {
     // gösterirdi. Doğru sinyal noktaların `courier_visit_datetime`'ıdır: nokta 0 = alım,
     // son nokta = teslim. Ziyaret damgası dolduysa gerçek alım/teslim gerçekleşmiştir.
     const pts: any[] = Array.isArray(found?.points) ? found.points : [];
+
+    // ── Çok noktalı sipariş: her nokta kendi satırına, ref ile ──
+    // Sipariş düzeyi alım/teslim damgası (son nokta → tüm satırlar) burada YANLIŞ
+    // olurdu; ilk teslim edilen noktanın zamanı herkese yazılırdı.
+    if (await hasPointRows(admin, String(body.order_id))) {
+      const applied = found ? await applyPointsFromOrder(admin, found) : {};
+      if (courier) {
+        const name = [courier.name, courier.surname].filter(Boolean).join(' ').trim() || null;
+        if (name || courier.phone || courier.photo_url) {
+          try {
+            await admin.from('deliveries')
+              .update({ ext_courier_name: name, ext_courier_phone: courier.phone ?? null, ext_courier_photo: courier.photo_url ?? null })
+              .eq('external_tracking_no', String(body.order_id)).eq('mode', 'external');
+          } catch { /* takip yanıtını bozma */ }
+        }
+      }
+      // İstemci döndürülen durumu satıra geri yazıyordu — çok noktalıda bunu
+      // yalnız sorulan noktanın kendi durumu için yap (sunucu zaten uyguladı).
+      let own: string | null = null;
+      if (body.delivery_id) {
+        const { data: me } = await admin.from('deliveries').select('status')
+          .eq('id', body.delivery_id).eq('external_tracking_no', String(body.order_id)).maybeSingle();
+        own = me?.status ?? null;
+      }
+      return json({
+        ok: true, multi_drop: true,
+        bbk_status: bbkStatus,
+        delivery_status: own,
+        points: Object.keys(applied).length,
+        courier,
+      });
+    }
     // İkinci sinyal: teslim noktasının teslimat durumu. Kurye alım noktasında
     // check-in yapmadan paketi alıp çıkabiliyor (ziyaret damgası boş kalıyor); bu
     // durumda teslim noktası 'parcel_picked_up' → 'courier_arrived' → 'finished' ilerler.
@@ -311,6 +452,149 @@ serve(async (req) => {
     return json({ ok: false, message: bbkErr(r) });
   }
 
+  // ── çok noktalı calculate / create ──
+  if ((body.action === 'calculate' || body.action === 'create') && Array.isArray(body.drops) && body.drops.length >= 2) {
+    return await multiDrop();
+  }
+
+  async function multiDrop(): Promise<Response> {
+    const drops = body.drops!;
+    if (drops.length > 98) return json({ ok: false, message: 'En çok 98 teslim noktası olabilir.' });
+    const svc = body.service_type || 'standard';
+    // API kuralı: endofday yalnız 2 nokta (1 alım + 1 teslim).
+    if (svc === 'endofday') return json({ ok: false, message: 'Gün sonu teslimat çok noktalı gönderide kullanılamaz.' });
+    const pickupPhone = normPhone(cred.pickup_phone ?? '');
+    if (!cred.pickup_address || !pickupPhone) {
+      return json({ ok: false, message: 'Alış adresi/telefonu eksik — Entegrasyonlar → Kurye ayarından girin.' });
+    }
+    const woIds = drops.map(d => d.work_order_id).filter(Boolean) as string[];
+    if (new Set(woIds).size !== woIds.length) return json({ ok: false, message: 'Aynı sipariş iki noktada olamaz.' });
+    if (!(await ownsWorkOrders(woIds))) return denyTenant();
+
+    const labContactName = cred.pickup_contact_name || 'Laboratuvar';
+    const labels: string[] = [];
+    const points: any[] = [];
+    const rows: any[] = [];
+    for (let i = 0; i < drops.length; i++) {
+      const d = drops[i];
+      const dst = d.work_order_id
+        ? await resolveDest(admin, d.work_order_id)
+        : { name: '', phone: '', address: '', clinic: '', order_number: null as any };
+      const overridden = !!(d.dest_address ?? '').trim();
+      const addr  = (d.dest_address ?? '').trim() || dst.address;
+      const phone = normPhone((d.dest_phone ?? '').trim() || (overridden ? '' : dst.phone));
+      const name  = (d.dest_name ?? '').trim() || (overridden ? '' : dst.name) || labContactName;
+      const tag = `${i + 1}. nokta`;
+      if (!addr)  return json({ ok: false, message: `${tag}: teslim adresi yok.` });
+      if (!phone) return json({ ok: false, message: `${tag}: teslim telefonu yok.` });
+      const ref = makePointRef();
+      const pt: any = {
+        address: addr,
+        contact_person: { name, phone },
+        client_order_id: ref,
+      };
+      if (d.dest_lat && d.dest_lng) { pt.latitude = d.dest_lat; pt.longitude = d.dest_lng; }
+      if (d.note?.trim()) pt.note = d.note.trim().slice(0, 250);
+      if (body.required_start_datetime) {
+        pt.required_start_datetime = body.required_start_datetime;
+        if (body.required_finish_datetime) pt.required_finish_datetime = body.required_finish_datetime;
+      }
+      points.push(pt);
+      labels.push(dst.order_number ? String(dst.order_number) : (name || tag));
+      // Tek noktalı yolla aynı: siparişli nokta adres override'lı olsa da kliniğe
+      // TESLİMATTIR (işi kapatır). Dış servise gidiyorsa istemci lab_to_other verir.
+      const direction = d.direction ?? (d.work_order_id ? 'lab_to_clinic' : 'lab_to_other');
+      rows.push({
+        ref,
+        work_order_id: d.work_order_id ?? null,
+        direction,
+        // Siparişli dış adres / serbest nokta: karşı taraf formdan.
+        party_name: direction === 'lab_to_other' ? name : null,
+        party_address: direction === 'lab_to_other' ? addr : null,
+        party_phone: direction === 'lab_to_other' ? phone : null,
+        party_lat: direction === 'lab_to_other' ? (d.dest_lat ?? null) : null,
+        party_lng: direction === 'lab_to_other' ? (d.dest_lng ?? null) : null,
+        note: d.note?.trim() || null,
+        stage_snapshot: d.stage_snapshot ?? null,
+      });
+    }
+
+    const labPoint: any = {
+      address: cred.pickup_address,
+      contact_person: { name: labContactName, phone: pickupPhone },
+      ...(cred.pickup_lat && cred.pickup_lng ? { latitude: cred.pickup_lat, longitude: cred.pickup_lng } : {}),
+    };
+    const note = [body.content_note?.trim(), body.notes?.trim()].filter(Boolean).join(' · ');
+    const base = [`Siman çok noktalı teslimat — ${labels.join(', ')}`, note].filter(Boolean).join(' · ');
+    const orderBody: any = {
+      type: svc,
+      matter: body.action === 'create'
+        ? `${base.slice(0, 240)} · #${attemptTag(labels.join('|'))}`
+        : base.slice(0, 250),
+      vehicle_type_id: body.vehicle_type_id ?? 8,
+      is_contact_person_notification_enabled: body.notify_recipient !== false,
+      is_route_optimizer_enabled: body.optimize_route === true,
+      points: [labPoint, ...points],
+    };
+    if (body.total_weight_kg != null)  orderBody.total_weight_kg = body.total_weight_kg;
+    if (body.insurance_amount != null) orderBody.insurance_amount = body.insurance_amount;
+    if (body.promo_code?.trim())       orderBody.promo_code = body.promo_code.trim();
+    if (body.loaders_count && body.loaders_count > 0) orderBody.loaders_count = body.loaders_count;
+    if (body.payment_method && body.payment_method !== 'cash') {
+      orderBody.payment_method = body.payment_method;
+      if (body.bank_card_id != null) orderBody.bank_card_id = body.bank_card_id;
+    }
+
+    const path = body.action === 'create' ? '/create-order' : '/calculate-order';
+    const r = await bbkPost(env, token, path, orderBody);
+    if (!r.ok || r.data?.is_successful === false) {
+      console.error('[bbk multi] ' + path + ' FAILED status=', r.status, ' resp=', JSON.stringify(r.data)?.slice(0, 800));
+      return json({ ok: false, message: bbkErr(r) });
+    }
+    const order = r.data?.order ?? r.data;
+    const price = Number(order?.payment_amount);
+    if (body.action !== 'create') {
+      return json({ ok: true, environment: env, multi_drop: true, price: isFinite(price) ? price : null, drops: points.length });
+    }
+
+    const orderId = order?.order_id != null ? String(order.order_id) : null;
+    if (!orderId) return json({ ok: false, message: 'BanaBiKurye sipariş numarası dönmedi — paneli kontrol edin.' });
+    // Yanıttaki noktaları ref ile eşle (sıra değil): point_id / delivery_id / takip linki.
+    const resPts: any[] = Array.isArray(order?.points) ? order.points : [];
+    for (const row of rows) {
+      const p = resPts.find((x: any) => String(x?.client_order_id ?? '') === row.ref);
+      row.point_id = p?.point_id != null ? String(p.point_id) : null;
+      row.delivery_id = p?.delivery_id != null ? String(p.delivery_id) : null;
+      row.tracking_url = p?.tracking_url ?? null;
+    }
+    // Satırlar AYNI istekte — ödenmiş sipariş satırsız kalmasın. Açılamazsa sipariş iptal.
+    const { data: made, error: mkErr } = await userClient.rpc('create_multi_drop_deliveries', {
+      p_tracking_no: orderId,
+      p_fee_total: isFinite(price) && price > 0 ? price : null,
+      p_fee_currency: 'TRY',
+      p_notes: note || null,
+      p_drops: rows,
+    });
+    if (mkErr) {
+      console.error('[bbk multi] satırlar açılamadı, sipariş iptal ediliyor:', mkErr.message);
+      const c = await bbkPost(env, token, '/cancel-order', { order_id: orderId });
+      const undone = c.ok && c.data?.is_successful !== false;
+      return json({
+        ok: false,
+        message: `Teslimat kayıtları açılamadı (${mkErr.message}). ` + (undone
+          ? 'BanaBiKurye siparişi iptal edildi.'
+          : `BanaBiKurye siparişi İPTAL EDİLEMEDİ (#${orderId}) — panelden iptal edin.`),
+      });
+    }
+    return json({
+      ok: true, environment: env, multi_drop: true,
+      order_id: orderId, order_name: order?.order_name ?? null,
+      price: isFinite(price) ? price : null,
+      deliveries: made,
+      refs_echoed: rows.filter(x => x.point_id).length,
+    });
+  }
+
   // ── calculate / create ──
   // SERBEST GÖNDERİ: sipariş olmadan da çağrılabilir. O durumda teslim noktası
   // gövdeden gelen dest_* alanlarından kurulur; adres yoksa anlamlı hata döner.
@@ -352,8 +636,16 @@ serve(async (req) => {
   if (!destAddr) return json({ ok: false, message: 'Teslim adresi yok — Google Places ile arayıp seçin ya da kliniğe adres girin.' });
   if (!destPhone) return json({ ok: false, message: 'Teslim telefonu yok — hekim telefonu tanımlı değil.' });
 
+  // A→B: lab hiçbir uçta değil — alım noktası gövdeden gelir, lab alış ayarı gerekmez.
+  const outside = body.direction === 'other_to_other';
   const pickupPhone = normPhone(cred.pickup_phone ?? '');
-  if (!cred.pickup_address || !pickupPhone) {
+  if (outside) {
+    // Siparişe bağlı A→B de olur (ör. klinikten milling'e, sipariş adına): o durumda
+    // teslim ucu klinikten VARSAYILMAZ — formdan gelen dest_* zorunlu.
+    if (!(body.dest_address ?? '').trim()) return json({ ok: false, message: 'Teslim adresi yok — adres arayıp seçin.' });
+    if (!(body.origin_address ?? '').trim()) return json({ ok: false, message: 'Alım adresi yok — adres arayıp seçin.' });
+    if (!normPhone(body.origin_phone ?? '')) return json({ ok: false, message: 'Alım noktası telefonu zorunlu.' });
+  } else if (!cred.pickup_address || !pickupPhone) {
     return json({ ok: false, message: 'Alış adresi/telefonu eksik — Entegrasyonlar → Kurye ayarından girin.' });
   }
 
@@ -380,10 +672,17 @@ serve(async (req) => {
     ...(cred.pickup_lat && cred.pickup_lng ? { latitude: cred.pickup_lat, longitude: cred.pickup_lng } : {}),
   };
 
+  // A→B: alım = gövdedeki origin_*, teslim = dest_* (clinicPoint). Lab noktası kullanılmaz.
+  const outsidePoint: any = outside ? {
+    address: (body.origin_address ?? '').trim(),
+    contact_person: { name: (body.origin_name ?? '').trim() || 'Gönderen', phone: normPhone(body.origin_phone ?? '') },
+    ...(body.origin_lat && body.origin_lng ? { latitude: body.origin_lat, longitude: body.origin_lng } : {}),
+  } : null;
+
   // Yön: klinikten alım → alım klinik, teslim lab (noktalar ters). Aksi → lab→klinik.
   const incoming = body.direction === 'clinic_to_lab';
-  const pickupPoint   = incoming ? clinicPoint : labPoint;
-  const deliveryPoint = incoming ? labPoint    : clinicPoint;
+  const pickupPoint   = outside ? outsidePoint : (incoming ? clinicPoint : labPoint);
+  const deliveryPoint = outside ? clinicPoint  : (incoming ? labPoint    : clinicPoint);
 
   // İleri zamanlı: zaman penceresi TESLİM noktasına. endofday bunu YASAKLAR (API kuralı).
   const svcType = body.service_type || 'standard';

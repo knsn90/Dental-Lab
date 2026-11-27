@@ -47,6 +47,12 @@ export function resolveShipParties(p: { leg: ShipLegInfo; lab: ShipParty; clinic
         from: labP,
         to: party({ name: first(leg.destination_name), address: first(leg.destination_address), phone: first(leg.destination_phone) }, false),
       };
+    case 'other_to_other':
+      // A → B: lab hiçbir uçta değil — iki taraf da hareketin kendi kaydından.
+      return {
+        from: party({ name: first(leg.origin_name), address: first(leg.origin_address), phone: '' }, false),
+        to: party({ name: first(leg.destination_name), address: first(leg.destination_address), phone: first(leg.destination_phone) }, false),
+      };
     case 'other_to_lab':
       return {
         from: party({ name: first(leg.origin_name), address: first(leg.origin_address), phone: '' }, false),

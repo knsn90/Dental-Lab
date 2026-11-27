@@ -38,7 +38,9 @@ export function ProofViewerModal({ visible, onClose, leg, origin, orderNumber }:
   const sig = leg.signature_path ? urls[leg.signature_path] : undefined;
   const provider = kind === 'provider';
   const toLab = leg.direction === 'clinic_to_lab' || leg.direction === 'other_to_lab';
-  const subtitle = [toLab ? autoT("Lab'a teslim") : autoT('Kliniğe teslim'), orderNumber ? `#${orderNumber}` : null].filter(Boolean).join(' · ');
+  // Serbest gönderide alıcı klinik değil (tedarikçi, milling, A → B…) → nötr metin.
+  const freeOut = leg.direction === 'lab_to_other' || leg.direction === 'other_to_other';
+  const subtitle = [toLab ? autoT("Lab'a teslim") : freeOut ? autoT('Teslim noktasına teslim') : autoT('Kliniğe teslim'), orderNumber ? `#${orderNumber}` : null].filter(Boolean).join(' · ');
   const courier = leg.ext_courier_name
     ? `${leg.external_provider ?? 'BanaBiKurye'} · ${leg.ext_courier_name}`
     : (leg.courier?.full_name ?? leg.external_provider ?? '—');

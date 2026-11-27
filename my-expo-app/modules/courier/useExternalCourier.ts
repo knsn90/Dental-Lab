@@ -57,7 +57,8 @@ export function useExternalCourier(delivery: {
     const fetchOnce = async () => {
       try {
         const { data, error: fnErr } = await supabase.functions.invoke('banabikurye-dispatch', {
-          body: { action: 'track', order_id: trackingNo },
+          // delivery_id: çok noktalı siparişte durumu yalnız bu teslim noktasına yansıtır.
+          body: { action: 'track', order_id: trackingNo, delivery_id: delivery?.id ?? undefined },
         });
         if (cancelled) return;
         if (fnErr) { setError(fnErr.message); return; }

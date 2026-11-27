@@ -19,6 +19,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applyBbkProof, fetchBbkOrderForDelivery, runInBackground } from '../_shared/bbkProofApply.ts';
+import { applyPointsFromOrder, applyPointUpdate, hasPointRows, mapPointStatus } from '../_shared/bbkMultiDrop.ts';
 
 const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')!;
 const SRV_KEY       = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -97,8 +98,58 @@ Deno.serve(async (req) => {
     return json({ ok: false, message: 'unauthorized' }, 401);
   }
 
+  const admin = createClient(SUPABASE_URL, SRV_KEY, { auth: { persistSession: false } });
+  const eventType = String(body?.event_type ?? '').toLowerCase();
+
+  // ── Nokta (delivery) bildirimi: delivery_created / delivery_changed ──
+  // Çok noktalı siparişte her nokta kendi satırına (client_order_id = bizim ref).
+  // Nokta durumu ASLA sipariş düzeyi eşlemeye (mapStatus) gitmez: bir noktanın
+  // 'canceled'ı tüm siparişi iptal sanılırdı.
+  if (body?.delivery && (eventType.startsWith('delivery') || !body?.order)) {
+    const d = body.delivery;
+    const ref = String(d?.client_order_id ?? '').trim();
+    const st = mapPointStatus(d?.status);
+    if (!ref) return json({ ok: true, ignored: 'delivery_without_ref' });   // tek noktalı: sipariş bildirimi yeter
+    if (!st) return json({ ok: true, ignored: 'unmapped_point_status', received: d?.status ?? null });
+    // Teslimde kanıt için noktanın tam hâli (checkin/foto) siparişten okunur.
+    let point: any = d;
+    if (st === 'teslim_edildi' && d?.order_id != null) {
+      const ord: any = await fetchBbkOrderForDelivery(admin, String(d.order_id));
+      point = (Array.isArray(ord?.points) ? ord.points : []).find((p: any) => String(p?.client_order_id ?? '') === ref) ?? d;
+    }
+    const res = await applyPointUpdate(admin, {
+      ref, status: st,
+      at: st === 'teslim_edildi' ? (point?.courier_visit_datetime ?? d?.status_datetime ?? null) : (d?.status_datetime ?? null),
+      pointId: d?.point_id != null ? String(d.point_id) : null,
+      deliveryId: d?.delivery_id != null ? String(d.delivery_id) : null,
+      trackingUrl: d?.tracking_url ?? null,
+      point,
+    });
+    console.log(`banabikurye-callback: nokta ${ref.slice(0, 6)}… → ${st}`, JSON.stringify(res));
+    return json({ ok: true, point: res });
+  }
+
   // ── Gövde ──
   const { orderIds, status } = pick(body);
+
+  // ── Sipariş bildirimi çok noktalıysa: noktaları ayrı ayrı uygula ──
+  // order_changed points[] taşır (client_order_id + delivery.status) → nokta
+  // bildirimleri etkin olmasa da her nokta kendi satırına kapanır.
+  const orderObj: any = body?.order ?? body?.data?.order ?? null;
+  let pointsApplied: Record<string, string | null> | null = null;
+  if (orderIds.length) {
+    const multiId = await (async () => {
+      for (const c of orderIds) if (await hasPointRows(admin, c)) return c;
+      return null;
+    })();
+    if (multiId) {
+      let ord: any = orderObj;
+      // Noktasız bildirim (ya da nokta durumları boş) gelirse siparişi oku.
+      if (!Array.isArray(ord?.points) || ord.points.length < 2) ord = await fetchBbkOrderForDelivery(admin, multiId);
+      pointsApplied = ord ? await applyPointsFromOrder(admin, ord) : {};
+      console.log(`banabikurye-callback: çok noktalı ${multiId} → ${Object.keys(pointsApplied).length} nokta`);
+    }
+  }
   const mapped = mapStatus(status);
 
   // Bilinmeyen/eşlenemeyen durumda 200 dön ki sağlayıcı tekrar tekrar denemesin;
@@ -108,11 +159,10 @@ Deno.serve(async (req) => {
     return json({ ok: true, ignored: 'order_id_missing' });
   }
   if (!mapped) {
+    if (pointsApplied) return json({ ok: true, points: pointsApplied });
     console.warn(`banabikurye-callback: eşlenemeyen durum "${status}" (order ${orderIds[0]})`);
     return json({ ok: true, ignored: 'unmapped_status', received: status });
   }
-
-  const admin = createClient(SUPABASE_URL, SRV_KEY, { auth: { persistSession: false } });
 
   // Kimlik adaylarını sırayla dene — ilk eşleşen kazanır.
   let lastResult: any = null;
@@ -130,11 +180,11 @@ Deno.serve(async (req) => {
     if ((data as any)?.ok === true) {
       console.log(`banabikurye-callback: ${candidate} → ${mapped}`, JSON.stringify(data));
       // 2. dalga 5: teslimde kanıt (ad, varış, varsa fotoğraf/imza) — yanıtı bekletmez, teslimi bozmaz
-      if (mapped === 'teslim_edildi') {
+      if (mapped === 'teslim_edildi' && !pointsApplied) {
         const order = body?.order ?? body?.data?.order ?? null;
         await runInBackground(applyBbkProof(admin, candidate, order, () => fetchBbkOrderForDelivery(admin, candidate)));
       }
-      return json({ ok: true, matched: candidate, result: data });
+      return json({ ok: true, matched: candidate, result: data, ...(pointsApplied ? { points: pointsApplied } : {}) });
     }
   }
 

@@ -496,7 +496,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     const fetchDeliveries = async () => {
       const { data } = await supabase
         .from('deliveries')
-        .select(`id, mode, status, courier_id, external_provider, external_tracking_no, external_tracking_code, external_label_url, external_carrier_name, external_tracking_url, picked_up_at, delivered_at, created_at, notes, destination_name, destination_address, destination_phone, purpose, direction, fee_amount, fee_currency, fee_source, stage_snapshot, ext_courier_name, ext_courier_phone, ext_courier_photo, ${PROOF_SELECT}, courier:profiles!deliveries_courier_profiles_fkey(full_name, avatar_url)`)
+        .select(`id, mode, status, courier_id, external_provider, external_tracking_no, external_tracking_code, external_label_url, external_carrier_name, external_tracking_url, picked_up_at, delivered_at, created_at, notes, destination_name, destination_address, destination_phone, origin_name, origin_address, purpose, direction, fee_amount, fee_currency, fee_source, stage_snapshot, ext_courier_name, ext_courier_phone, ext_courier_photo, ${PROOF_SELECT}, courier:profiles!deliveries_courier_profiles_fkey(full_name, avatar_url)`)
         .eq('work_order_id', orderUuid)
         .order('created_at', { ascending: false });
       const rows = (data ?? []) as any[];
@@ -2169,7 +2169,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const handleBbkTrack = async () => {
     setBbkTracking(true);
     const { data, error: e } = await supabase.functions.invoke('banabikurye-dispatch', {
-      body: { action: 'track', order_id: activeDelivery.external_tracking_no },
+      // delivery_id: çok noktalı siparişte sunucu yalnız BU noktanın durumunu döndürür.
+      body: { action: 'track', order_id: activeDelivery.external_tracking_no, delivery_id: activeDelivery.id },
     });
     if (e || !(data as any)?.ok) {
       setBbkTracking(false);
@@ -2220,11 +2221,20 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     if (!ok) return;
     setCancelingDelivery(true);
     // BanaBiKurye ise gerçek siparişi de iptal et (best-effort)
-    if (activeDelivery.external_provider === 'BanaBiKurye' && activeDelivery.external_tracking_no) {
+    // Sağlayıcı adı iki yazımla kayıtlı ('BanaBiKurye' / yeni gönderi penceresinden 'banabikurye').
+    if (/banabikurye/i.test(String(activeDelivery.external_provider ?? '')) && activeDelivery.external_tracking_no) {
       try {
-        await supabase.functions.invoke('banabikurye-dispatch', {
-          body: { action: 'cancel', order_id: activeDelivery.external_tracking_no },
+        // delivery_id: çok noktalı siparişte yalnız bu teslim noktası çıkarılır.
+        const { data } = await supabase.functions.invoke('banabikurye-dispatch', {
+          body: { action: 'cancel', order_id: activeDelivery.external_tracking_no, delivery_id: activeDelivery.id },
         });
+        // Çok noktalıda sağlayıcı reddederse (kurye noktaya vardı vb.) yerelde iptal
+        // ETME — kurye o noktaya yine gidecek, kayıt gerçeği göstermeli.
+        if ((data as any)?.multi_drop && (data as any)?.ok === false) {
+          setCancelingDelivery(false);
+          toast.error((data as any)?.message ?? autoT('Teslim noktası iptal edilemedi.'));
+          return;
+        }
       } catch { /* yine de yerel iptal et */ }
     }
     // Shipink ise gerçek gönderiyi de iptal et (best-effort).

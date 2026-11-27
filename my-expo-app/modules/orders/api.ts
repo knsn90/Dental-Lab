@@ -676,7 +676,7 @@ export type DeliveryPurpose =
   | 'prova_gidis' | 'prova_donus' | 'iade' | 'diger';
 
 // lab_to_other / other_to_lab: serbest gönderi (siparişsiz). Sipariş teslimatı bu ikisini kullanmaz.
-export type DeliveryDirection = 'lab_to_clinic' | 'clinic_to_lab' | 'lab_to_other' | 'other_to_lab';
+export type DeliveryDirection = 'lab_to_clinic' | 'clinic_to_lab' | 'lab_to_other' | 'other_to_lab' | 'other_to_other';
 
 export const DELIVERY_PURPOSE_LABELS: Record<DeliveryPurpose, string> = {
   teslimat:    'Teslimat',
@@ -713,6 +713,12 @@ export async function createDelivery(params: {
   partyPhone?: string;
   partyLat?: number | null;
   partyLng?: number | null;
+  /** A→B (other_to_other): alım noktası — lab hiçbir uçta değil. party_* teslim noktasıdır. */
+  originName?: string;
+  originAddress?: string;
+  originPhone?: string;
+  originLat?: number | null;
+  originLng?: number | null;
 }): Promise<{ ok: boolean; deliveryId?: string; error?: string }> {
   const { data, error } = await supabase.rpc('create_delivery', {
     p_work_order_id:        params.workOrderId ?? null,
@@ -732,6 +738,11 @@ export async function createDelivery(params: {
     p_party_phone:          params.partyPhone ?? null,
     p_party_lat:            params.partyLat ?? null,
     p_party_lng:            params.partyLng ?? null,
+    p_origin_name:          params.originName ?? null,
+    p_origin_address:       params.originAddress ?? null,
+    p_origin_phone:         params.originPhone ?? null,
+    p_origin_lat:           params.originLat ?? null,
+    p_origin_lng:           params.originLng ?? null,
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, deliveryId: data as string };

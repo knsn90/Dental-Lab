@@ -17,6 +17,7 @@ import { CourierTrackingMap } from '../../courier/CourierTrackingMap';
 import { legRouteAddresses } from './StaticRouteMap';
 import { useExternalCourier } from '../../courier/useExternalCourier';
 import { formatAddress } from '../../../core/util/formatAddress';
+import { isIncomingLeg, isOutsideLeg } from '../../delivery/direction';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { isRTL, localeTag } from '../../../core/i18n';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
@@ -73,6 +74,7 @@ const STATUS_CFG: Record<string, { label: string; bg: string; fg: string }> = {
   yolda:         { label: 'Yolda',     bg: 'rgba(37,99,235,0.20)',   fg: '#1E3A8A' },
   teslim_edildi: { label: 'Teslim edildi', bg: 'rgba(16,185,129,0.14)', fg: '#0F6E50' },
   iptal:         { label: 'İptal',     bg: 'rgba(220,38,38,0.12)',   fg: '#9C2E2E' },
+  iade:          { label: 'İade',      bg: 'rgba(217,119,6,0.14)',   fg: '#92400E' },
 };
 
 const SHADOW = Platform.OS === 'web'
@@ -123,8 +125,12 @@ export function OrderCourierTrackingModal({ visible, onClose, leg, labAddress, c
   const st = isDark ? { ...stRaw, fg: DARK_STATUS_FG[stRaw.fg] ?? T.ink2 } : stRaw;
   const durationStr = fmtDuration(eta?.durationSec);
   const distStr = fmtDist(eta?.distanceM);
-  const incoming = leg.direction === 'clinic_to_lab';
-  const senderLabel = incoming ? (formatAddress(clinicAddress) || autoT('Klinik')) : autoT('Laboratuvar');
+  const incoming = isIncomingLeg(leg.direction);
+  // Dış alım noktası (dış servisten alım / A → B): gönderen kayıttaki origin_*.
+  const extOrigin = leg.direction === 'other_to_lab' || isOutsideLeg(leg.direction);
+  const senderLabel = extOrigin
+    ? ([leg.origin_name, formatAddress(leg.origin_address)].filter(Boolean).join(' · ') || autoT('Alım noktası'))
+    : incoming ? (formatAddress(clinicAddress) || autoT('Klinik')) : autoT('Laboratuvar');
   const recipientName = leg.destination_name || (incoming ? autoT('Laboratuvar') : null);
   const recipientAddr = formatAddress(leg.destination_address) || destText || '';
   const trackingNo = leg.external_tracking_no || leg.external_tracking_code || null;
@@ -348,9 +354,13 @@ function CargoTrackingModal({ visible, onClose, leg, labAddress, clinicAddress, 
   const trackUrl: string | null = leg.external_tracking_url || null;
   const stRaw = STATUS_CFG[String(leg.status)] ?? STATUS_CFG.beklemede;
   const st = isDark ? { ...stRaw, fg: DARK_STATUS_FG[stRaw.fg] ?? U.ink[500] } : stRaw;
-  const incoming = leg.direction === 'clinic_to_lab';
   const { destText } = legRouteAddresses(leg, labAddress ?? null, clinicAddress ?? null);
-  const senderLabel = incoming ? (formatAddress(clinicAddress) || autoT('Klinik')) : autoT('Laboratuvar');
+  const incoming = isIncomingLeg(leg.direction);
+  // Dış alım noktası (dış servisten alım / A → B): gönderen kayıttaki origin_*.
+  const extOrigin = leg.direction === 'other_to_lab' || isOutsideLeg(leg.direction);
+  const senderLabel = extOrigin
+    ? ([leg.origin_name, formatAddress(leg.origin_address)].filter(Boolean).join(' · ') || autoT('Alım noktası'))
+    : incoming ? (formatAddress(clinicAddress) || autoT('Klinik')) : autoT('Laboratuvar');
   const recipientName = leg.destination_name || (incoming ? autoT('Laboratuvar') : null);
   const recipientAddr = formatAddress(leg.destination_address) || destText || '';
   const accentFg = isDark ? '#93C5FD' : accent;

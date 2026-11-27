@@ -96,6 +96,7 @@ export const DIRECTION_LABELS: Record<string, string> = {
   clinic_to_lab: 'Klinik → Lab',
   lab_to_other: 'Lab → Diğer',
   other_to_lab: 'Diğer → Lab',
+  other_to_other: 'Diğer → Diğer',
 };
 
 const DEFAULT_TZ = 'Europe/Istanbul';

@@ -392,6 +392,7 @@ export function CourierLiveMap({
     yolda:         { label: 'Yolda',      bg: 'rgba(37,99,235,0.20)',  fg: '#1E3A8A' },
     teslim_edildi: { label: 'Teslim',     bg: 'rgba(16,185,129,0.16)', fg: '#0F6E50' },
     iptal:         { label: 'İptal',      bg: 'rgba(220,38,38,0.16)',  fg: '#9C2E2E' },
+    iade:          { label: 'İade',       bg: 'rgba(217,119,6,0.16)',  fg: '#92400E' },
   };
   const statusCfgRaw = STATUS_LABELS[tripInfo?.status ?? 'beklemede'] ?? STATUS_LABELS.beklemede;
   const DARK_STATUS_FG: Record<string, string> = {

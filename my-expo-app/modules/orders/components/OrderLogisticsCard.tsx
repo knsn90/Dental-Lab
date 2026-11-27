@@ -24,6 +24,7 @@ import { CloseWithoutProofModal } from '../../delivery/proof/CloseWithoutProofMo
 import { measureOrigin, type OriginRect } from '../../delivery/proof/useAnchoredSpring';
 import { ShipLabelTypeModal } from './ShipLabelTypeModal';
 import { CarrierBadge } from './CarrierLogo';
+import { legEndLabels } from '../../delivery/direction';
 
 
 /** Teslimat durumu rozetleri — kurye takip ekranıyla aynı dil. */
@@ -34,6 +35,7 @@ export const DELIVERY_STATUS_CFG: Record<string, { label: string; bg: string; fg
   yolda:         { label: 'Yolda',     bg: 'rgba(37,99,235,0.22)',  fg: '#1E3A8A' },
   teslim_edildi: { label: 'Teslim',    bg: 'rgba(16,185,129,0.14)', fg: '#0F6E50' },
   iptal:         { label: 'İptal',     bg: 'rgba(220,38,38,0.14)',  fg: '#9C2E2E' },
+  iade:          { label: 'İade',      bg: 'rgba(217,119,6,0.14)',  fg: '#92400E' },
 };
 
 export interface DeliveryLeg {
@@ -55,6 +57,10 @@ export interface DeliveryLeg {
   fee_amount?: number | null;
   fee_currency?: string | null;
   destination_address?: string | null;
+  destination_name?: string | null;
+  /** Alım noktası — dış servis / A → B bacaklarında başlık ve harita bunu kullanır. */
+  origin_name?: string | null;
+  origin_address?: string | null;
   courier?: { full_name?: string | null } | null;
   // Teslim kanıtı (2. dalga 5 — PROOF_SELECT)
   delivered_at?: string | null;
@@ -140,7 +146,7 @@ const LIGHT_TONE = { label: '#9A9A9A', title: '#0A0A0A', muted: '#6B6B6B' };
 /** Kartta gösterilen tam durum adı (DELIVERY_STATUS_CFG'deki kısaltmalar "Aldı"/"Teslim" başka ekranlarda kullanılıyor). */
 const STATUS_LONG: Record<string, string> = {
   beklemede: 'Beklemede', atandi: 'Atandı', teslim_alindi: 'Teslim alındı',
-  yolda: 'Yolda', teslim_edildi: 'Teslim edildi', iptal: 'İptal',
+  yolda: 'Yolda', teslim_edildi: 'Teslim edildi', iptal: 'İptal', iade: 'İade edildi',
 };
 
 /** Hareket kutusundaki etiketli eylem düğmesi (beyaz kapsül; ne yaptığını yazar). */
@@ -201,11 +207,13 @@ export function OrderLogisticsCard({
   // İptal edilmiş bacaklar listede yer kaplamasın — kayıt DB'de durur (gider/denetim
   // izi), yalnız bu kartta gizlenir.
   // Klinik/hekim (clientView): yalnız kliniğe giden (outbound) teslimat bacağı görünür;
-  // klinikten alım (clinic_to_lab) ve ara hareketler müşteriye gösterilmez.
+  // klinikten alım (clinic_to_lab) ve ara hareketler (dış servis, A → B) müşteriye
+  // gösterilmez — eskiden yalnız clinic_to_lab süzülüyordu, milling bacağı kliniğe
+  // "Lab → Klinik" diye görünüyordu.
   const shownLegs = React.useMemo(() => {
     const active = legs.filter(l => l.status !== 'iptal');
     if (!clientView) return active;
-    return active.filter(l => l.direction !== 'clinic_to_lab');
+    return active.filter(l => (l.direction ?? 'lab_to_clinic') === 'lab_to_clinic');
   }, [legs, clientView]);
 
   // Rota önizlemesi yalnız EN SON kurye hareketinde gösterilir; her bacağa
@@ -336,13 +344,13 @@ export function OrderLogisticsCard({
                     çelişki gibi okunuyordu; aşama artık "Aşama:" diye etiketli. */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Text style={{ fontSize: 14, fontWeight: '600', color: toneEff.title }} numberOfLines={1}>
-                    {leg.direction === 'clinic_to_lab' ? 'Klinik' : 'Lab'}
+                    {autoT(legEndLabels(leg).from)}
                   </Text>
                   {isRTL()
                     ? <ArrowLeft size={13} color={toneEff.muted} strokeWidth={2} />
                     : <ArrowRight size={13} color={toneEff.muted} strokeWidth={2} />}
                   <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: toneEff.title }} numberOfLines={1}>
-                    {leg.direction === 'clinic_to_lab' ? 'Lab' : 'Klinik'}
+                    {autoT(legEndLabels(leg).to)}
                   </Text>
                   <View style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, backgroundColor: st.bg }}>
                     <Text style={{ fontSize: 12, fontWeight: '600', color: st.fg }}>{autoT(STATUS_LONG[leg.status] ?? st.label)}</Text>

@@ -61,6 +61,19 @@ test('dış servise gidiş: alıcı servis (hekim adı yok); dış servisten gel
   assert.equal(back.to.isLab, true);
 });
 
+test('A → B (other_to_other): iki uç da dış nokta, lab ve klinik HİÇ kullanılmaz', () => {
+  const r = resolveShipParties({
+    leg: { direction: 'other_to_other', origin_name: 'Gülüş Kliniği Şube', origin_address: 'Moda Cd. 1',
+           destination_name: 'Freze Merkezi', destination_address: 'Sanayi Sit. 3', destination_phone: '0212 333 33 33' },
+    lab, clinic,
+  });
+  assert.equal(r.from.isLab, false);
+  assert.equal(r.to.isLab, false);
+  assert.equal(r.from.name, 'Gülüş Kliniği Şube');
+  assert.equal(r.from.address, 'Moda Cd. 1');
+  assert.deepEqual({ ...r.to }, { name: 'Freze Merkezi', person: '', address: 'Sanayi Sit. 3', phone: '0212 333 33 33', isLab: false });
+});
+
 test('final teslimat mı: teslimat ya da boş amaç evet; diğerleri ara hareket', () => {
   assert.equal(isFinalLeg('teslimat'), true);
   assert.equal(isFinalLeg(null), true);

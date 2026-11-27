@@ -35,7 +35,7 @@ import { formatAddress } from '../../../core/util/formatAddress';
 import { safeBack } from '../../../core/util/safeBack';
 import { localeTag, isRTL } from '../../../core/i18n';
 import { DELIVERY_PURPOSE_LABELS, type DeliveryPurpose } from '../../orders/api';
-import { isIncomingLeg, isFreeLeg } from '../../delivery/direction';
+import { isIncomingLeg, isFreeLeg, isOutsideLeg } from '../../delivery/direction';
 import { DELIVERY_STATUS_CFG } from '../../orders/components/OrderLogisticsCard';
 import {
   fetchExpenseDetail, EXPENSE_CATEGORY_LABELS, EXPENSE_CATEGORY_COLORS,
@@ -271,7 +271,7 @@ export function ExpenseDetailScreen({ expenseId, onBack, onOpenInvoice }: Props 
 
   const originLine = delivery
     ? (formatAddress(delivery.origin_address) || delivery.origin_name
-        || (outbound ? 'Laboratuvar' : freeLeg ? 'Alım noktası' : 'Klinik'))
+        || (isOutsideLeg(delivery.direction) ? 'Alım noktası' : outbound ? 'Laboratuvar' : freeLeg ? 'Alım noktası' : 'Klinik'))
     : '';
   const destLine = delivery ? formatAddress(delivery.destination_address) : '';
 
@@ -408,7 +408,9 @@ export function ExpenseDetailScreen({ expenseId, onBack, onOpenInvoice }: Props 
                 : <ArrowLeftRight size={14} color={DS.ink[400]} strokeWidth={1.7} />}
               <Text style={{ fontSize: 12, color: DS.ink[500], width: 110 }}>Yön</Text>
               <Text style={{ flex: 1, fontSize: 13, color: DS.ink[900] }}>
-                {freeLeg
+                {isOutsideLeg(delivery?.direction)
+                  ? 'Dış nokta → Dış nokta'
+                  : freeLeg
                   ? (outbound ? 'Lab → Dış nokta' : 'Dış nokta → Lab')
                   : (outbound ? 'Lab → Klinik' : 'Klinik → Lab')}
               </Text>
@@ -461,7 +463,7 @@ export function ExpenseDetailScreen({ expenseId, onBack, onOpenInvoice }: Props 
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text style={{ fontSize: 11, color: DS.ink[500] }}>Çıkış</Text>
                     <Text style={{ fontSize: 13, color: DS.ink[900] }}>
-                      {delivery.origin_name ?? (outbound ? 'Laboratuvar' : freeLeg ? 'Alım noktası' : 'Klinik')}
+                      {delivery.origin_name ?? (isOutsideLeg(delivery.direction) ? 'Alım noktası' : outbound ? 'Laboratuvar' : freeLeg ? 'Alım noktası' : 'Klinik')}
                     </Text>
                     {originLine && originLine !== delivery.origin_name ? (
                       <Text style={{ fontSize: 12, color: DS.ink[500], lineHeight: 18 }}>{originLine}</Text>

@@ -5,7 +5,7 @@
 //   (sağlayıcı bağlantıları kalıcı olmayabilir).
 // - bbk_apply_delivery_proof (yalnız service_role) dolu alanın üzerine yazmaz; "denendi" damgası hep yazılır.
 // - Hata yutulur ve loglanır: kanıt alma teslimi asla bozmaz ve geciktirmez.
-import { extractBbkProof, type BbkProof } from './bbkProof.ts';
+import { extractBbkProof, extractPointProof, type BbkProof } from './bbkProof.ts';
 
 const BASES: Record<string, string> = {
   sandbox: 'https://robotapitest.banabikurye.com/api/business/1.8',
@@ -33,7 +33,7 @@ export async function fetchBbkOrderForDelivery(admin: any, trackingNo: string): 
   }
 }
 
-async function copyPhoto(admin: any, url: string | null, labId: string, deliveryId: string, name: string): Promise<string | null> {
+export async function copyPhoto(admin: any, url: string | null, labId: string, deliveryId: string, name: string): Promise<string | null> {
   if (!url) return null;
   try {
     const r = await fetch(url);
@@ -76,6 +76,35 @@ export async function applyBbkProof(
     if (error) console.warn('bbkProof: kayıt yazılamadı', error.message);
   } catch (e) {
     console.warn('bbkProof: uygulanamadı', String(e));
+  }
+}
+
+/**
+ * Çok noktalı siparişte TEK noktanın kanıtı → yalnız o noktanın satırı (ref ile).
+ * bbk_apply_point_proof dolu alanın üzerine yazmaz; hata yutulur (teslimi bozmaz).
+ */
+export async function applyBbkPointProof(admin: any, ref: string, point: unknown): Promise<void> {
+  try {
+    const proof: BbkProof | null = extractPointProof(point);
+    const { data: d } = await admin.from('deliveries').select('id, lab_id')
+      .eq('external_point_ref', ref).eq('status', 'teslim_edildi').maybeSingle();
+    let place: string | null = null;
+    let sign: string | null = null;
+    if (d?.id && proof) {
+      place = await copyPhoto(admin, proof.placePhotoUrl, d.lab_id, d.id, 'provider-place');
+      sign = await copyPhoto(admin, proof.signPhotoUrl, d.lab_id, d.id, 'provider-sign');
+    }
+    const { error } = await admin.rpc('bbk_apply_point_proof', {
+      p_ref: ref,
+      p_recipient_name: proof?.recipientName ?? null,
+      p_recipient_title: proof?.recipientTitle ?? null,
+      p_visit_at: proof?.visitAt ?? null,
+      p_place_photo_path: place,
+      p_sign_photo_path: sign,
+    });
+    if (error) console.warn('bbkProof(point): kayıt yazılamadı', error.message);
+  } catch (e) {
+    console.warn('bbkProof(point): uygulanamadı', String(e));
   }
 }
 

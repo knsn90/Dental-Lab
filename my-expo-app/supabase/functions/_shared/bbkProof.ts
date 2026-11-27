@@ -22,8 +22,13 @@ export function extractBbkProof(order: unknown): BbkProof | null {
   const pts = (order as any)?.points;
   if (!Array.isArray(pts) || !pts.length) return null;
   const drops = pts.filter((p: any) => p && p.is_return_point !== true);
-  const p: any = drops[drops.length - 1];
-  if (!p) return null;
+  return extractPointProof(drops[drops.length - 1]);
+}
+
+/** Tek bir noktanın kanıtı — çok noktalı siparişte her teslim noktası ayrı okunur. */
+export function extractPointProof(point: unknown): BbkProof | null {
+  const p: any = point;
+  if (!p || typeof p !== 'object') return null;
   const ck = p.checkin ?? {};
   return {
     recipientName: clean(ck.recipient_full_name),

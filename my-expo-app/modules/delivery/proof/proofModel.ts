@@ -4,7 +4,7 @@
 // ayrıca ad + imza ya da "İmza alınamadı" nedeni. Sunucudaki deliver_with_proof aynı kuralı uygular.
 // Döndürülen ipuçları Türkçe kaynak metindir; ekranda autoT ile çevrilir.
 
-export type ProofDirection = 'lab_to_clinic' | 'clinic_to_lab' | 'lab_to_other' | 'other_to_lab';
+export type ProofDirection = 'lab_to_clinic' | 'clinic_to_lab' | 'lab_to_other' | 'other_to_lab' | 'other_to_other';
 
 export const SKIP_REASONS = ['Resepsiyonda kimse yoktu', 'İmzalamak istemedi', 'Paket kapıya bırakıldı', 'Diğer'] as const;
 export const OTHER_REASON = 'Diğer';

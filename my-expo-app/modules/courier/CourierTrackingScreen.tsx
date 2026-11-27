@@ -27,7 +27,7 @@ import { GlassBlurLayer } from '../../core/ui/mobile/GlassBlurLayer';
 import { prefersReducedMotion } from '../../core/ui/mobile/navScroll';
 import { deliveryRef } from '../delivery/label';
 import { patientInitials } from '../orders/lib/workLabel';
-import { isIncomingLeg } from '../delivery/direction';
+import { isIncomingLeg, isOutsideLeg } from '../delivery/direction';
 import { NewShipmentModal } from './components/NewShipmentModal';
 import { SlideTabBar } from '../../core/ui/SlideTabBar';
 import { PAGE_PADDING } from '../../core/ui/pageMetrics';
@@ -144,6 +144,14 @@ function routeEndpoints(d: {
 }) {
   const addr = formatAddress(d.destination_address) || '';
   const fromAddr = formatAddress(d.origin_address) || '';
+  if (isOutsideLeg(d.direction)) {
+    // A → B: iki uç da dış nokta — gönderen origin_*, alıcı destination_*.
+    return {
+      fromText: [d.origin_name || 'Gönderen', fromAddr].filter(Boolean).join('\n'),
+      toLabel:  'Alıcı Adres',
+      toText:   [d.destination_name, addr].filter(Boolean).join('\n') || '—',
+    };
+  }
   if (isIncomingLeg(d.direction)) {
     // Klinikten/tedarikçiden/serbest alım: gönderen = origin_* (sipariş kliniğinden
     // bağımsız gerçek alım noktası) ya da klinik/hekim; alıcı = laboratuvar.
@@ -225,11 +233,13 @@ function formatPhone(raw: string): string {
 
 type DeliveryRow = {
   id:                   string;
-  status:               'beklemede' | 'atandi' | 'teslim_alindi' | 'yolda' | 'teslim_edildi' | 'iptal';
+  status:               'beklemede' | 'atandi' | 'teslim_alindi' | 'yolda' | 'teslim_edildi' | 'iptal' | 'iade';
   mode:                 'internal' | 'external';
   courier_id:           string | null;
   external_provider:    string | null;
   external_tracking_no: string | null;
+  /** Çok noktalı BanaBiKurye siparişinde bu teslim noktasının kimliği (aynı takip no'lu kardeş satırlar). */
+  external_point_ref?:  string | null;
   destination_name:     string | null;
   destination_address:  string | null;
   destination_phone:    string | null;
@@ -331,6 +341,8 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
     yolda:         { label: 'Yolda',     bg: isDark ? 'rgba(59,130,246,0.28)'  : 'rgba(37,99,235,0.22)',  fg: isDark ? '#BFDBFE' : '#1E3A8A' },
     teslim_edildi: { label: 'Teslim',    bg: isDark ? 'rgba(52,211,153,0.18)'  : 'rgba(16,185,129,0.14)', fg: isDark ? '#6EE7B7' : '#0F6E50' },
     iptal:         { label: 'İptal',     bg: isDark ? 'rgba(248,113,113,0.18)' : 'rgba(220,38,38,0.14)',  fg: isDark ? '#FCA5A5' : '#9C2E2E' },
+    // Çok noktalıda kurye teslim edemeyip laboratuvara geri getirdi.
+    iade:          { label: 'İade',      bg: isDark ? 'rgba(251,191,36,0.18)'  : 'rgba(217,119,6,0.14)',  fg: isDark ? '#FCD34D' : '#92400E' },
   }), [accent, isDark]);
 
   const load = useCallback(async (silent = false) => {
@@ -338,7 +350,7 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
     let dq = supabase
       .from('deliveries')
       .select(`
-        id, status, mode, courier_id, external_provider, external_tracking_no,
+        id, status, mode, courier_id, external_provider, external_tracking_no, external_point_ref,
         destination_name, destination_address, destination_phone, direction, purpose,
         origin_name, origin_address, origin_lat, origin_lng, dest_lat, dest_lng,
         ext_courier_name, ext_courier_phone, ext_courier_photo,
@@ -397,9 +409,9 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
       const wanted = deepLinkId ? rows.find(r => r.id === deepLinkId) : null;
       if (wanted) {
         setSelectedId(wanted.id);
-        setTab(wanted.status === 'teslim_edildi' || wanted.status === 'iptal' ? 'done' : 'active');
+        setTab(wanted.status === 'teslim_edildi' || wanted.status === 'iptal' || wanted.status === 'iade' ? 'done' : 'active');
       } else {
-        const firstActive = rows.find(r => r.status !== 'teslim_edildi' && r.status !== 'iptal');
+        const firstActive = rows.find(r => r.status !== 'teslim_edildi' && r.status !== 'iptal' && r.status !== 'iade');
         const firstDone = rows.find(r => r.status === 'teslim_edildi');
         setSelectedId(((hasLive ? firstActive : firstDone) ?? firstActive ?? rows[0]).id);
       }
@@ -430,7 +442,7 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
   }, [scheduleRefetch, routePrefix]);
 
   const filtered = useMemo(() => {
-    const isActive = (s: DeliveryRow['status']) => s !== 'teslim_edildi' && s !== 'iptal';
+    const isActive = (s: DeliveryRow['status']) => s !== 'teslim_edildi' && s !== 'iptal' && s !== 'iade';
     return list
       .filter(r => tab === 'active' ? isActive(r.status) : r.status === 'teslim_edildi')
       .filter(r => {
@@ -600,6 +612,21 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
   const sheetCollapsed = snap === 'collapsed';
 
   const selected = useMemo(() => list.find(r => r.id === selectedId) ?? null, [list, selectedId]);
+  // Çok noktalı BanaBiKurye: aynı takip no'lu nokta satırları tek kuryenin tek turu.
+  const pointGroups = useMemo(() => {
+    const m = new Map<string, DeliveryRow[]>();
+    for (const r of list) {
+      if (!r.external_point_ref || !r.external_tracking_no) continue;
+      const k = String(r.external_tracking_no);
+      m.set(k, [...(m.get(k) ?? []), r]);
+    }
+    return m;
+  }, [list]);
+  const siblings = selected?.external_point_ref && selected.external_tracking_no
+    ? (pointGroups.get(String(selected.external_tracking_no)) ?? []) : [];
+  /** İptal: yola çıkmamış gönderi; çok noktalıda kurye alıma giderken de (nokta siparişten çıkarılır). */
+  const canCancel = (d: DeliveryRow) =>
+    d.status === 'beklemede' || (!!d.external_point_ref && d.status === 'atandi');
   // Dış kurye (BanaBiKurye) canlı konumu — kendi kuryemiz gps_pings'e yazar,
   // dış sağlayıcının kuryesi için konum sağlayıcı API'sinden çekilir.
   const { courier: extCourier } = useExternalCourier(selected);
@@ -645,9 +672,25 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
     // Doğrudan tablo update'i yerine RPC: cancelled_at/cancel_reason'ı da yazar.
     // Yetki kontrolü RLS ile birebir aynı (admin · lab manager/admin · kuryenin kendisi),
     // ama RPC yetkisizde hata döndürür — RLS sessizce 0 satır güncelliyordu.
+    const isBbk = /banabikurye/i.test(String(d.external_provider ?? '')) && !!d.external_tracking_no;
+    const isPoint = isBbk && !!d.external_point_ref;
     const confirm = () => {
       (async () => {
         try {
+          // BanaBiKurye: önce sağlayıcıda iptal — yalnız yerelde iptal edilirse kurye
+          // yine gelir. Çok noktalıda yalnız bu nokta siparişten çıkarılır (sunucu
+          // satırı iptal eder, ücreti kalan noktalara yeniden böler).
+          if (isBbk) {
+            const { data, error: fnErr } = await supabase.functions.invoke('banabikurye-dispatch', {
+              body: { action: 'cancel', order_id: d.external_tracking_no, delivery_id: d.id },
+            });
+            const r = data as any;
+            if (fnErr || r?.ok === false) {
+              toast.error(r?.message ?? fnErr?.message ?? autoT('BanaBiKurye iptali reddetti.'));
+              return;
+            }
+            if (isPoint) { toast.success(autoT('Teslim noktası iptal edildi.')); load(true); return; }
+          }
           const { error } = await supabase.rpc('update_delivery_status', {
             p_delivery_id: d.id,
             p_status: 'iptal',
@@ -661,11 +704,15 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
       })();
     };
     if (Platform.OS === 'web') {
-      if (window.confirm(`"#${d.order_number ?? d.id.slice(0, 8)}" ${autoT('teslimatını iptal etmek istediğinizden emin misiniz?')}`)) confirm();
+      if (window.confirm(isPoint
+        ? `"${d.destination_name ?? '#' + (d.order_number ?? d.id.slice(0, 8))}" ${autoT('teslim noktası çok noktalı siparişten çıkarılsın mı? Diğer noktalar sürer.')}`
+        : `"#${d.order_number ?? d.id.slice(0, 8)}" ${autoT('teslimatını iptal etmek istediğinizden emin misiniz?')}`)) confirm();
     } else {
       Alert.alert(
         autoT('Teslimatı İptal Et'),
-        `"#${d.order_number ?? d.id.slice(0, 8)}" ${autoT('teslimatını iptal etmek istediğinizden emin misiniz?')}`,
+        isPoint
+          ? `"${d.destination_name ?? '#' + (d.order_number ?? d.id.slice(0, 8))}" ${autoT('teslim noktası çok noktalı siparişten çıkarılsın mı? Diğer noktalar sürer.')}`
+          : `"#${d.order_number ?? d.id.slice(0, 8)}" ${autoT('teslimatını iptal etmek istediğinizden emin misiniz?')}`,
         [{ text: autoT('Vazgeç'), style: 'cancel' }, { text: autoT('İptal Et'), style: 'destructive', onPress: confirm }],
       );
     }
@@ -783,7 +830,7 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
 
                     {/* Tahmini varış — yalnız süren gönderide. Kurye canlıysa gerçek varış,
                         değilse çıkış→teslim güzergâh süresi. */}
-                    {eta?.durationSec != null && selected.status !== 'teslim_edildi' && selected.status !== 'iptal' && (
+                    {eta?.durationSec != null && selected.status !== 'teslim_edildi' && selected.status !== 'iptal' && selected.status !== 'iade' && (
                       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, paddingHorizontal: 2 }}>
                         <Text style={{ fontSize: 12, color: C.inkMuted }}>{eta.live ? 'Tahmini Varış' : 'Güzergâh Süresi'}</Text>
                         <Text style={{ fontSize: 16, fontWeight: '600', color: C.ink }} numberOfLines={1}>
@@ -840,8 +887,39 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
                       ) : null}
                     </View>
 
+                    {/* Çok noktalı: aynı kuryenin turundaki diğer teslim noktaları */}
+                    {siblings.length > 1 ? (
+                      <View style={{ gap: 6 }}>
+                        <Text style={{ fontSize: 10.5, fontWeight: '700', color: C.inkMuted, letterSpacing: 1.1 }}>
+                          {autoT('AYNI KURYEDE')} · {siblings.length} {autoT('nokta')}
+                        </Text>
+                        {siblings.map(sb => {
+                          const on = sb.id === selected.id;
+                          const cfg = STATUS_CFG[sb.status];
+                          return (
+                            <Pressable key={sb.id} onPress={() => setSelectedId(sb.id)} accessibilityRole="button"
+                              accessibilityState={{ selected: on }}
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 8,
+                                       borderRadius: 12, borderWidth: 1, borderColor: on ? accent : C.softBorder,
+                                       backgroundColor: on ? `${accent}14` : 'transparent',
+                                       ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                              <MapPin size={13} color={on ? accent : C.inkMuted} strokeWidth={2} />
+                              <Text style={{ flex: 1, fontSize: 12.5, color: C.ink }} numberOfLines={1}>
+                                {sb.destination_name ?? sb.patient_name ?? (sb.order_number ? `#${sb.order_number}` : '—')}
+                              </Text>
+                              {cfg ? (
+                                <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: cfg.bg }}>
+                                  <Text style={{ fontSize: 10.5, fontWeight: '600', color: cfg.fg }}>{cfg.label}</Text>
+                                </View>
+                              ) : null}
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+
                     {/* Mobil: ana eylem tam genişlik düğme; iptal yalnız yola çıkmamış gönderide */}
-                    {mobile && (selected.work_order_id || selected.status === 'beklemede') ? (
+                    {mobile && (selected.work_order_id || canCancel(selected)) ? (
                       <View style={{ gap: 8 }}>
                         {selected.work_order_id ? (
                           <Pressable
@@ -853,14 +931,14 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
                             <Text style={{ fontSize: 15, fontWeight: '600', color: '#FFF' }}>{autoT('Siparişi aç')}</Text>
                           </Pressable>
                         ) : null}
-                        {selected.status === 'beklemede' && (
+                        {canCancel(selected) && (
                           <Pressable
                             onPress={() => { setDetailOpen(false); cancelDelivery(selected); }}
                             accessibilityRole="button"
                             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 48, borderRadius: 24, backgroundColor: 'rgba(220,38,38,0.10)' }}
                           >
                             <Trash2 size={15} color={isDark ? '#FCA5A5' : '#DC2626'} strokeWidth={2} />
-                            <Text style={{ fontSize: 15, fontWeight: '600', color: isDark ? '#FCA5A5' : '#DC2626' }}>Teslimatı İptal Et</Text>
+                            <Text style={{ fontSize: 15, fontWeight: '600', color: isDark ? '#FCA5A5' : '#DC2626' }}>{selected.external_point_ref ? autoT('Bu noktayı iptal et') : autoT('Teslimatı İptal Et')}</Text>
                           </Pressable>
                         )}
                       </View>
@@ -894,9 +972,9 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
             // laboratuvarın koordinatı, klinikten alımda klinik adresi (geokod).
             origin={(selected?.origin_lat != null && selected?.origin_lng != null)
               ? { lat: Number(selected.origin_lat), lng: Number(selected.origin_lng) }
-              : (isIncomingLeg(selected?.direction) ? undefined : labCoord)}
+              : ((isIncomingLeg(selected?.direction) || isOutsideLeg(selected?.direction)) ? undefined : labCoord)}
             // Klinik/tedarikçi adresi de JSON olarak saklanıyor → geokodlamadan önce metne çevir.
-            originLabel={isIncomingLeg(selected?.direction)
+            originLabel={(isIncomingLeg(selected?.direction) || isOutsideLeg(selected?.direction))
               ? (formatAddress(selected?.origin_address) || formatAddress(selected?.clinic_address) || undefined) : undefined}
             // Teslim: dış gönderide saklı gerçek koordinat; yoksa adresten geokod.
             destination={(selected?.dest_lat != null && selected?.dest_lng != null)
@@ -1063,7 +1141,7 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
                   <View onLayout={e => setTabBarH(Math.round(e.nativeEvent.layout.height))}>
                   <SlideTabBar
                     items={[
-                      { key: 'active', label: autoT('Yolda'), count: list.filter(r => r.status !== 'teslim_edildi' && r.status !== 'iptal').length },
+                      { key: 'active', label: autoT('Yolda'), count: list.filter(r => r.status !== 'teslim_edildi' && r.status !== 'iptal' && r.status !== 'iade').length },
                       { key: 'done', label: autoT('Teslim Edildi'), count: list.filter(r => r.status === 'teslim_edildi').length },
                     ]}
                     activeKey={tab}
@@ -1081,7 +1159,7 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
             {isNarrow && sheetCollapsed && filtered.length > 0 && (() => {
               // Kapalı sheet'te sekmeler gizli → yolda/teslim ayrımı da kayboluyordu.
               // Sayıyı tek başına yazmak yerine iki noktalı rozetle özetliyoruz.
-              const onRoad = list.filter(r => r.status !== 'teslim_edildi' && r.status !== 'iptal').length;
+              const onRoad = list.filter(r => r.status !== 'teslim_edildi' && r.status !== 'iptal' && r.status !== 'iade').length;
               const done   = list.filter(r => r.status === 'teslim_edildi').length;
               return (
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 2, gap: 8 }}>
@@ -1155,7 +1233,8 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
                     selected={selectedId === d.id}
                     onSelect={() => { setSelectedId(d.id); if (isNarrow) setDetailOpen(true); }}
                     onOpenOrder={() => goOrder(d.work_order_id, d.id)}
-                    onCancel={d.status === 'beklemede' ? () => cancelDelivery(d) : undefined}
+                    onCancel={canCancel(d) ? () => cancelDelivery(d) : undefined}
+                    pointCount={d.external_point_ref && d.external_tracking_no ? (pointGroups.get(String(d.external_tracking_no))?.length ?? 0) : 0}
                   />
                   </React.Fragment>
                 ))}
@@ -1294,9 +1373,10 @@ function buildTimeline(
   const incoming = isIncomingLeg(d.direction);
   // Serbest alımda çıkış noktası klinik DEĞİL (tedarikçi, şube, kargo…) → nötr metin.
   const pickupLabel = d.direction === 'clinic_to_lab' ? 'Klinikten alındı'
-    : d.direction === 'other_to_lab' ? 'Alım noktasından çıktı'
+    : (d.direction === 'other_to_lab' || d.direction === 'other_to_other') ? 'Alım noktasından çıktı'
     : 'Laboratuvardan çıktı';
-  const cancelled = d.status === 'iptal';
+  const returned  = d.status === 'iade';
+  const cancelled = d.status === 'iptal' || returned;
   const delivered = d.status === 'teslim_edildi';
   // ÖNEMLİ: status='yolda' TEK BAŞINA "alındı" kanıtı DEĞİL. Kendi kuryemiz alımda
   // picked_up_at yazar (delivery/api.ts), ama harici sağlayıcı (BanaBiKurye) kurye
@@ -1363,7 +1443,7 @@ function buildTimeline(
     });
   }
 
-  if (cancelled) steps.push({ key: 'cancelled', label: 'İptal edildi', time: null, state: 'done' });
+  if (cancelled) steps.push({ key: 'cancelled', label: returned ? 'Laboratuvara iade edildi' : 'İptal edildi', time: null, state: 'done' });
   return steps;
 }
 
@@ -1556,9 +1636,9 @@ function DeliveryTimeline({ delivery, etaSec, accent, flush = false, alwaysOpen 
   );
 }
 
-function DeliveryListCard({ d, selected, onSelect, onOpenOrder, onCancel, accent, statusCfg, isNarrow }: {
+function DeliveryListCard({ d, selected, onSelect, onOpenOrder, onCancel, accent, statusCfg, isNarrow, pointCount = 0 }: {
   d: DeliveryRow; selected: boolean; onSelect: () => void; onOpenOrder: () => void;
-  onCancel?: () => void; isNarrow?: boolean;
+  onCancel?: () => void; isNarrow?: boolean; pointCount?: number;
   accent: string; statusCfg: Record<DeliveryRow['status'], { label: string; bg: string; fg: string }>;
 }) {
   const C = useCourierInk();
@@ -1566,7 +1646,8 @@ function DeliveryListCard({ d, selected, onSelect, onOpenOrder, onCancel, accent
   // Yön duyarlı: gelen bacakta (klinikten ya da serbest alım) gönderen dışarıdaki
   // nokta, alıcı laboratuvardır. Eskiden gönderen sabit "Lab" yazıyordu.
   const incoming = isIncomingLeg(d.direction);
-  const origin = incoming ? (d.origin_name || d.clinic_name || d.doctor_name || 'Klinik') : 'Lab';
+  const origin = isOutsideLeg(d.direction) ? (d.origin_name || 'Gönderen')
+    : incoming ? (d.origin_name || d.clinic_name || d.doctor_name || 'Klinik') : 'Lab';
   const dest   = incoming
     ? (d.destination_name || 'Laboratuvar')
     : (d.destination_name ?? d.patient_name ?? 'Alıcı');
@@ -1612,6 +1693,11 @@ function DeliveryListCard({ d, selected, onSelect, onOpenOrder, onCancel, accent
           ) : logo ? (
             <View style={{ height: 18, paddingHorizontal: 4, borderRadius: 5, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
               <CarrierLogo url={logo} width={44} height={12} />
+            </View>
+          ) : null}
+          {pointCount > 1 ? (
+            <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: `${accent}1F` }}>
+              <Text style={{ fontSize: 10.5, fontWeight: '600', color: C.isDark ? '#F7F2E9' : accent }}>{pointCount} {autoT('nokta')}</Text>
             </View>
           ) : null}
           <Text style={{ flex: 1, fontSize: 11.5, color: C.inkMuted }} numberOfLines={1}>

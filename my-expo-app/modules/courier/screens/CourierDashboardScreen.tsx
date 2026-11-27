@@ -63,12 +63,12 @@ const DANGER  = '#D94B4B';
 const STATUS_LABEL: Record<string, string> = {
   beklemede: 'BEKLİYOR', atandi: 'ATANDI',
   teslim_alindi: 'ALINDI', yolda: 'YOLDA',
-  teslim_edildi: 'TESLİM', iptal: 'İPTAL',
+  teslim_edildi: 'TESLİM', iptal: 'İPTAL', iade: 'İADE',
 };
 const STATUS_COLOR: Record<string, string> = {
   beklemede: DS.ink[500], atandi: TH.primary,
   teslim_alindi: TH.primary, yolda: WARNING,
-  teslim_edildi: SUCCESS, iptal: DANGER,
+  teslim_edildi: SUCCESS, iptal: DANGER, iade: WARNING,
 };
 
 const PURPOSE_LABEL: Record<string, string> = {

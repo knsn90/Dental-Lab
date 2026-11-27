@@ -10,10 +10,15 @@
  * akışı aynen çalışır. Numara sunucuda üretilir (GND-YYYY-NNNN).
  *
  * Alıcı serbest adrestir (kullanıcı kararı): kayıtlı klinik/hekim seçimi YOK.
+ *
+ * Üç serbest yön: lab → dış (Gönderi), dış → lab (Alım) ve dış → dış (A → B,
+ * `other_to_other`): lab hiçbir uçta değildir — ör. klinikten milling merkezine.
+ * A → B'de alım noktası ayrı blokta girilir; Shipink kapalıdır (gönderici adresi
+ * Shipink hesabındaki lab adresi olduğu için).
  */
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Modal, TextInput, ScrollView, Platform, ActivityIndicator } from 'react-native';
-import { X, Truck, ArrowUpRight, ArrowDownLeft, Banknote, CreditCard, ChevronDown, Check } from '../../../core/ui/icons';
+import { X, Truck, ArrowUpRight, ArrowDownLeft, Route, Banknote, CreditCard, ChevronDown, Check } from '../../../core/ui/icons';
 import { CarrierLogo } from '../../orders/components/CarrierLogo';
 
 import { supabase } from '../../../lib/supabase';
@@ -25,6 +30,7 @@ import { toast } from '../../../core/ui/Toast';
 import { createDelivery } from '../../orders/api';
 import { AddressAutocompleteField } from '../../integrations/components/AddressAutocompleteField';
 import { PartyPickerField } from './PartyPickerField';
+import { MultiDropStops, type Stop, stopsProblem, stopToDrop } from './MultiDropStops';
 import { ILLER, ILCELER } from '../../clinics/data/turkey';
 
 /** Türkçe harfleri hesaba katan gevşek karşılaştırma (İ/ı tuzağı). */
@@ -56,7 +62,7 @@ function parseTrAddress(addr: string): { il: string; ilce: string; zip: string }
   return out;
 }
 
-type Direction = 'lab_to_other' | 'other_to_lab';
+type Direction = 'lab_to_other' | 'other_to_lab' | 'other_to_other';
 type Carrier = 'internal' | 'bbk' | 'shipink';
 interface ShpCard { id: string; default?: boolean; [k: string]: any }
 interface ShpRate { carrier_service_id: string; provider?: string; carrier_account_id?: string;
@@ -88,7 +94,7 @@ function trIso(local: string, addHours = 0): string | null {
 }
 
 /** Gönderi siparişe bağlanabilir ya da tamamen bağımsız olabilir. */
-type Mode = 'order' | 'free';
+type Mode = 'order' | 'free' | 'multi';
 interface CourierOption { id: string; full_name: string | null }
 interface OrderOption { id: string; order_number: string | null; patient_name: string | null }
 
@@ -109,8 +115,8 @@ export function NewShipmentModal({
   const [orderQ, setOrderQ]       = useState('');
   const [orders, setOrders]       = useState<OrderOption[]>([]);
   const [orderSel, setOrderSel]   = useState<OrderOption | null>(null);
-  /** Siparişli modda yön klinik uçludur; bağımsızda dış taraf uçlu. */
-  const [orderDir, setOrderDir]   = useState<'lab_to_clinic' | 'clinic_to_lab'>('lab_to_clinic');
+  /** Siparişli modda yön klinik uçludur (ya da A → B); bağımsızda dış taraf uçlu. */
+  const [orderDir, setOrderDir]   = useState<'lab_to_clinic' | 'clinic_to_lab' | 'other_to_other'>('lab_to_clinic');
   const [direction, setDirection] = useState<Direction>('lab_to_other');
   const [partyName, setPartyName] = useState('');
   const [address, setAddress]     = useState('');
@@ -118,6 +124,12 @@ export function NewShipmentModal({
   /** Programatik yazılan adres metni — bu metin için öneri listesi açılmaz. */
   const [addrSilent, setAddrSilent] = useState<string | null>(null);
   const [phone, setPhone]         = useState('');
+  // A → B: alım noktası (lab değil). Teslim noktası yukarıdaki party alanlarıdır.
+  const [originName, setOriginName]   = useState('');
+  const [originAddr, setOriginAddr]   = useState('');
+  const [originSel, setOriginSel]     = useState<{ address: string; lat: string | null; lng: string | null } | null>(null);
+  const [originSilent, setOriginSilent] = useState<string | null>(null);
+  const [originPhone, setOriginPhone] = useState('');
   const [notes, setNotes]         = useState('');
   const [fee, setFee]             = useState('');
   const [carrier, setCarrier]     = useState<Carrier>('internal');
@@ -169,6 +181,10 @@ export function NewShipmentModal({
   const [couriers, setCouriers]   = useState<CourierOption[]>([]);
   const [courierId, setCourierId] = useState<string | null>(null);
   const [busy, setBusy]           = useState(false);
+  // Çok noktalı (BanaBiKurye multi-drop): tek kurye labdan alır, N adrese bırakır.
+  const [stops, setStops]         = useState<Stop[]>([]);
+  const [optimize, setOptimize]   = useState(false);
+  const multi = mode === 'multi';
 
   useEffect(() => {
     if (!visible || !labId) return;
@@ -213,12 +229,14 @@ export function NewShipmentModal({
     setMode('order'); setOrderQ(''); setOrderSel(null); setOrderDir('lab_to_clinic');
     setDirection('lab_to_other'); setPartyName(''); setAddress(''); setAddrSel(null); setAddrSilent(null);
     setPhone(''); setNotes(''); setFee(''); setCourierId(null);
+    setOriginName(''); setOriginAddr(''); setOriginSel(null); setOriginSilent(null); setOriginPhone('');
     setCarrier('internal'); setBbkPrice(null); setBbkWeight('1');
     setBbkService('standard'); setBbkSched(''); setBbkPayment(null); setBbkCards([]); setBbkCardId(null);
     setBbkContent(BBK_CONTENT_TAGS[0]); setBbkInsurance(''); setBbkPromo('');
     setBbkBuildingNo(''); setBbkFloor(''); setBbkApartment(''); setBbkIntercom('');
     setBbkLoaders(false); setBbkNotify(true); setBbkMoreOpen(false);
     setShpState(''); setShpCity(''); setShpZip(''); setShpEmail(''); setShpTaxId(''); setShpRates([]); setShpService(null);
+    setStops([]); setOptimize(false);
     setErr(null);
   }
 
@@ -228,21 +246,53 @@ export function NewShipmentModal({
    * Serbest gönderinin yeni değerleri oraya çevrilmeli; aksi hâlde "alım" yönü
    * teslim sanılıp kurye ters uca gönderilir.
    */
-  function apiDirection(): 'lab_to_clinic' | 'clinic_to_lab' {
+  function apiDirection(): 'lab_to_clinic' | 'clinic_to_lab' | 'other_to_other' {
     const d = mode === 'order' ? orderDir : direction;
+    if (d === 'other_to_other') return 'other_to_other';
     return (d === 'clinic_to_lab' || d === 'other_to_lab') ? 'clinic_to_lab' : 'lab_to_clinic';
+  }
+
+  /** A → B mi? Bağımsızda da siparişe bağlı gönderide de olabilir. */
+  const outside = !multi && (mode === 'free' ? direction : orderDir) === 'other_to_other';
+  /** Karşı taraf (alıcı) formda mı giriliyor? Siparişli klinik bacağında sunucu çözer. */
+  const partyInForm = mode === 'free' || outside;
+
+  /** A → B alım noktası — sunucuya giden alanlar. */
+  function originBody() {
+    if (!outside) return {};
+    return {
+      origin_name:    originName.trim() || undefined,
+      origin_address: (originSel?.address ?? originAddr).trim() || undefined,
+      origin_phone:   originPhone.trim() || undefined,
+      origin_lat:     originSel?.lat ?? undefined,
+      origin_lng:     originSel?.lng ?? undefined,
+    };
+  }
+
+  /** A → B alım noktası — teslimat kaydına giden alanlar. */
+  function originFields() {
+    if (!outside) return {};
+    return {
+      originName:    originName.trim(),
+      originAddress: (originSel?.address ?? originAddr).trim(),
+      originPhone:   originPhone.trim() || undefined,
+      originLat:     originSel?.lat ? Number(originSel.lat) : null,
+      originLng:     originSel?.lng ? Number(originSel.lng) : null,
+    };
   }
 
   /** Siparişli modda adresi sunucu siparişten çözer; bağımsızda biz veririz. */
   function destBody() {
-    if (mode === 'order') return { work_order_id: orderSel?.id };
+    if (mode === 'order' && !outside) return { work_order_id: orderSel?.id };
     const addr = (addrSel?.address ?? address).trim();
     return {
+      ...(mode === 'order' ? { work_order_id: orderSel?.id } : {}),
       dest_name:    partyName.trim() || undefined,
       dest_address: addr || undefined,
       dest_lat:     addrSel?.lat ?? undefined,
       dest_lng:     addrSel?.lng ?? undefined,
       dest_phone:   phone.trim() || undefined,
+      ...originBody(),
     };
   }
 
@@ -251,14 +301,16 @@ export function NewShipmentModal({
     return {
       workOrderId: mode === 'order' ? orderSel!.id : null,
       direction: (mode === 'order' ? orderDir : direction) as any,
-      purpose: (mode === 'order' ? 'teslimat' : 'diger') as any,
+      // Siparişli A → B bir teslimat değil (ara bacak) — iş emrini kapatmamalı.
+      purpose: (mode === 'order' && !outside ? 'teslimat' : 'diger') as any,
       notes: notes.trim() || undefined,
-      ...(mode === 'free' ? {
+      ...(partyInForm ? {
         partyName: partyName.trim(),
         partyAddress: (addrSel?.address ?? address).trim(),
         partyPhone: phone.trim() || undefined,
         partyLat: addrSel?.lat ? Number(addrSel.lat) : null,
         partyLng: addrSel?.lng ? Number(addrSel.lng) : null,
+        ...originFields(),
       } : {}),
       manualFee: feeNum != null && isFinite(feeNum) ? feeNum : null,
     };
@@ -279,17 +331,25 @@ export function NewShipmentModal({
   function guard(): boolean {
     setErr(null);
     if (mode === 'order' && !orderSel) { toast.error(autoT('Sipariş seçin.')); return false; }
-    if (mode === 'free') {
+    if (partyInForm) {
       const addr = (addrSel?.address ?? address).trim();
       if (!partyName.trim() || !addr) { toast.error(autoT('Karşı taraf adı ve adres zorunlu.')); return false; }
+      if (outside && (!originName.trim() || !(originSel?.address ?? originAddr).trim())) {
+        toast.error(autoT('Alım noktasının adı ve adresi zorunlu.')); return false;
+      }
     }
     return true;
   }
 
   /** BanaBiKurye zorunlu alanları — fiyat sorgusundan ve çağrıdan ÖNCE. */
   function bbkGuard(): boolean {
-    if (!guard()) return false;
-    if (mode === 'free' && !phone.trim()) { setErr(autoT('BanaBiKurye için alıcı telefonu zorunlu.')); return false; }
+    setErr(null);
+    if (multi) {
+      const prob = stopsProblem(stops);
+      if (prob) { setErr(prob); return false; }
+    } else if (!guard()) return false;
+    if (partyInForm && !phone.trim()) { setErr(autoT('BanaBiKurye için alıcı telefonu zorunlu.')); return false; }
+    if (outside && !originPhone.trim()) { setErr(autoT('BanaBiKurye için alım noktası telefonu zorunlu.')); return false; }
     if (!(Number(bbkWeight.replace(',', '.')) > 0)) { setErr(autoT('Ağırlık girin.')); return false; }
     if (bbkService === 'scheduled' && !trIso(bbkSched)) { setErr(autoT('İleri zamanlı için tarih-saat seçin.')); return false; }
     if (bbkPayment == null) { setErr(autoT('Ödeme şeklini seçin (nakit veya banka kartı).')); return false; }
@@ -312,10 +372,13 @@ export function NewShipmentModal({
       const start = trIso(bbkSched);
       if (start) { opts.required_start_datetime = start; opts.required_finish_datetime = trIso(bbkSched, 2); }
     }
-    if (bbkBuildingNo.trim()) opts.dest_building_no = bbkBuildingNo.trim();
-    if (bbkFloor.trim())      opts.dest_floor = bbkFloor.trim();
-    if (bbkApartment.trim())  opts.dest_apartment = bbkApartment.trim();
-    if (bbkIntercom.trim())   opts.dest_intercom = bbkIntercom.trim();
+    // Kapı bilgisi tek teslim adresine aittir — çok noktalıda gönderilmez.
+    if (!multi) {
+      if (bbkBuildingNo.trim()) opts.dest_building_no = bbkBuildingNo.trim();
+      if (bbkFloor.trim())      opts.dest_floor = bbkFloor.trim();
+      if (bbkApartment.trim())  opts.dest_apartment = bbkApartment.trim();
+      if (bbkIntercom.trim())   opts.dest_intercom = bbkIntercom.trim();
+    }
     if (bbkLoaders) opts.loaders_count = 1;
     if (bbkPayment === 'bank_card') {
       opts.payment_method = 'bank_card';
@@ -341,7 +404,10 @@ export function NewShipmentModal({
     if (!bbkGuard()) return;
     setBusy(true); setErr(null);
     const { data, error } = await supabase.functions.invoke('banabikurye-dispatch', {
-      body: {
+      body: multi
+        ? { action: 'calculate', drops: stops.map(stopToDrop), optimize_route: optimize,
+            notes: notes.trim() || undefined, ...bbkOptions() }
+        : {
         action: 'calculate', direction: apiDirection(),
         notes: notes.trim() || undefined,
         ...destBody(), ...bbkOptions(),
@@ -358,7 +424,10 @@ export function NewShipmentModal({
     if (!bbkGuard()) return;
     setBusy(true); setErr(null);
     const { data, error } = await supabase.functions.invoke('banabikurye-dispatch', {
-      body: {
+      body: multi
+        ? { action: 'create', drops: stops.map(stopToDrop), optimize_route: optimize,
+            notes: notes.trim() || undefined, ...bbkOptions() }
+        : {
         action: 'create', direction: apiDirection(),
         notes: notes.trim() || undefined,
         ...destBody(), ...bbkOptions(),
@@ -366,6 +435,15 @@ export function NewShipmentModal({
     });
     const d = data as any;
     if (error || !d?.ok) { setBusy(false); setErr(d?.message ?? error?.message ?? autoT('Kurye çağrılamadı')); return; }
+    // Çok noktalı: teslimat satırlarını sunucu açar (nokta başına bir satır, ücret bölünmüş).
+    if (multi) {
+      setBusy(false);
+      const first = Array.isArray(d.deliveries) ? d.deliveries[0]?.delivery_id : null;
+      toast.success(autoT('Kurye çağrıldı.'));
+      reset();
+      if (first) onCreated(String(first)); else onClose();
+      return;
+    }
     const orderId = d.order_id ?? d.order_name ?? null;
     // BanaBiKurye ₺ ile çalışır → para birimi TRY sabit. Fiyat API'den SAYI gelir;
     // TR metin ayrıştırıcısı noktayı binlik sanıp 100× şişirir — Number kullan.
@@ -486,8 +564,11 @@ export function NewShipmentModal({
     const name = partyName.trim();
     const addr = (addrSel?.address ?? address).trim();
     if (mode === 'order' && !orderSel) { toast.error(autoT('Sipariş seçin.')); return; }
-    if (mode === 'free' && (!name || !addr)) {
+    if (partyInForm && (!name || !addr)) {
       toast.error(autoT('Karşı taraf adı ve adres zorunlu.')); return;
+    }
+    if (outside && (!originName.trim() || !(originSel?.address ?? originAddr).trim())) {
+      toast.error(autoT('Alım noktasının adı ve adresi zorunlu.')); return;
     }
     if (!courierId) { toast.error(autoT('Kurye seçin.')); return; }
 
@@ -500,14 +581,15 @@ export function NewShipmentModal({
       mode: 'internal',
       courierId,
       direction: mode === 'order' ? orderDir : direction,
-      purpose: mode === 'order' ? 'teslimat' : 'diger',
+      purpose: mode === 'order' && !outside ? 'teslimat' : 'diger',
       notes: notes.trim() || undefined,
-      ...(mode === 'free' ? {
+      ...(partyInForm ? {
         partyName: name,
         partyAddress: addr,
         partyPhone: phone.trim() || undefined,
         partyLat: addrSel?.lat ? Number(addrSel.lat) : null,
         partyLng: addrSel?.lng ? Number(addrSel.lng) : null,
+        ...originFields(),
       } : {}),
       feeAmount: feeNum != null && isFinite(feeNum) ? feeNum : null,
       feeSource: feeNum != null && isFinite(feeNum) ? 'manuel' : undefined,
@@ -527,7 +609,8 @@ export function NewShipmentModal({
   };
   const label = { fontSize: 11, fontWeight: '600' as const, color: T.ink2, marginBottom: 5 };
 
-  const isOut = direction === 'lab_to_other';
+  // A → B'de party alanları TESLİM noktasıdır (alıcı) → gönderi etiketleri.
+  const isOut = outside || direction !== 'other_to_lab';
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -569,10 +652,15 @@ export function NewShipmentModal({
               {([
                 { v: 'order' as const, t: 'Siparişe bağlı' },
                 { v: 'free'  as const, t: 'Bağımsız gönderi' },
+                { v: 'multi' as const, t: 'Çok noktalı' },
               ]).map(({ v, t }) => {
                 const on = mode === v;
                 return (
-                  <Pressable key={v} onPress={() => setMode(v)}
+                  <Pressable key={v} onPress={() => {
+                      setMode(v); invalidateQuote();
+                      // Çok noktalı yalnız BanaBiKurye'de; gün sonu hizmeti 2 noktayla sınırlı.
+                      if (v === 'multi') { setCarrier('bbk'); if (bbkService === 'endofday') setBbkService('standard'); }
+                    }}
                     style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 999,
                              backgroundColor: on ? (isDark ? 'rgba(255,255,255,0.12)' : '#FFFFFF') : 'transparent',
                              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
@@ -584,20 +672,34 @@ export function NewShipmentModal({
               })}
             </View>
 
+            {/* ÇOK NOKTALI: durak listesi — yön/alıcı alanlarının yerine */}
+            {multi && (
+              <MultiDropStops stops={stops} onChange={(n) => { setStops(n); invalidateQuote(); }}
+                optimize={optimize} onOptimize={(v) => { setOptimize(v); invalidateQuote(); }}
+                accent={accent} inputStyle={inputStyle} label={label} />
+            )}
+
             {/* Yön — siparişli modda klinik uçlu, bağımsızda dış taraf uçlu */}
+            {!multi && (
             <View style={{ flexDirection: 'row', gap: 8 }}>
               {(mode === 'order'
                 ? [{ v: 'lab_to_clinic', t: 'Kliniğe teslim', Icon: ArrowUpRight },
-                   { v: 'clinic_to_lab', t: 'Klinikten alım', Icon: ArrowDownLeft }]
+                   { v: 'clinic_to_lab', t: 'Klinikten alım', Icon: ArrowDownLeft },
+                   { v: 'other_to_other', t: 'A → B',  Icon: Route }]
                 : [{ v: 'lab_to_other',  t: 'Gönderi', Icon: ArrowUpRight },
-                   { v: 'other_to_lab',  t: 'Alım',    Icon: ArrowDownLeft }]
+                   { v: 'other_to_lab',  t: 'Alım',    Icon: ArrowDownLeft },
+                   { v: 'other_to_other', t: 'A → B',  Icon: Route }]
               ).map(({ v, t, Icon }) => {
                 const on = mode === 'order' ? orderDir === v : direction === v;
                 return (
                   <Pressable key={v}
-                    onPress={() => mode === 'order'
-                      ? setOrderDir(v as 'lab_to_clinic' | 'clinic_to_lab')
-                      : setDirection(v as Direction)}
+                    onPress={() => {
+                      if (mode === 'order') setOrderDir(v as 'lab_to_clinic' | 'clinic_to_lab' | 'other_to_other');
+                      else setDirection(v as Direction);
+                      invalidateQuote();
+                      // Shipink'te gönderici hep lab → A → B'de kapalı.
+                      if (v === 'other_to_other' && carrier === 'shipink') setCarrier('internal');
+                    }}
                     style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
                              gap: 6, paddingVertical: 9, borderRadius: 999, borderWidth: 1,
                              borderColor: on ? accent : T.hairline,
@@ -611,6 +713,7 @@ export function NewShipmentModal({
                 );
               })}
             </View>
+            )}
 
             {/* SİPARİŞE BAĞLI: sipariş seç — adres sunucuda siparişten çözülür */}
             {mode === 'order' && (
@@ -660,12 +763,65 @@ export function NewShipmentModal({
                   </>
                 )}
                 <Text style={{ fontSize: 10.5, color: T.ink3, marginTop: 5 }}>
-                  {autoT('Adres siparişin hekim/kliniğinden otomatik alınır.')}
+                  {autoT(outside
+                    ? 'A → B: alım ve teslim adreslerini aşağıya girin; gönderi siparişin geçmişine bağlanır.'
+                    : 'Adres siparişin hekim/kliniğinden otomatik alınır.')}
                 </Text>
               </View>
             )}
 
-            {mode === 'free' && (
+            {/* A → B: ALIM NOKTASI — lab değil; kayıtlı klinik/tedarikçi/hekim ya da serbest adres */}
+            {outside && (
+              <Text style={{ fontSize: 11, fontWeight: '700', color: T.ink3, letterSpacing: 1.1, marginBottom: -6 }}>
+                {autoT('ALIM NOKTASI (A)')}
+              </Text>
+            )}
+            {outside && (
+              <View style={{ zIndex: 50 }}>
+                <Text style={label}>{autoT('Gönderen adı')}</Text>
+                <PartyPickerField
+                  value={originName}
+                  onChangeText={(v) => { setOriginName(v); invalidateQuote(); }}
+                  onPick={(h) => {
+                    setOriginName(h.name);
+                    if (h.phone) setOriginPhone(h.phone);
+                    if (h.address) { setOriginAddr(h.address); setOriginSel(null); setOriginSilent(h.address); }
+                    invalidateQuote();
+                  }}
+                  placeholder={autoT('Ör. Klinik ya da milling merkezi')}
+                  inputStyle={inputStyle}
+                  accentColor={accent}
+                />
+              </View>
+            )}
+            {outside && (
+              <View style={{ zIndex: 45 }}>
+                <Text style={label}>{autoT('Alım adresi')}</Text>
+                <AddressAutocompleteField
+                  value={originAddr}
+                  silentValue={originSilent}
+                  onChangeText={(v) => { setOriginAddr(v); setOriginSel(null); setOriginSilent(null); invalidateQuote(); }}
+                  onSelect={(a, lat, lng) => { setOriginAddr(a); setOriginSel({ address: a, lat, lng }); setOriginSilent(null); invalidateQuote(); }}
+                  placeholder={autoT('Adres ara')}
+                  inputStyle={inputStyle}
+                  accentColor={accent}
+                />
+              </View>
+            )}
+            {outside && (
+              <View>
+                <Text style={label}>{autoT('Gönderen telefonu')}</Text>
+                <TextInput value={originPhone} onChangeText={(v) => { setOriginPhone(v); invalidateQuote(); }} style={inputStyle}
+                  keyboardType="phone-pad" placeholder="05XX XXX XX XX" placeholderTextColor={T.ink3} />
+              </View>
+            )}
+            {outside && (
+              <Text style={{ fontSize: 11, fontWeight: '700', color: T.ink3, letterSpacing: 1.1, marginBottom: -6, marginTop: 4 }}>
+                {autoT('TESLİM NOKTASI (B)')}
+              </Text>
+            )}
+
+            {partyInForm && (
             // Kayıtlı tedarikçi/klinik/hekim arasından seçilirse adres ve telefon
             // birlikte dolar; eşleşme yoksa alan serbest metin olarak kalır.
             <View style={{ zIndex: 30 }}>
@@ -699,7 +855,7 @@ export function NewShipmentModal({
             </View>
             )}
 
-            {mode === 'free' && (
+            {partyInForm && (
             <View style={{ zIndex: 20 }}>
               <Text style={label}>{autoT(isOut ? 'Teslim adresi' : 'Alım adresi')}</Text>
               <AddressAutocompleteField
@@ -722,7 +878,7 @@ export function NewShipmentModal({
             </View>
             )}
 
-            {mode === 'free' && (
+            {partyInForm && (
             <View>
               <Text style={label}>{autoT('Telefon')}</Text>
               <TextInput value={phone} onChangeText={(v) => { setPhone(v); invalidateQuote(); }} style={inputStyle}
@@ -739,7 +895,7 @@ export function NewShipmentModal({
                   { v: 'internal' as const, name: autoT('Kendi kuryemiz'), sub: autoT('Lab kuryesi'),     logo: null },
                   { v: 'bbk' as const,      name: 'BanaBiKurye',           sub: autoT('Aynı gün kurye'),  logo: PROVIDER_LOGOS.bbk },
                   { v: 'shipink' as const,  name: 'Shipink',               sub: autoT('Kargo firmaları'), logo: PROVIDER_LOGOS.shipink },
-                ]).map(({ v, name, sub, logo }) => {
+                ]).filter(o => multi ? o.v === 'bbk' : !(outside && o.v === 'shipink')).map(({ v, name, sub, logo }) => {
                   const on = carrier === v;
                   return (
                     <Pressable key={v}
@@ -803,7 +959,7 @@ export function NewShipmentModal({
                   <View>
                     <Text style={label}>{autoT('Hizmet tipi')}</Text>
                     <View style={{ flexDirection: 'row', padding: 3, borderRadius: 12, backgroundColor: soft }}>
-                      {BBK_SERVICES.map(sv => {
+                      {BBK_SERVICES.filter(sv => !(multi && sv.id === 'endofday')).map(sv => {
                         const on = bbkService === sv.id;
                         return (
                           <Pressable key={sv.id} onPress={() => { setBbkService(sv.id); invalidateQuote(); }}
@@ -924,7 +1080,7 @@ export function NewShipmentModal({
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text style={{ fontSize: 14, color: T.ink }}>{autoT('Ek ayrıntılar')}</Text>
                           <Text style={{ fontSize: 11, color: T.ink3 }} numberOfLines={1}>
-                            {autoT('Kapı bilgisi, güvence, promosyon kodu')}
+                            {autoT(multi ? 'Güvence, promosyon kodu' : 'Kapı bilgisi, güvence, promosyon kodu')}
                           </Text>
                         </View>
                         <View style={{ transform: [{ rotate: bbkMoreOpen ? '180deg' : '0deg' }] }}>
@@ -940,7 +1096,7 @@ export function NewShipmentModal({
                             ['Zil / interkom', bbkIntercom, setBbkIntercom, false],
                             ['Güvence tutarı (₺)', bbkInsurance, setBbkInsurance, true],
                             ['Promosyon kodu', bbkPromo, setBbkPromo, true],
-                          ] as const).map(([lbl, val, set, priced]) => (
+                          ] as const).filter(([, , , priced]) => !multi || priced).map(([lbl, val, set, priced]) => (
                             <View key={lbl} style={[rowBase, sep]}>
                               <Text style={{ fontSize: 14, color: T.ink2 }}>{autoT(lbl)}</Text>
                               <TextInput value={val} onChangeText={(v) => { set(v); if (priced) invalidateQuote(); }}

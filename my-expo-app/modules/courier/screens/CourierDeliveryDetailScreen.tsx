@@ -59,12 +59,12 @@ interface Delivery {
 const STATUS_LABEL: Record<string, string> = {
   beklemede: 'BEKLİYOR',  atandi: 'ATANDI',
   teslim_alindi: 'ALINDI', yolda: 'YOLDA',
-  teslim_edildi: 'TESLİM EDİLDİ', iptal: 'İPTAL',
+  teslim_edildi: 'TESLİM EDİLDİ', iptal: 'İPTAL', iade: 'İADE',
 };
 const STATUS_COLOR: Record<string, string> = {
   beklemede: DS.ink[500], atandi: TH.primary,
   teslim_alindi: TH.primary, yolda: WARNING,
-  teslim_edildi: SUCCESS, iptal: DANGER,
+  teslim_edildi: SUCCESS, iptal: DANGER, iade: WARNING,
 };
 
 const TIMELINE = [

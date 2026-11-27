@@ -175,10 +175,21 @@ export function StaticRouteMap({ originText, destText, apiKey, height = 96, acce
 
 /** Bacağın yönüne göre çıkış/varış adreslerini çözer. */
 export function legRouteAddresses(
-  leg: { direction?: string | null; destination_address?: string | null },
+  leg: { direction?: string | null; destination_address?: string | null; origin_address?: string | null },
   labAddress?: string | null,
   clinicAddress?: string | null,
 ): { originText: string | null; destText: string | null } {
+  // Dış uçlu bacaklar (dış servis / A → B): adresler kayıtta durur; klinik
+  // adresine düşülürse harita kuryeyi yanlış uca çizerdi.
+  if (leg.direction === 'other_to_other') {
+    return { originText: leg.origin_address ?? null, destText: leg.destination_address ?? null };
+  }
+  if (leg.direction === 'other_to_lab') {
+    return { originText: leg.origin_address ?? null, destText: leg.destination_address ?? labAddress ?? null };
+  }
+  if (leg.direction === 'lab_to_other') {
+    return { originText: leg.origin_address ?? labAddress ?? null, destText: leg.destination_address ?? null };
+  }
   if (leg.direction === 'clinic_to_lab') {
     // Klinikten alım: çıkış klinik, varış laboratuvar (= destination_address)
     return { originText: clinicAddress ?? null, destText: leg.destination_address ?? labAddress ?? null };

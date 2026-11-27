@@ -23,11 +23,11 @@ const WARNING = '#E89B2A';
 const DANGER  = '#D94B4B';
 const STATUS_LABEL: Record<string, string> = {
   beklemede: 'BEKLİYOR', atandi: 'ATANDI', teslim_alindi: 'ALINDI',
-  yolda: 'YOLDA', teslim_edildi: 'TESLİM', iptal: 'İPTAL',
+  yolda: 'YOLDA', teslim_edildi: 'TESLİM', iptal: 'İPTAL', iade: 'İADE',
 };
 const STATUS_COLOR: Record<string, string> = {
   beklemede: DS.ink[500], atandi: TH.primary, teslim_alindi: TH.primary,
-  yolda: WARNING, teslim_edildi: SUCCESS, iptal: DANGER,
+  yolda: WARNING, teslim_edildi: SUCCESS, iptal: DANGER, iade: WARNING,
 };
 const PURPOSE_LABEL: Record<string, string> = {
   teslimat: 'Teslimat', model_alma: 'Model alma', eksik_parca: 'Eksik parça', diger: 'Diğer',
